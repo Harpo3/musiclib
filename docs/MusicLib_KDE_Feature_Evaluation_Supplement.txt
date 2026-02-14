@@ -1,0 +1,110 @@
+MusicLib_KDE_Feature_Evaluation_Supplement
+
+Improvements to the codebase:
+
+**Caret delimiter handling in `musiclib_utils.sh`:**
+
+Since the DB uses a carat-delimiter, the DB will not be corrupted by comma use within text-based fields, but for the rare occasion when a carat does appear, include an error handling in musiclib_utils.sh (it has database helper functions for the DSV-backed music database) and related scripts for this event.
+
+The caret character appearing in tag data would silently corrupt a DB row by shifting all subsequent columns. The most efficient approach is a **sanitize-on-write** function rather than scanning every read. Correction strategy:
+
+A small `sanitize_dsv_field()` function in `musiclib_utils.sh` that strips or replaces `^` characters in any string value before it gets written into a DSV row. You'd call it at the point where `extract_metadata` assembles the caret-delimited record, and at any other point where user-supplied or tag-extracted text is being written to the DB. The replacement would be something neutral like a hyphen or simply removing the caret. This is a single `sed` or parameter expansion per field — essentially free in terms of performance. A complementary `validate_row_field_count()` check could be called during DB reads (in `validate_database` or when loading rows) to catch any existing corruption by confirming each row has the expected number of `^`-delimited fields. That's also cheap — just a single `awk -F'^' '{print NF}'` comparison.
+
+The combination of sanitize-on-write plus field-count validation on read covers both prevention and detection without adding meaningful overhead.
+
+**`musiclib_mobile.sh` multi-format playlist support**
+
+musiclib_mobile.sh upload assumes only playlist.audpl format, however, any format convertable to .m3u playlist (which uses basenames only) should be included.
+
+Applies to:
+
+Workflow: 1. Validate dependencies (kdeconnect-cli) 2. Check if playlist file exists 3. Ping device to verify connectivity 4. Prompt user to manually
+delete old music from phone 5. Parse .audpl file for file:// URIs 6. URL-decode file paths 7. Create .m3u playlist (basenames only) 8. Transfer .m3u
+via kdeconnect-cli 9. Transfer each MP3 file (with progress counter) 10. Save metadata: - <playlist>.tracks: List of transferred file paths -
+<playlist>.meta: Upload timestamp (epoch seconds) 11. Call update_lastplayed_workflow() to process previous playlist 12. Log upload
+statistics
+
+The current code hardcodes `.audpl` parsing (looking for `uri=file://` lines). Supporting additional formats that can be converted to `.m3u` is the right direction.
+
+Strategy:
+
+Step 5 in the workflow becomes a format dispatcher. Based on the file extension, the script would route to different parsers — `.audpl` uses the existing `uri=file://` extraction, `.m3u`/`.m3u8` would strip any lines starting with `#` (extended M3U comments) and resolve paths relative to the playlist's directory (or, if already basenames, just use them directly), and `.pls` would extract `File=` entries. Each parser's job is to produce the same intermediate output: a list of absolute local file paths in a temp file. Everything downstream (the `.m3u` generation with basenames, the transfer loop, the metadata saving) stays the same.
+
+For a plain `.m3u` that already contains only basenames (no paths), the script would need a configurable music search directory to resolve those basenames to full paths for transfer. That could default to `MUSIC_REPO` from config.
+
+The Backend API would need to be updated to reflect that `PLAYLIST_FILE` accepts `.audpl`, `.m3u`, `.m3u8`, and `.pls` formats.
+
+**2.1 Maintenance Operations Panel — First-run wizard and initialization**
+
+There is not a initial setup procedure for establishing directories, library location, and the initial DB creation (musiclib_rebuild.sh). Attached is the project's directory tree. Use of local .config and .share directories is a standard practice for local configuration in KDE.
+
+There is not currently an initialization process apart from default configuration settings. The GUI will not function without a music library and a DB. Use standard KDE/XDG convention for setting the default location for executables, configuration and data settings: `~/.config/musiclib/` for configuration, and `~/.local/share/musiclib/` for data (database, logs, backups).
+
+A first-run wizard would walk through: setting `MUSIC_REPO` (the root music directory, chosen via KIO file dialog), setting `MUSICLIB_ROOT`, creating the directory tree (`bin/`, `config/`, `data/`, `data/conky_output/`, `data/tag_backups/`, `playlists/`, `playlists/mobile/`, `logs/`, `logs/mobile/`), running `musiclib_rebuild.sh` to scan the music directory and create the initial `musiclib.dsv`, optionally detecting a KDE Connect device via `kdeconnect-cli -l` and setting `DEVICE_ID`, and writing `musiclib.conf` with the chosen values.
+
+Regarding system-level versus local settings: for a single-user tool like MusicLib, local is correct. The standard KDE/XDG convention is  `~/.config/musiclib/` for configuration, and `~/.local/share/musiclib/` for data (database, logs, backups). The current layout with everything under `~/musiclib/` can work, but it will not be the default. The important thing is that the GUI finds everything through the config, not hardcoded paths.
+
+musiclib-cli is to be a thin dispatcher that calls the existing shell scripts. The installed layout will look like:
+
+/usr/bin/musiclib-cli              ← compiled C++ dispatcher binary
+/usr/bin/musiclib-qt               ← compiled C++ Qt/KDE GUI binary
+/usr/lib/musiclib/bin/             ← shell scripts (the actual backend)
+    musiclib_utils.sh
+    musiclib_utils_tag_functions.sh
+    musiclib_rate.sh
+    musiclib_mobile.sh
+    musiclib_audacious.sh
+    musiclib_new_tracks.sh
+    musiclib_rebuild.sh
+    musiclib_tagrebuild.sh
+    musiclib_tagclean.sh
+    boost_album.sh
+    audpl_scanner.sh
+/usr/lib/musiclib/config/
+    musiclib.conf
+    tag_excludes.conf
+    ID3v2_frame_excludes.txt
+    ID3v2_frames.txt
+/usr/share/musiclib/
+    conky_example.conf
+    musiclib_example.dsv
+/usr/share/applications/
+    org.musiclib.musiclib-qt.desktop
+/usr/share/kservices5/ (or kio/servicemenus/)
+    musiclib-dolphin.desktop
+
+**2.2 System Tray — revised behavior:**
+
+ Showing current playback state is a sound approach, as conky will display the track elements. However, the KDE system tray typically shows media players as "show when relevant", so when Audacious is playing, the Audacious tray item, not musicib, displays the track elements including playback state. "What it would show" should reflect a complementary approach. The tooltip need show only artist-title and star rating, and right-click context menu: quick-rate (submenu of 0–5 stars). CLicking on the tray icon should open the musicbase window to the Maintenance Operations Panel for access to add/update comment and rebuild tag. Play/Pause/Next/Prev is already in the Audacious tray.
+
+The MusicLib tray icon should be complementary rather than duplicating. So:
+
+Tooltip shows just artist — title and star rating (compact, glanceable). Right-click context menu provides quick-rate submenu (0–5 stars) only — no playback controls. Left-click opens the main MusicLib window, defaulting to the Maintenance Operations Panel (since the tray is the quick-access point for the "operations hub" identity of the app, and maintenance/tag operations are the actions needed while listening). This keeps the tray focused on what MusicLib uniquely provides: rating and library operations.
+
+**2.4 Dolphin Service Menus — scoping the actions:**
+
+"Clean Tags" and "Boost Loudness" both require additional parameters (mode selection, loudness target) that can't be inferred from the right-click alone. "Add to MusicLib" is the only one that can run cleanly with just a path. The service menu entry for the other two should open the MusicLib GUI directly to the Maintenance Panel with the selected path pre-filled — essentially a `musiclib-gui --maintenance --path /right/clicked/directory` launch. That way Dolphin hands off context, and the GUI handles parameter collection.
+
+**3.1 Overall Layout clarification:**
+
+The sidebar + stacked panels layout is the **main application window** only — not the tray. The tray icon is separate (as discussed in 2.2 above). When you click the tray icon or launch the app directly, you get the main window, which has a sidebar on the left for navigation (Library, Mobile, Maintenance, Stats, Settings) and the currently selected panel filling the rest of the window. The persistent "now-playing" strip at the bottom of the main window shows what Audacious is currently playing, so you always have context no matter which panel you're looking at.
+
+**3.2 Library View — color coding and Comment column:**
+
+Color-coded rows should only be for tracks with missing tags. Also, there should be a column for Comment with just an indication of yes or no, but hovering on a yes displays the comment in a popup. Color-coded rows only for tracks with missing tags (not for "old last-played" or missing rating, since those are normal states for tracks you haven't listened to recently). For the Comment column, displaying a yes/no icon (or just a small indicator dot) with a hover tooltip showing the full comment text is a clean approach. In Qt terms, this is a custom `QStyledItemDelegate` that paints a small icon and implements `QToolTip` via the model's `Qt::ToolTipRole`. Lightweight and doesn't clutter the table.
+
+**3.3 Rating UX — adjusted item 1:**
+
+Updated: Click stars inline in the library view, or right-click the tray icon and select from the quick-rate submenu. The "now-playing strip" in the main window also gets clickable stars for the current track.
+
+**3.4 Conky Panel — dropped:**
+
+This should be abandoned, as the typcal user would choose the KDE widget for convenience, while conky users choose it for custom configuration. They would just use the elements from the       musiclib/data/conky_output folder to build their conky display. A conky.conf example could be provided. Conky users will use the raw files from `conky_output/` and a provided `conky.conf` example. The Plasma widget (2.5) serves the native-KDE crowd.
+
+**3.6 Maintenance Panel — directory browser:**
+
+Target selector is a directory browser via KIO (not a file picker). This uses `QFileDialog` configured with `QFileDialog::ShowDirsOnly` plus KIO integration, which gives the full Plasma file dialog with Places panel, network locations, and bookmarks.
+
+**3.7 Settings — Conky features removed:**
+
+Settings drops Conky-specific toggles. The Conky output directory path stays in `musiclib.conf` (since the scripts still write to it), but the GUI doesn't need a dedicated settings surface for it.

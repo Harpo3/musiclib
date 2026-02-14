@@ -1,0 +1,33 @@
+## Appendix A: Quick Reference
+
+### Key Files
+- `musiclib.dsv`: Main database (musiclib/data/)
+- `musiclib.conf`: Configuration (musiclib/config/)
+- `conkyoutput/`: Conky text/image artifacts
+- `playlists/`: Audacious .audpl files + .meta/.tracks
+
+### Key Commands
+- Import track: `musiclib_add.sh /path/to/file.mp3`
+- Rate track: `musiclib_rate.sh /path/to/file.mp3 4`
+- Upload playlist: `musiclib_mobile.sh upload <device> playlist.audpl`
+- Validate DB: `musiclib_validate.sh`
+
+### Development Quick Start
+```bash
+# Build GUI
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr
+make
+sudo make install
+
+# Run tests
+ctest --verbose
+
+# Package for AUR
+makepkg -si
+```
+
+### Common Issues
+- **"Lock timeout"**: Another MusicLib process is writing; wait or `pkill -f musiclib`
+- **Missing Conky updates**: Check hook is installed in Audacious preferences
+- **Mobile sync fails**: Verify device ID with `kdeconnect-cli -l`

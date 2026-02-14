@@ -1,0 +1,89 @@
+.TH MUSICLIB-CLI 1 "February 2026" "musiclib-cli 0.1.0" "User Commands"
+.SH NAME
+musiclib-cli \- Music library command-line interface
+.SH SYNOPSIS
+.B musiclib-cli
+[\fIOPTIONS\fR]
+.I COMMAND
+[\fIARGS\fR]
+.SH DESCRIPTION
+.B musiclib-cli
+is a command-line dispatcher for the MusicLib music management system. It routes
+commands to backend shell scripts for database operations, rating management,
+mobile synchronization, and tag cleanup.
+.SH COMMANDS
+.TP
+.B rate \fIFILE\fR \fIRATING\fR
+Rate a music file (1-5 stars). Updates the music library database.
+.TP
+.B mobile \fI[OPERATION]\fR
+Manage mobile device synchronization (requires KDE Connect).
+.TP
+.B build
+Rebuild the music library database from scratch.
+.TP
+.B tagclean \fIFILE\fR
+Clean and normalize music file tags.
+.TP
+.B audacious \fI[OPERATION]\fR
+Integrate with Audacious media player.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help message and exit.
+.TP
+.B \-\-version
+Show version information and exit.
+.SH EXAMPLES
+Rate a music file 5 stars:
+.RS
+musiclib-cli rate "/path/to/song.mp3" 5
+.RE
+.PP
+Build the database:
+.RS
+musiclib-cli build
+.RE
+.PP
+Clean tags in a file:
+.RS
+musiclib-cli tagclean "/path/to/song.mp3"
+.RE
+.SH EXIT CODES
+.TP
+.B 0
+Success - operation completed
+.TP
+.B 1
+User error - invalid input or precondition not met
+.TP
+.B 2
+System error - unrecoverable failure (missing tool, I/O error)
+.TP
+.B 3
+Deferred success - operation queued due to database contention
+.SH FILES
+.TP
+.B ~/.config/musiclib/musiclib.conf
+User configuration file
+.TP
+.B ~/.local/share/musiclib/data/musiclib.dsv
+Music library database
+.TP
+.B ~/.local/share/musiclib/logs/musiclib.log
+Operation logs
+.SH ENVIRONMENT
+.TP
+.B MUSICLIB_ROOT
+Override the default musiclib root directory
+.TP
+.B MUSICLIB_CONFIG
+Override the default configuration file path
+.SH SEE ALSO
+.BR kid3-cli (1),
+.BR audacious (1),
+.BR kdeconnect-cli (1)
+.SH AUTHOR
+MusicLib Contributors
+.SH BUGS
+Report bugs to the MusicLib project repository.

@@ -1,0 +1,62 @@
+# =============================================
+# MusicLib .gitignore
+# =============================================
+# This project's source and runtime data are
+# co-located under ~/musiclib/. This file
+# ensures only source/development files are
+# tracked, while personal data, build output,
+# and runtime artifacts are excluded.
+# =============================================
+
+# ----- Build artifacts -----
+build/
+*.o
+*.so
+*.so.*
+*.a
+*.dylib
+
+# CMake generated files (safety net for
+# out-of-tree cmake runs outside build/)
+CMakeCache.txt
+cmake_install.cmake
+cmake_uninstall.cmake
+install_manifest.txt
+CMakeFiles/
+CTestTestfile.cmake
+Makefile
+
+# NOTE: Do NOT use a blanket *.cmake rule here.
+# That would exclude source files in cmake/
+# (e.g. cmake_uninstall.cmake.in,
+# MusicLibConfig.cmake.in).
+
+# ----- Runtime data (personal/live) -----
+data/
+playlists/
+logs/
+
+# ----- Test output -----
+Testing/
+
+# ----- Binary documents (not source code) -----
+*.pdf
+*.odt
+
+# ----- Script backups -----
+bin/*.shbak
+
+# ----- IDE and editor metadata -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ----- Temporary files -----
+*.tmp
+*.log
+
+# ------Dolphin metadata
+.directory
