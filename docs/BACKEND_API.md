@@ -324,13 +324,13 @@ Playlist: workout.audpl (42 tracks)
 
 ---
 
-### 2.4 `musiclib-cli rebuild` → `musiclib_rebuild.sh`
+### 2.4 `musiclib-cli build` → `musiclib_build.sh`
 
-**Purpose**: Full DB rebuild from filesystem scan of `MUSIC_REPO`.
+**Purpose**: Full DB build/rebuild from filesystem scan of `MUSIC_REPO`.
 
 **Invocation**:
 ```bash
-musiclib_rebuild.sh [--dry-run]
+musiclib_build.sh [--dry-run]
 ```
 
 **Options**:
@@ -340,7 +340,7 @@ musiclib_rebuild.sh [--dry-run]
 1. Scan `MUSIC_REPO` recursively for audio files
 2. Extract metadata from tags via `exiftool`
 3. Back up current `musiclib.dsv`
-4. Regenerate DB with all discovered tracks
+4. Generate or regenerate DB with all discovered tracks
 5. Preserve ratings from old DB where possible (match by path)
 6. Log orphaned entries (in old DB but not on filesystem)
 
@@ -356,11 +356,11 @@ musiclib_rebuild.sh [--dry-run]
 
 **Example**:
 ```bash
-musiclib-cli rebuild --dry-run
-musiclib-cli rebuild
+musiclib-cli build --dry-run
+musiclib-cli build
 ```
 
-**Equivalent GUI**: Maintenance panel → Database Operations → Rebuild Library
+**Equivalent GUI**: Maintenance panel → Database Operations → Build Library
 
 ---
 
