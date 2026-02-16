@@ -1,6 +1,12 @@
-# MusicLib-CLI Dispatcher: Practical Implementation
+# MusicLib-CLI Dispatcher: Command Reference
 
-The **musiclib-cli dispatcher** is a thin C++ command-line router that delegates all actual operations to the shell script backend. It's not a reimplementation—it's a convenience wrapper that makes it easier to call the underlying scripts from both the Qt GUI and the command line.
+**Document Purpose**: Canonical CLI command reference for the `musiclib-cli` dispatcher.
+
+**Status**: Final
+**Date**: 2026-02-14
+**Version**: 2.0
+
+**Supersedes**: `musiclib_cli_dispatcher.md` v1.0 and `musiclib_cli_dispatcher_UPDATED.md` v1.1. Both prior versions should be removed from the project tree.
 
 ---
 
@@ -25,33 +31,325 @@ musiclib-cli <command> [subcommand] [arguments] [options]
 
 ---
 
-## Available Commands & All Options by Script
+## Command Overview
 
-Here's a practical walkthrough of every major script and how the dispatcher would invoke it:
+### Available Commands
 
-### **1. Rating Tracks: `musiclib-cli rate`**
+**Setup & Configuration**:
+- `setup` - First-run configuration wizard (includes Audacious detection and plugin setup)
+
+**Library Management**:
+- `build` - Build/rebuild music database
+- `new-tracks` - Import new music downloads
+- `tagclean` - Clean and normalize ID3 tags
+- `tagrebuild` - Repair tags from database values
+
+**Rating**:
+- `rate` - Rate current or specified track
+
+**Playback Integration**:
+- `audacious-hook` - Song change hook (automatic, not for manual use)
+
+**Mobile Sync**:
+- `mobile upload` - Send playlist to mobile device
+- `mobile sync` - Sync playback timestamps
+- `mobile status` - Show mobile sync status
+
+**Maintenance**:
+- `boost` - Apply ReplayGain loudness targeting
+- `scan` - Scan playlists for cross-references
+
+**Deferred Operations**:
+- `process-pending` - Retry queued operations from lock contention
+
+**Help & Information**:
+- `help` - Show command help
+- `version` - Show version information
+
+---
+
+## Detailed Command Reference
+
+### **Setup & Configuration**
+
+#### `musiclib-cli setup`
+
+**Maps to**: `musiclib_init_config.sh`
+
+**Purpose**: Interactive first-run configuration wizard
+
+**Usage**:
+```bash
+musiclib-cli setup [--force]
+```
+
+**Options**:
+- `--force` - Overwrite existing configuration
+
+**What it does**:
+1. Detects Audacious installation and `audtool` availability
+2. Scans filesystem for music directories
+3. Prompts for download directory
+4. Creates XDG directory structure
+5. Generates `musiclib.conf` with detected values
+6. If Audacious detected, provides step-by-step Song Change plugin setup instructions
+7. Optionally verifies Audacious integration (checks running instance, tests hook, validates Conky output)
+8. Offers to build initial database
+
+**Example**:
+```bash
+# First-time setup
+musiclib-cli setup
+
+# Reconfigure existing installation
+musiclib-cli setup --force
+```
+
+**Auto-triggered**: When configuration is missing or invalid and the user runs any other command.
+
+**Exit Codes**: 0 (configuration created), 1 (user cancelled), 2 (system error)
+
+---
+
+### **Library Management**
+
+#### `musiclib-cli build`
+
+**Maps to**: `musiclib_build.sh`
+
+**Purpose**: Build or rebuild music database from repository
+
+**Usage**:
+```bash
+musiclib-cli build [target_directory] [options]
+```
+
+**Positional Arguments**:
+- `target_directory` - Music repository path (optional, uses config default)
+
+**Option Flags**:
+- `--dry-run` - Preview mode, don't write database
+- `-b, --backup` - Backup existing database before rebuild
+- `--output FILE` - Write to alternate database file
+- `-v, --verbose` - Detailed output
+
+**Examples**:
+```bash
+# Build database from configured repository
+musiclib-cli build
+
+# Build from specific directory
+musiclib-cli build /mnt/music/Music
+
+# Dry run to preview
+musiclib-cli build --dry-run
+
+# Build with backup
+musiclib-cli build -b
+
+# Build to alternate file
+musiclib-cli build --output /tmp/musiclib_test.dsv
+```
+
+**Interactive Prompt**: If existing database found, prompts for action:
+1. Overwrite existing DB
+2. Rename existing to `.backup.TIMESTAMP`
+3. Save as alternate file
+4. Cancel
+
+**What it does**:
+1. Scans music repository for audio files
+2. Extracts tag metadata via `exiftool` and `kid3-cli`
+3. Generates sequential track and album IDs
+4. Writes `^`-delimited records to `musiclib.dsv`
+5. Logs progress with ETA
+
+**Exit Codes**: 0 (success), 1 (user error/cancel), 2 (system error)
+
+---
+
+#### `musiclib-cli new-tracks`
+
+**Maps to**: `musiclib_new_tracks.sh`
+
+**Purpose**: Import new music downloads into library
+
+**Usage**:
+```bash
+musiclib-cli new-tracks [artist_name] [options]
+```
+
+**Positional Arguments**:
+- `artist_name` - Artist folder name (optional, prompts if omitted)
+
+**Option Flags**:
+- `--source DIR` - Override download directory
+- `--source-dialog` - Show interactive directory picker
+- `--no-loudness` - Skip rsgain loudness normalization
+- `--no-art` - Skip album art extraction
+- `--dry-run` - Preview mode only
+- `-v, --verbose` - Detailed output
+
+**Examples**:
+```bash
+# Import new downloads for Radiohead
+musiclib-cli new-tracks "radiohead"
+
+# Prompt for artist name
+musiclib-cli new-tracks
+
+# Override download directory
+musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music
+
+# Use interactive directory picker
+musiclib-cli new-tracks "radiohead" --source-dialog
+
+# Skip loudness normalization
+musiclib-cli new-tracks "the_beatles" --no-loudness
+
+# Dry run to preview
+musiclib-cli new-tracks "pink_floyd" --dry-run
+
+# Combined options
+musiclib-cli new-tracks "metallica" --no-loudness --no-art --dry-run -v
+```
+
+**What it does**:
+1. Scans download directory for ZIP or MP3 files
+2. Extracts ZIP if present
+3. Pauses for manual tag cleanup in kid3-qt
+4. Renames files: `track_-_artist_-_title`
+5. Normalizes filenames (lowercase, safe characters)
+6. Optional: rsgain loudness normalization
+7. Creates artist/album directory structure
+8. Appends records to musiclib.dsv
+9. Syncs tags via kid3-cli
+
+**Exit Codes**: 0 (success), 1 (no files/user error), 2 (system error)
+
+---
+
+#### `musiclib-cli tagclean`
+
+**Maps to**: `musiclib_tagclean.sh`
+
+**Purpose**: Clean and normalize ID3 tags
+
+**Usage**:
+```bash
+musiclib-cli tagclean [target] [options]
+```
+
+**Positional Arguments**:
+- `target` - File path, directory, or artist name
+
+**Option Flags**:
+- `--dry-run` - Preview changes
+- `--backup` - Create tag backups
+- `-v, --verbose` - Detailed output
+
+**Examples**:
+```bash
+# Clean single file
+musiclib-cli tagclean "/mnt/music/music/radiohead/ok_computer/01_-_radiohead_-_airbag.mp3"
+
+# Clean entire directory
+musiclib-cli tagclean "/mnt/music/music/radiohead/ok_computer"
+
+# Clean all tracks for artist
+musiclib-cli tagclean "radiohead"
+
+# Dry run
+musiclib-cli tagclean "radiohead" --dry-run --verbose
+```
+
+**What it does**:
+- Converts ID3v1 → ID3v2.3
+- Removes APE tags
+- Embeds album art
+- Normalizes frame structure
+- Removes junk frames
+
+**Exit Codes**: 0 (success), 1 (target not found), 2 (system error)
+
+---
+
+#### `musiclib-cli tagrebuild`
+
+**Maps to**: `musiclib_tagrebuild.sh`
+
+**Purpose**: Repair tags from database canonical values
+
+**Usage**:
+```bash
+musiclib-cli tagrebuild [target] [options]
+```
+
+**Positional Arguments**:
+- `target` - File path, directory, or artist name (optional, prompts if omitted)
+
+**Option Flags**:
+- `--dry-run` - Preview changes without applying
+- `--force` - Overwrite all tags (even if already correct)
+- `--verify` - Verify tags after rebuild
+- `-v, --verbose` - Detailed output
+
+**Examples**:
+```bash
+# Rebuild single file
+musiclib-cli tagrebuild "/mnt/music/music/radiohead/ok_computer/01_-_radiohead_-_airbag.mp3"
+
+# Rebuild entire directory
+musiclib-cli tagrebuild "/mnt/music/music/radiohead/ok_computer"
+
+# Rebuild all tracks for artist
+musiclib-cli tagrebuild "radiohead"
+
+# Dry run to preview
+musiclib-cli tagrebuild "radiohead" --dry-run
+
+# Force overwrite with verification
+musiclib-cli tagrebuild "radiohead" --force --verify -v
+```
+
+**What it does**:
+1. Reads canonical data from musiclib.dsv
+2. Writes ID3 tags from database values
+3. Repairs corrupted or missing tags
+4. Ensures tag/database consistency
+5. Optionally verifies after rebuild
+
+**Exit Codes**: 0 (success), 1 (target not found), 2 (system error)
+
+---
+
+### **Rating**
+
+#### `musiclib-cli rate`
 
 **Maps to**: `musiclib_rate.sh`
 
-**Usage Pattern**:
+**Purpose**: Rate current or specified track
+
+**Usage**:
 ```bash
-musiclib-cli rate /path/to/song.mp3 <star_rating>
+musiclib-cli rate <filepath> <rating>
 ```
 
-**Parameters**:
-- `filepath`: Absolute path to audio file (must exist in DB)
-- `rating`: Integer 0–5 (0=unrated, 5=highest)
+**Positional Arguments**:
+- `filepath` - Absolute path to audio file (must exist in DB)
+- `rating` - Integer 0-5 (0=unrated, 5=highest)
 
-**Example Invocations**:
+**Examples**:
 ```bash
-# Rate current track in Audacious with 5 stars
-musiclib-cli rate "/mnt/music/music/pink_floyd/dark_side/01_-_pink_floyd_-_speak_to_me_breathe.mp3" 5
+# Rate current Audacious track with 5 stars
+musiclib-cli rate "$(audtool --current-song-filename)" 5
+
+# Rate specific file
+musiclib-cli rate "/mnt/music/music/radiohead/ok_computer/02_-_radiohead_-_paranoid_android.mp3" 4
 
 # Unrate a track
-musiclib-cli rate "/mnt/music/music/radiohead/ok_computer/02_-_radiohead_-_paranoid_android.mp3" 0
-
-# Rate with 3 stars
-musiclib-cli rate "/mnt/music/music/the_beatles/abbey_road/17_-_the_beatles_-_come_together.mp3" 3
+musiclib-cli rate "/mnt/music/music/the_beatles/abbey_road/17_-_the_beatles_-_come_together.mp3" 0
 ```
 
 **Side Effects** (all atomic via lock):
@@ -62,434 +360,372 @@ musiclib-cli rate "/mnt/music/music/the_beatles/abbey_road/17_-_the_beatles_-_co
 - Logs to musiclib.log
 - Sends KNotification
 
+**Exit Codes**: 0 (success), 1 (invalid rating/file not in DB), 2 (tool unavailable/lock timeout)
+
+---
+
+### **Playback Integration**
+
+#### `musiclib-cli audacious-hook`
+
+**Maps to**: `musiclib_audacious.sh`
+
+**Purpose**: Song change hook called automatically by Audacious via the Song Change plugin. Users should not call this manually.
+
+**Usage**:
+```bash
+musiclib-cli audacious-hook
+```
+
+No parameters. Reads current track state from `audtool`.
+
+**What it does**:
+1. Queries current track from Audacious via `audtool --current-song-filename`
+2. Extracts album art to Conky display directory
+3. Writes track metadata to Conky text files (artist, album, title, rating, last played)
+4. Monitors playback to scrobble threshold (50% of track, bounded 30s–4min)
+5. Updates `LastTimePlayed` in database and file tag once threshold met
+6. Appends to `audacioushist.log`
+
+**Configuration**: Set during `musiclib-cli setup`. The wizard provides instructions to configure the Audacious Song Change plugin with the command path to this hook.
+
 **Exit Codes**:
-- 0: Success
-- 1: Invalid rating (not 0-5), file not in DB, file not found
-- 2: kid3-cli unavailable, tag write failure, DB lock timeout
-- 3: Deferred (proposed future feature)
+- 0: Success (display updated, scrobble queued)
+- 1: Audacious not running or no track playing (not an error — graceful exit)
+- 2: System error (tool unavailable, DB lock timeout, I/O failure)
 
 ---
 
-### **2. Tag Cleaning: `musiclib-cli tagclean`**
+### **Mobile Sync (KDE Connect)**
 
-**Maps to**: `musiclib_tagclean.sh`
+#### `musiclib-cli mobile upload`
 
-**Usage Pattern**:
+**Maps to**: `musiclib_mobile.sh upload`
+
+**Purpose**: Send playlist to mobile device via KDE Connect
+
+**Usage**:
 ```bash
-musiclib-cli tagclean <target> [options]
+musiclib-cli mobile upload [playlist_file] [options]
 ```
 
 **Positional Arguments**:
-- `target`: File or directory to clean
+- `playlist_file` - Playlist to upload (optional, prompts if omitted)
 
 **Option Flags**:
-- `-r, --recursive`: Process directories recursively
-- `-a, --remove-ape`: Remove APE tags (default: keep)
-- `-g, --remove-rg`: Remove ReplayGain tags
-- `-n, --dry-run`: Show what would be done without changes
-- `-v, --verbose`: Show detailed processing info
-- `-b, --backup-dir DIR`: Custom backup directory
+- `--device ID` - Override configured device ID
+- `--force` - Skip confirmation prompts
+- `-v, --verbose` - Detailed output
 
-**Operation Mode Flags** (mutually exclusive):
-- `--art-only`: Only process album art embedding
-- `--ape-only`: Only remove APE tags
-- `--rg-only`: Only remove ReplayGain tags
-- (default `--full`): All operations
-
-**Example Invocations**:
+**Examples**:
 ```bash
-# Full cleanup of entire music directory
-musiclib-cli tagclean /mnt/music/music -r
+# Upload default playlist
+musiclib-cli mobile upload
 
-# Only embed album art
-musiclib-cli tagclean /mnt/music/music/radiohead -r --art-only
-
-# Dry run to preview changes
-musiclib-cli tagclean /mnt/music/music/radiohead -r -n
-
-# Remove APE and ReplayGain tags
-musiclib-cli tagclean /mnt/music/music -r -a -g
-
-# Only remove ReplayGain
-musiclib-cli tagclean /mnt/music/music -r --rg-only -v
-
-# Custom backup location with verbose logging
-musiclib-cli tagclean /mnt/music/music/jazz -r -b /home/user/backup_tags -v
-```
-
-**What It Does**:
-1. Merges ID3v1 data into ID3v2.3
-2. Removes ID3v1 tag entirely
-3. Optionally strips APE and ReplayGain metadata
-4. Embeds album art from matching JPEG files
-5. Creates timestamped backups before modifying
-6. Verifies resulting files are intact (restores from backup on failure)
-7. Prints summary (files processed, tags merged/removed, art embedded, errors)
-
-**Exit Codes**: 0 (success), 1 (user error), 2 (system error)
-
----
-
-### **3. Database Build: `musiclib-cli build`**
-
-**Maps to**: `musiclib_build.sh`
-
-**Usage Pattern**:
-```bash
-musiclib-cli build [music_directory] [options]
-```
-
-**Positional Arguments**:
-- `music_directory`: Root of library (default: $MUSIC_REPO from config)
-
-**Option Flags**:
-- `-d, --dry-run`: Preview mode—show what would be processed, no changes
-- `-o FILE`: Output file path (default: $MUSICDB)
-- `-m DEPTH`: Minimum subdirectory depth (default: 1)
-- `--no-header`: Suppress database header
-- `-q, --quiet`: Minimal output
-- `-s COLUMN`: Sort output by column number
-- `-b, --backup`: Create backup of existing database
-- `-t, --test`: Output to temporary file for testing
-- `--no-progress`: Disable progress indicators
-
-**Example Invocations**:
-```bash
-# Preview what would be built (safe)
-musiclib-cli build /mnt/music/music --dry-run
-
-# Full build with automatic backup
-musiclib-cli build /mnt/music/music -b
-
-# Build subdirectory only
-musiclib-cli build /mnt/music/music/rock -t
-
-# Build with minimal output
-musiclib-cli build /mnt/music/music -q
-
-# Build and sort by artist (column 2)
-musiclib-cli build /mnt/music/music -s 2
-
-# Dry run with no progress bar
-musiclib-cli build /mnt/music/music --dry-run --no-progress
-
-# Test on jazz subdirectory before full build
-musiclib-cli build /mnt/music/music/jazz -t
-```
-
-**What It Does**:
-1. Walks directory tree, finds all MP3s
-2. Extracts metadata using kid3-cli
-3. Generates sequential track IDs and album IDs
-4. Creates new DSV database from scratch
-5. Computes song lengths in milliseconds
-6. Optional: sorts by column, backs up old DB
-
-**Important Notes**:
-- **Destructive**: Replaces existing database (use -t or --dry-run first, or responds to prompt)
-- **Time**: Takes 10+ minutes for 10,000+ tracks
-- **Reset**: LastTimePlayed set to 0, all ratings reset
-
-**Exit Codes**: 0 (success), 1 (dry-run complete / user error), 2 (system failure)
-
----
-
-### **4. Mobile Sync: `musiclib-cli mobile`**
-
-**Maps to**: `musiclib_mobile.sh`
-
-**Usage Pattern**:
-```bash
-musiclib-cli mobile <subcommand> [arguments] [options]
-```
-
-**Subcommands**:
-
-#### **4a. Upload Playlist**
-```bash
-musiclib-cli mobile upload <playlist.audpl> [device_id]
-```
-
-**Arguments**:
-- `playlist`: Path to .audpl file (Audacious playlist)
-- `device_id`: KDE Connect device ID (optional, uses config default)
-
-**Example Invocations**:
-```bash
-# Upload playlist to default device
-musiclib-cli mobile upload ~/musiclib/playlists/summer.audpl
+# Upload specific playlist
+musiclib-cli mobile upload /path/to/playlist.m3u
 
 # Upload to specific device
-musiclib-cli mobile upload ~/musiclib/playlists/rock.audpl "e1234567890abcdef"
+musiclib-cli mobile upload --device e44edf16df3e4945a660bd76cd9f6f9a
 
-# Dry run first (shows what would transfer)
-musiclib-cli mobile upload ~/musiclib/playlists/jazz.audpl --dry-run
+# Force upload without prompts
+musiclib-cli mobile upload --force
 ```
 
-**What It Does**:
-1. Validates KDE Connect device connectivity
-2. Requires manual deletion of old phone downloads (prompts user)
-3. URL-decodes file:// URIs from playlist
-4. Sends .m3u to phone
-5. Streams each audio file via kdeconnect-cli
-6. Logs metadata (track count, MB transferred)
-7. Stores `.meta` (timestamp) and `.tracks` (file list) under mobile directory
+**What it does**:
+1. Validates KDE Connect device is available
+2. Converts playlist format if needed (.m3u8 for mobile)
+3. Uploads via `kdeconnect-cli`
+4. Creates `.meta` file with upload timestamp
+5. Logs operation
 
-#### **4b. Update Last-Played**
+**Exit Codes**: 0 (success), 1 (device unavailable), 2 (upload failed/lock timeout)
+
+---
+
+#### `musiclib-cli mobile sync`
+
+**Maps to**: `musiclib_mobile.sh update-lastplayed`
+
+**Purpose**: Sync playback timestamps from mobile device
+
+**Usage**:
 ```bash
-musiclib-cli mobile update-lastplayed <playlist_name>
+musiclib-cli mobile sync [options]
 ```
 
-**Arguments**:
-- `playlist_name`: Name of playlist (without .audpl extension)
+**Option Flags**:
+- `--force` - Force sync even if no changes detected
+- `-v, --verbose` - Detailed output
 
 **Example**:
 ```bash
-musiclib-cli mobile update-lastplayed summer
+# Sync timestamps from mobile
+musiclib-cli mobile sync
+
+# Force sync
+musiclib-cli mobile sync --force -v
 ```
 
-**What It Does**:
+**What it does**:
 1. Reads `.meta` timestamp from previous upload
-2. Updates LastTimePlayed in musiclib.dsv for all tracks in that playlist
-3. Syncs timestamp back to track tags
+2. Updates `LastTimePlayed` in musiclib.dsv for tracks in playlist
+3. Generates synthetic timestamps (proportional to track position and file size within upload window)
+4. Syncs timestamps back to file tags
 
-#### **4c. Status**
+**Exit Codes**: 0 (success), 1 (no upload history), 2 (DB lock timeout)
+
+---
+
+#### `musiclib-cli mobile status`
+
+**Maps to**: `musiclib_mobile.sh status`
+
+**Purpose**: Show mobile sync status
+
+**Usage**:
 ```bash
 musiclib-cli mobile status
 ```
 
-**Shows**:
-- Available KDE Connect devices
-- Recent mobile operations log
-- Pending upload history
+**Example Output**:
+```
+Mobile Sync Status
+==================
 
-**Exit Codes**: 0 (success), 1 (validation error), 2 (device unreachable, lock timeout)
+KDE Connect Device: Galaxy S21 (e44edf16df3e4945a660bd76cd9f6f9a)
+Status: Connected
+
+Recent Uploads:
+  2026-02-14 10:30 AM - mobile_2026-02-14.m3u8 (47 tracks)
+  2026-02-10 03:15 PM - mobile_2026-02-10.m3u8 (52 tracks)
+
+Pending Sync: No
+```
+
+**Exit Codes**: 0 (success)
 
 ---
 
-### **5. New Track Import: `musiclib-cli new-tracks`**
+### **Maintenance**
 
-**Maps to**: `musiclib_new_tracks.sh`
+#### `musiclib-cli boost`
 
-**Usage Pattern**:
+**Maps to**: `boost_album.sh`
+
+**Purpose**: Apply ReplayGain loudness targeting to album
+
+**Usage**:
 ```bash
-musiclib-cli new-tracks [artist_name] [options]
+musiclib-cli boost <album_directory> [options]
 ```
 
 **Positional Arguments**:
-- `artist_name`: Artist folder name (optional, prompts if omitted)
+- `album_directory` - Path to album directory
 
 **Option Flags**:
-- `--no-loudness`: Skip rsgain loudness normalization
-- `--no-art`: Skip album art extraction
-- `--dry-run`: Preview mode only
-- `-v, --verbose`: Detailed output
-- `--source DIR`: Use alternate download directory
+- `--dry-run` - Preview mode
+- `--target DB` - Target loudness in dB (default: -18)
+- `-v, --verbose` - Detailed output
 
-**Example Invocations**:
+**Examples**:
 ```bash
-# Import new downloads for Radiohead
-musiclib-cli new-tracks "radiohead"
+# Apply ReplayGain to album
+musiclib-cli boost "/mnt/music/music/radiohead/ok_computer"
 
-# Import and prompt for artist
-musiclib-cli new-tracks
+# Dry run
+musiclib-cli boost "/mnt/music/music/radiohead/ok_computer" --dry-run
 
-# Skip loudness normalization
-musiclib-cli new-tracks "the_beatles" --no-loudness
-
-# Dry run to see what would happen
-musiclib-cli new-tracks "pink_floyd" --dry-run
-
-# Full import with verbose logging
-musiclib-cli new-tracks "deftones" -v
-
-# Skip both loudness and art extraction
-musiclib-cli new-tracks "metallica" --no-loudness --no-art
-
-# Use alternate download directory
-musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music
+# Custom target loudness
+musiclib-cli boost "/mnt/music/music/radiohead/ok_computer" --target -16
 ```
 
-**What It Does**:
-1. Scans download directory for ZIP or MP3 files
-2. Enforces single ZIP or batch of MP3s (no mixed mode)
-3. Extracts ZIP if present, pauses for manual tag cleanup in kid3-qt
-4. Renames files using kid3-cli: `track_-_artist_-_title`
-5. Normalizes filenames (lowercase, safe characters)
-6. Optional: rsgain loudness normalization
-7. Derives album name from tags (fallback: `unknown_album_yyyymmdd`)
-8. Creates artist/album directory under music repo
-9. Extracts metadata, computes duration, assigns IDs
-10. Appends records to musiclib.dsv
-11. Syncs tags via kid3-cli
+**What it does**:
+1. Analyzes all tracks in album using `rsgain`
+2. Calculates album gain to reach target loudness
+3. Applies gain tags (non-destructive)
+4. Updates database with gain values
 
-**Exit Codes**: 0 (success), 1 (user error/no files), 2 (system error)
+**Exit Codes**: 0 (success), 1 (directory not found), 2 (rsgain failed)
 
 ---
 
-### **6. Tag Rebuild: `musiclib-cli tagrebuild`**
+#### `musiclib-cli scan`
 
-**Maps to**: `musiclib_tagrebuild.sh`
+**Maps to**: `audpl_scanner.sh`
 
-**Usage Pattern**:
+**Purpose**: Scan playlists for cross-references
+
+**Usage**:
 ```bash
-musiclib-cli tagrebuild <target> [options]
+musiclib-cli scan [playlist_directory] [options]
 ```
 
 **Positional Arguments**:
-- `target`: File or directory to repair
+- `playlist_directory` - Directory containing playlists (optional, uses config default)
 
 **Option Flags**:
-- `-r, --recursive`: Process recursively
-- `-n, --dry-run`: Preview only
-- `-v, --verbose`: Detailed output
-- `-b, --backup-dir DIR`: Custom backup location
+- `--output FILE` - Write results to file (default: stdout)
+- `-v, --verbose` - Detailed output
 
-**Example Invocations**:
+**Example**:
 ```bash
-# Repair corrupted tags in single file
-musiclib-cli tagrebuild /mnt/music/music/radiohead/ok_computer/02_-_radiohead_-_paranoid_android.mp3
+# Scan playlists
+musiclib-cli scan
 
-# Repair entire artist directory
-musiclib-cli tagrebuild /mnt/music/music/the_beatles -r
+# Scan specific directory
+musiclib-cli scan /path/to/playlists
 
-# Dry run preview
-musiclib-cli tagrebuild /mnt/music/music/pink_floyd -r -n
-
-# Verbose repair with custom backups
-musiclib-cli tagrebuild /mnt/music/music/jazz -r -v -b /home/user/tag_backups
+# Write to file
+musiclib-cli scan --output /tmp/playlist_cross_ref.csv
 ```
 
-**What It Does**:
-1. Processes only files present in musiclib.dsv
-2. Extracts authoritative metadata from DB (artist, album, title, rating)
-3. Preserves non-DB fields (ReplayGain, album art)
-4. Strips all existing ID3/APE tags
-5. Rebuilds clean ID3v2.3 tags
-6. Creates timestamped backups before modifying
-7. Verifies files are intact (restores on failure)
-8. Tracks stats: processed, rebuilt, skipped, errors
+**What it does**:
+1. Scans all `.audpl`, `.m3u`, `.pls` files
+2. Cross-references tracks across playlists
+3. Generates CSV with track→playlists mapping
 
-**Exit Codes**: 0 (success), 1 (user error), 2 (system error)
+**Exit Codes**: 0 (success), 1 (no playlists found), 2 (system error)
 
 ---
 
-### **7. Audacious Integration: `musiclib-cli audacious`**
+### **Deferred Operations**
 
-**Maps to**: `musiclib_audacious.sh`
-
-**Usage Pattern**:
-```bash
-musiclib-cli audacious [track_path] [options]
-```
-
-**Typically invoked by Audacious as a song-change hook**, but also supports manual invocation:
-
-**Option Flags**:
-- `--current`: Show metadata for currently playing track
-- `--status`: Show scrobble statistics and pending operations
-- `--process-pending`: Retry deferred scrobbles from lock timeouts
-
-**Example Invocations**:
-```bash
-# Called by Audacious on song change (automatic)
-musiclib-cli audacious
-
-# Manual scrobble for testing or catch-up
-musiclib-cli audacious "/mnt/music/music/radiohead/ok_computer/01_-_radiohead_-_airbag.mp3"
-
-# Get current track info
-musiclib-cli audacious --current
-
-# Show scrobble statistics
-musiclib-cli audacious --status
-
-# Retry deferred scrobbles from lock timeouts
-musiclib-cli audacious --process-pending
-```
-
-**What It Does**:
-1. Monitors currently playing track in Audacious
-2. Extracts album art to display directory
-3. Writes metadata to Conky-friendly text files
-4. Computes scrobble point (30s to 4 min of playback)
-5. Records listen timestamp to DB when threshold reached
-6. Updates LastTimePlayed in both DB and tags
-7. Refreshes Conky display (artist, album, rating)
-8. Manages star-rating PNG selection
-9. Prompts for rating via kdialog if unrated
-
-**Exit Codes**: 0 (scrobbled), 1 (not eligible/paused), 2 (system error), 3 (deferred - operation queued)
-
----
-
-### **8. Process Pending Operations: `musiclib-cli process-pending`**
+#### `musiclib-cli process-pending`
 
 **Maps to**: `musiclib_process_pending.sh`
 
-**Usage Pattern**:
+**Purpose**: Retry queued operations from lock contention
+
+**Usage**:
 ```bash
-musiclib-cli process-pending [--force] [--clear]
+musiclib-cli process-pending [options]
 ```
 
 **Option Flags**:
-- `--force`: Retry all pending operations
-- `--clear`: Delete pending queue without retrying
+- `--force` - Force retry even if not due
+- `--clear` - Clear pending queue without retrying
 
-**What It Does**:
+**Examples**:
+```bash
+# Retry pending operations
+musiclib-cli process-pending
+
+# Force retry
+musiclib-cli process-pending --force
+
+# Clear queue
+musiclib-cli process-pending --clear
+```
+
+**What it does**:
 1. Runs automatically after lock-contention operations
-2. Iterates through queued operations (JSON file)
+2. Iterates through queued operations in `.pending_operations`
 3. Retries failed DB writes from rating/tagging operations
 4. Sends delayed KNotifications on success
 5. Removes successful operations from queue
 6. Leaves failed operations for next retry cycle
-7. Returns 0 (all done), 1 (some failed), 2 (system error)
 
-**Example**:
+**Exit Codes**: 0 (all done/no pending), 2 (system error)
+
+---
+
+### **Help & Information**
+
+#### `musiclib-cli help`
+
+**Purpose**: Show command help
+
+**Usage**:
 ```bash
-# Manual retry of pending operations
-musiclib-cli process-pending
+musiclib-cli help [command]
+```
 
-# Force retry even if not due
-musiclib-cli process-pending --force
+**Examples**:
+```bash
+# Show all commands
+musiclib-cli help
 
-# Clear pending queue without retrying
-musiclib-cli process-pending --clear
+# Show help for specific command
+musiclib-cli help rate
 ```
 
 ---
 
-### **9. Auxiliary: `musiclib-cli playlist-scan` & `musiclib-cli boost-album`**
+#### `musiclib-cli version`
 
-#### **Playlist Scanner**
+**Purpose**: Show version information
+
+**Usage**:
 ```bash
-musiclib-cli playlist-scan [scan|create]
+musiclib-cli version
 ```
 
-- `scan`: Copy Audacious playlists and sanitize names
-- `create`: Generate CSV with ratings from playlists
-
-#### **Boost Album**
-```bash
-musiclib-cli boost-album <album_name>
+**Example Output**:
 ```
-
-Increases rating of all tracks in an album (utility function)
+MusicLib CLI Dispatcher v1.0.0
+Backend API Version: 1.0
+Configuration: /home/user/.config/musiclib/musiclib.conf
+Database: /home/user/.local/share/musiclib/data/musiclib.dsv (15,847 tracks)
+```
 
 ---
 
-## Global Options (All Commands)
+## Auto-Configuration Behavior
 
-Most dispatcher commands support:
-- `-h, --help`: Show command-specific help
-- `--config FILE`: Use alternate config file
-- `--log FILE`: Redirect output to log file
-- `--no-notify`: Suppress KNotifications
-- `--timeout SECONDS`: Custom lock timeout (overrides config)
+### First-Run Detection
 
-**Example**:
+When `musiclib-cli` is invoked without a configuration file:
+
 ```bash
-musiclib-cli rate "/mnt/music/music/song.mp3" 5 --no-notify --timeout 10
+$ musiclib-cli build
+
+Configuration not found.
+
+Run first-time setup? [Y/n] y
+
+[Launches setup wizard]
+```
+
+If user declines:
+```
+Run 'musiclib-cli setup' to configure MusicLib.
+```
+
+### Invalid Configuration Detection
+
+When critical configuration is missing or invalid:
+
+```bash
+$ musiclib-cli build
+
+Configuration validation failed:
+  ✗ Music repository not found: /mnt/music/Music
+
+Run 'musiclib-cli setup --force' to reconfigure.
+```
+
+---
+
+## Global Options
+
+These options work with all commands:
+
+```bash
+--config FILE    # Use alternate configuration file
+--help           # Show command help
+--version        # Show version information
+--quiet          # Suppress non-error output
+--debug          # Enable debug logging
+```
+
+**Examples**:
+```bash
+# Use alternate config
+musiclib-cli --config /tmp/test.conf build
+
+# Debug mode
+musiclib-cli --debug rate "/path/to/file.mp3" 5
 ```
 
 ---
@@ -498,7 +734,7 @@ musiclib-cli rate "/mnt/music/music/song.mp3" 5 --no-notify --timeout 10
 
 Every command follows this initialization:
 ```
-1. Load ~/MUSICLIB_ROOT/musiclib.conf (or override with --config)
+1. Load ~/.config/musiclib/musiclib.conf (or override with --config)
 2. Verify required tools (kid3-cli, exiftool, etc.)
 3. Validate database path and permissions
 4. Acquire lock if write operation
@@ -526,7 +762,22 @@ All commands return JSON on stderr if exit code ≠ 0:
 }
 ```
 
-The C++ dispatcher would parse this JSON and present it to the user or GUI in a human-friendly format.
+The C++ dispatcher parses this JSON and presents it to the user or GUI in a human-friendly format.
+
+---
+
+## Exit Code Summary
+
+All commands follow the standardized exit code contract:
+
+| Code | Meaning | Examples |
+|------|---------|----------|
+| **0** | Success | Operation completed, all side effects applied |
+| **1** | User/Validation Error | Invalid input, missing preconditions, user cancellation |
+| **2** | System/Operational Error | Config missing, tool unavailable, I/O failure, lock timeout |
+| **3** | Deferred (Future) | Operation queued for retry due to lock contention |
+
+**Note**: Exit code 3 is proposed design, not yet implemented. Lock timeouts currently return exit code 2.
 
 ---
 

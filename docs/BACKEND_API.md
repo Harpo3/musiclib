@@ -511,84 +511,207 @@ musiclib-cli scan > playlist_cross_reference.csv
 
 ---
 
-### 2.9 `musiclib-cli add-track` → `musiclib_new_tracks.sh`
+### 2.9 `musiclib-cli new-tracks` → `musiclib_new_tracks.sh`
 
-**Purpose**: Import new track(s) into library (normalize tags, add to DB).
+**Purpose**: Import new music downloads into library (normalize tags, rename, add to DB).
 
 **Invocation**:
 ```bash
-musiclib_new_tracks.sh FILE_OR_DIR [--auto-rate RATING]
+musiclib_new_tracks.sh [artist_name] [options]
 ```
 
 **Parameters**:
-- `FILE_OR_DIR`: Path to audio file, directory, or ZIP archive
-- `--auto-rate RATING`: Assign default rating on import (0–5)
+- `artist_name`: Artist folder name (optional, prompts if omitted)
+- `--source DIR`: Override download directory
+- `--source-dialog`: Show interactive directory picker (kdialog)
+- `--no-loudness`: Skip rsgain loudness normalization
+- `--no-art`: Skip album art extraction
+- `--dry-run`: Preview mode only
+- `-v, --verbose`: Detailed output
 
-**Workflow** (ZIP):
-1. Extract ZIP to temp directory
-2. Normalize tags (via `tagclean` logic)
-3. Add each track to DB
-4. Move files to `MUSIC_REPO` (organized by Artist/Album)
-
-**Workflow** (File/Dir):
-1. Normalize tags
-2. Add to DB
-3. Optionally move/copy to `MUSIC_REPO`
+**Workflow**:
+1. If no artist_name, prompt for artist folder
+2. Scan source directory (default: `~/Downloads` or override with `--source`)
+3. Normalize tags (via `tagclean` logic)
+4. Optionally apply ReplayGain loudness normalization (unless `--no-loudness`)
+5. Optionally extract album art to Conky display (unless `--no-art`)
+6. Add each track to `musiclib.dsv`
+7. Move files to `MUSIC_REPO/artist_name/album/`
+8. Log to `musiclib.log`
 
 **Side Effects**:
 - Adds rows to `musiclib.dsv`
 - Modifies file tags
-- Moves/copies files to `MUSIC_REPO`
+- Moves/renames files to `MUSIC_REPO`
+- Extracts album art (unless `--no-art`)
+- Optionally applies loudness normalization
 - Logs to `musiclib.log`
 
 **Exit Codes**:
 - 0: Success
-- 1: File already in DB, invalid file format
-- 2: DB lock timeout, I/O error
+- 1: Invalid artist name, file already in DB, invalid file format
+- 2: DB lock timeout, I/O error, ReplayGain/exiftool unavailable
 
-**Example**:
+**Examples**:
 ```bash
-musiclib-cli add-track "/tmp/new_album.zip" --auto-rate 3
+musiclib-cli new-tracks "radiohead"
+musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music
+musiclib-cli new-tracks "pink_floyd" --dry-run
 ```
 
-**Equivalent GUI**: Maintenance panel → Add Tracks → Select files → Set default rating → Import
+**Equivalent GUI**: Maintenance panel → Import New Tracks → Select artist → Import
 
 ---
 
-### 2.10 `musiclib_audacious.sh` (Song-Change Hook)
+### 2.10 `musiclib-cli audacious-hook` → `musiclib_audacious.sh` (Song-Change Hook)
 
-**Purpose**: Update Conky assets and last-played timestamp when Audacious plays a new track.
+**Purpose**: Update Conky display assets and last-played timestamp when Audacious plays a new track.
+
+**Design Pattern**: Event-driven hook (not a manual CLI command). Called **automatically** by Audacious via the "Song Change" plugin. Users configure this once during `musiclib-cli setup` and never invoke it manually.
 
 **Invocation** (by Audacious hook):
 ```bash
 musiclib_audacious.sh
+# No parameters - reads current track state from audtool
 ```
+
+**Environment Requirements**:
+- Audacious must be running
+- `audtool` must be available (from audacious-plugins package)
+- Current track must be playing
 
 **Workflow**:
 1. Query current track from Audacious via `audtool --current-song-filename`
 2. Look up track in `musiclib.dsv`
-3. Update `LastTimePlayed` in DSV and tag
-4. Extract album art (if available)
-5. Generate Conky text files (`artist.txt`, `title.txt`, `album.txt`, `lastplayed.txt`)
-6. Generate `starrating.png` from rating
-7. Log to `logs/audacious/audacioushist.log`
+3. Extract album art to Conky display directory
+4. Write track metadata to Conky text files (artist, album, title, rating, last played)
+5. Select appropriate star-rating PNG for display
+6. Monitor playback to scrobble threshold (50% of track, bounded 30s–4min)
+7. Once threshold met, update `LastTimePlayed` in DSV and file tag
+8. Append to `audacioushist.log`
+9. Optionally send KNotification
 
-**Side Effects**:
-- Updates `musiclib.dsv` (LastTimePlayed column)
-- Updates custom tag in file (`Songs-DB_Custom1`)
-- Writes to `~/.local/share/musiclib/data/conky_output/`
-- Appends to playback history log
+**Side Effects** (all atomic via lock):
+- **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies – all written to `$MUSIC_DISPLAY_DIR/`
+- **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` (only after scrobble threshold met)
+- **File tags**: Updates `Songs-DB_Custom1` tag with last-played timestamp
+- **Logs**: Appends to `audacioushist.log` and `musiclib.log`
 
 **Exit Codes**:
-- 0: Success
-- 1: Audacious not running, no track playing
-- 2: DB lock timeout, tag write failure
 
-**Configuration**:
-Set in Audacious: Preferences → Plugins → Song Change → Command:
+| Code | Meaning | When | Example |
+|------|---------|------|---------|
+| **0** | Success | Display updated, scrobble queued | Normal playback, track changed |
+| **1** | Not an error | Audacious not running or no track playing | User stopped playback, script exits gracefully |
+| **2** | System error | Tool unavailable, DB lock timeout, I/O failure | `exiftool` missing, tag write failed |
+
+**Important**: Exit code 1 is **not an error** in this context. It indicates graceful handling of "no track playing" state.
+
+**Error JSON Examples**:
+
+Database lock timeout:
+```json
+{
+  "error": "Database lock timeout - another process may be using the database",
+  "script": "musiclib_audacious.sh",
+  "code": 2,
+  "context": {
+    "timeout": "5 seconds",
+    "database": "/home/user/.local/share/musiclib/data/musiclib.dsv"
+  },
+  "timestamp": "2026-02-14T18:45:23Z"
+}
 ```
-/usr/lib/musiclib/bin/musiclib_audacious.sh
+
+Tool unavailable:
+```json
+{
+  "error": "Required tool not available",
+  "script": "musiclib_audacious.sh",
+  "code": 2,
+  "context": {
+    "missing": "audtool",
+    "package": "audacious-plugins"
+  },
+  "timestamp": "2026-02-14T18:45:23Z"
+}
 ```
+
+**Configuration Dependencies** (from `musiclib.conf`):
+```bash
+AUDACIOUS_INSTALLED=true
+AUDACIOUS_PATH="/usr/bin/audacious"
+MUSIC_DISPLAY_DIR="${MUSICLIB_DATA_DIR}/data/conky_output"
+SCROBBLE_THRESHOLD_PCT=50
+STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
+```
+
+**Setup**: Configured during `musiclib-cli setup`, which detects Audacious, provides Song Change plugin instructions, and optionally verifies the integration. See section 2.11.
+
+**Behavioral Notes**:
+1. **Idempotent**: Can be called multiple times for same track without side effects
+2. **Non-blocking**: Returns quickly to avoid delaying Audacious playback
+3. **Lock-aware**: Gracefully handles database lock contention (exit 2, not crash)
+4. **Silent operation**: Errors go to stderr (JSON) and log, not user notification
+
+**Troubleshooting**:
+
+If the hook is not firing: check that the Song Change plugin is enabled in Audacious (Settings → Plugins), verify the command path is correct, confirm the hook script is executable (`chmod +x`), and ensure `audtool` is installed.
+
+If Conky files are not updating: check the output directory exists and has correct permissions, and check for database lock timeouts in `musiclib.log`.
+
+**Performance**: Typical execution 50–200ms. CPU negligible, memory <5MB, disk I/O ~50KB per song change.
+
+---
+
+### 2.11 `musiclib-cli setup` → `musiclib_init_config.sh`
+
+**Purpose**: Interactive first-run configuration wizard. Detects system capabilities, creates directory structure, generates configuration, provides Audacious Song Change plugin setup instructions, and optionally verifies the integration.
+
+**Invocation**:
+```bash
+musiclib_init_config.sh [--force]
+```
+
+**Parameters**:
+- `--force`: Overwrite existing configuration file
+
+**Workflow**:
+1. Check for existing configuration (skip if present, unless `--force`)
+2. Detect Audacious installation and `audtool` availability
+3. Scan filesystem for music directories (common locations: `/mnt/music`, `~/Music`)
+4. Prompt for music repository path
+5. Prompt for download directory (default: `~/Downloads`)
+6. Create XDG directory structure (`~/.config/musiclib/`, `~/.local/share/musiclib/`)
+7. Generate `musiclib.conf` with detected values
+8. If Audacious detected:
+   a. Display step-by-step Song Change plugin setup instructions
+   b. Optionally verify integration (check Audacious running, test hook, validate Conky output)
+9. Offer to build initial database via `musiclib_build.sh`
+10. Display next-steps summary
+
+**Side Effects**:
+- Creates `~/.config/musiclib/musiclib.conf`
+- Creates `~/.local/share/musiclib/` directory tree (data, logs, playlists)
+- Optionally invokes `musiclib_build.sh` for initial database creation
+
+**Exit Codes**:
+- 0: Configuration created successfully
+- 1: User cancelled setup
+- 2: System error (cannot create directories, permissions denied)
+
+**Auto-trigger**: When any `musiclib-cli` command is run without a valid configuration file, the dispatcher prompts the user to run setup before proceeding.
+
+**Example**:
+```bash
+# First-time setup
+musiclib-cli setup
+
+# Reconfigure (overwrites existing config)
+musiclib-cli setup --force
+```
+
+**Equivalent GUI**: First-run wizard dialog in `musiclib-qt` (Phase 2+)
 
 ---
 
@@ -873,5 +996,5 @@ mv musiclib.dsv.new musiclib.dsv
 ---
 
 **Document Version**: 1.0  
-**Last Updated**: 2026-02-07  
+**Last Updated**: 2026-02-14  
 **Status**: Implementation-Ready

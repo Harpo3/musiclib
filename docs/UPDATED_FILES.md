@@ -15,13 +15,25 @@ src/cli/
   config_loader.cpp/.h        # Read musiclib.conf, resolve paths
   subcommands/
     rate.cpp/.h               # musiclib-cli rate
-    mobile.cpp/.h             # musiclib-cli mobile upload/status
-    rebuild.cpp/.h            # musiclib-cli rebuild
+    mobile.cpp/.h             # musiclib-cli mobile upload/sync/status
+    build.cpp/.h              # musiclib-cli build (renamed from rebuild.cpp)
     tagclean.cpp/.h           # musiclib-cli tagclean
+    tagrebuild.cpp/.h         # musiclib-cli tagrebuild (new)
     boost.cpp/.h              # musiclib-cli boost
     scan.cpp/.h               # musiclib-cli scan
-    add_track.cpp/.h          # musiclib-cli add-track
+    new_tracks.cpp/.h         # musiclib-cli new-tracks (renamed from add_track.cpp)
+    setup.cpp/.h              # musiclib-cli setup (new)
+    audacious_hook.cpp/.h     # musiclib-cli audacious-hook (new)
+    process_pending.cpp/.h    # musiclib-cli process-pending (new)
 ```
+
+**Changes explained:**
+- `rebuild.cpp` → `build.cpp`: CLI command is `build`, not `rebuild`
+- `add_track.cpp` → `new_tracks.cpp`: CLI command is `new-tracks`, not `add-track`
+- Added `tagrebuild.cpp`: Routes to `musiclib_tagrebuild.sh`
+- Added `setup.cpp`: Routes to `musiclib_init_config.sh`
+- Added `audacious_hook.cpp`: Routes to `musiclib_audacious.sh`
+- Added `process_pending.cpp`: Routes to `musiclib_process_pending.sh`
 
 ### 1.2 C++ Source Files (Qt GUI)
 
@@ -74,7 +86,7 @@ data/
 
 ```
 docs/
-  ARCHITECTURE.md           # This file (already written)
+  ARCHITECTURE.md           # Architecture overview (already written)
   BACKEND_API.md            # Backend API contract (already written)
   PROJECT_PLAN.md           # Project plan (already written)
   USER_GUIDE.md             # User manual
@@ -121,7 +133,7 @@ packaging/
 
 ```
 man/
-  musiclib-cli.1            # CLI manual page
+  musiclib-cli.1            # CLI manual page (covers all commands: setup, audacious-hook, new-tracks, tagrebuild, boost, scan, etc.)
   musiclib-qt.1             # GUI manual page
   musiclib.conf.5           # Config file format
 ```
@@ -157,7 +169,8 @@ bin/musiclib_new_tracks.sh
   ✓ Add with_db_lock()
   ✓ Support ZIP extraction (currently manual)
 
-bin/musiclib_rebuild.sh
+bin/musiclib_build.sh
+  ✓ Rename from musiclib_rebuild.sh
   ✓ Add --dry-run flag
   ✓ Add JSON error output
   ✓ Strict with_db_lock() (no concurrent rebuilds)
@@ -220,9 +233,41 @@ Example additions:
 
 ---
 
-## 3. Files to Remove (Deprecated)
+## 3. Scripts Section (Updated)
 
-### 3.1 Standalone Script Entry Points (If Any)
+### 3.1 Shell Scripts Directory Structure
+
+```
+scripts/
+  musiclib_utils.sh                   # Core utilities and locking
+  musiclib_utils_tag_functions.sh     # Tag repair/normalization
+  musiclib_rate.sh                    # Star rating operations
+  musiclib_mobile.sh                  # KDE Connect mobile sync
+  musiclib_audacious.sh               # Audacious player hook
+  musiclib_build.sh                   # Full database rebuild (renamed from musiclib_rebuild.sh)
+  musiclib_tagclean.sh                # ID3 tag cleanup
+  musiclib_tagrebuild.sh              # Tag repair from DB
+  musiclib_new_tracks.sh              # Track import pipeline
+  musiclib_init_config.sh             # Setup wizard (new)
+  musiclib_audacious_setup.sh         # Setup helper for Audacious (new)
+  musiclib_audacious_test.sh          # Setup helper for testing (new)
+  musiclib_process_pending.sh         # Process pending operations (new)
+  boost_album.sh                      # ReplayGain loudness targeting
+  audpl_scanner.sh                    # Playlist scanning utility
+```
+
+---
+
+## 4. Files to Remove (Deprecated)
+
+### 4.1 Superseded Documentation
+
+```
+musiclib_cli_dispatcher_UPDATED.md    → Superseded by musiclib_cli_dispatcher.md v2.0
+BACKEND_API_Audacious_Section.md      → Content merged into BACKEND_API.md section 2.10
+```
+
+### 4.2 Standalone Script Entry Points (If Any)
 
 If there were standalone wrappers that are now replaced by `musiclib-cli`:
 
@@ -233,7 +278,7 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 *(Review actual repo to determine if such files exist)*
 
-### 3.2 Legacy Config Locations
+### 4.3 Legacy Config Locations
 
 ```
 ~/.musiclib.dsv             → Migrated to ~/.local/share/musiclib/data/musiclib.dsv
@@ -244,9 +289,9 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 ---
 
-## 4. Files to Replace (Refactored)
+## 5. Files to Replace (Refactored)
 
-### 4.1 README.md
+### 5.1 README.md
 
 **Current**: Minimal overview, no architecture details.
 
@@ -260,7 +305,7 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 ---
 
-## 5. Summary of Changes by Phase
+## 6. Summary of Changes by Phase
 
 ### Phase 0: Backend Cleanup (1–2 weeks)
 
@@ -280,7 +325,7 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 ### Phase 1: CLI Dispatcher (1–2 weeks)
 
 **Add**:
-- `src/cli/` (entire directory)
+- `src/cli/` (entire directory with 11 subcommand files)
 - `CMakeLists.txt` (root + CLI)
 - `man/musiclib-cli.1`
 
@@ -351,22 +396,22 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 ---
 
-## 6. File Count Summary
+## 7. File Count Summary
 
 | Category | Add | Modify | Remove | Total Changed |
 |----------|-----|--------|--------|---------------|
 | C++ Source | 35+ | 0 | 0 | 35+ |
-| Shell Scripts | 0 | 11 | 0 | 11 |
+| Shell Scripts | 3 | 11 | 1 | 15 |
 | Build System | 4 | 0 | 0 | 4 |
 | Desktop Integration | 3 | 0 | 0 | 3 |
-| Documentation | 6 | 1 | 0 | 7 |
+| Documentation | 6 | 1 | 2 | 9 |
 | Tests | 10+ | 0 | 0 | 10+ |
 | Packaging | 4 | 0 | 0 | 4 |
-| **Total** | **62+** | **12** | **0** | **74+** |
+| **Total** | **65+** | **12** | **3** | **80+** |
 
 ---
 
-## 7. Migration Checklist (User Perspective)
+## 8. Migration Checklist (User Perspective)
 
 When upgrading from standalone scripts to v0.1:
 
@@ -403,6 +448,28 @@ audtool --current-song-filename  # Play a track, check Conky updates
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2026-02-07  
+## 9. Key Implementation Notes
+
+### CLI Subcommand Naming Convention
+
+All CLI commands use kebab-case (hyphens) while script and C++ file names use snake_case (underscores):
+
+| CLI Command | C++ File | Shell Script |
+|-------------|----------|--------------|
+| `musiclib-cli rate` | `rate.cpp` | `musiclib_rate.sh` |
+| `musiclib-cli build` | `build.cpp` | `musiclib_build.sh` |
+| `musiclib-cli new-tracks` | `new_tracks.cpp` | `musiclib_new_tracks.sh` |
+| `musiclib-cli tag-rebuild` | `tagrebuild.cpp` | `musiclib_tagrebuild.sh` |
+| `musiclib-cli tag-clean` | `tagclean.cpp` | `musiclib_tagclean.sh` |
+| `musiclib-cli audacious-hook` | `audacious_hook.cpp` | `musiclib_audacious.sh` |
+| `musiclib-cli setup` | `setup.cpp` | `musiclib_init_config.sh` |
+| `musiclib-cli process-pending` | `process_pending.cpp` | `musiclib_process_pending.sh` |
+| `musiclib-cli boost` | `boost.cpp` | `boost_album.sh` |
+| `musiclib-cli scan` | `scan.cpp` | `audpl_scanner.sh` |
+| `musiclib-cli mobile` | `mobile.cpp` | `musiclib_mobile.sh` |
+
+---
+
+**Document Version**: 1.1  
+**Last Updated**: 2026-02-14  
 **Status**: Implementation-Ready

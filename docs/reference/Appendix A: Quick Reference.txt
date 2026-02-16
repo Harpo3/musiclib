@@ -1,16 +1,22 @@
 ## Appendix A: Quick Reference
 
 ### Key Files
-- `musiclib.dsv`: Main database (musiclib/data/)
-- `musiclib.conf`: Configuration (musiclib/config/)
-- `conkyoutput/`: Conky text/image artifacts
-- `playlists/`: Audacious .audpl files + .meta/.tracks
+- `musiclib.dsv`: Main database (~/.local/share/musiclib/data/)
+- `musiclib.conf`: Configuration (~/.config/musiclib/)
+- `conky_output/`: Conky text/image artifacts (~/.local/share/musiclib/data/)
+- `playlists/`: Audacious .audpl files + .meta/.tracks (~/.local/share/musiclib/)
 
 ### Key Commands
-- Import track: `musiclib_add.sh /path/to/file.mp3`
-- Rate track: `musiclib_rate.sh /path/to/file.mp3 4`
-- Upload playlist: `musiclib_mobile.sh upload <device> playlist.audpl`
-- Validate DB: `musiclib_validate.sh`
+- First-time setup: `musiclib-cli setup`
+- Build database: `musiclib-cli build`
+- Import new music: `musiclib-cli new-tracks "artist_name"`
+- Rate track: `musiclib-cli rate /path/to/file.mp3 4`
+- Clean tags: `musiclib-cli tagclean /path/to/dir`
+- Rebuild tags from DB: `musiclib-cli tagrebuild /path/to/dir`
+- Upload playlist: `musiclib-cli mobile upload playlist.m3u`
+- Mobile sync status: `musiclib-cli mobile status`
+- ReplayGain loudness: `musiclib-cli boost /path/to/album`
+- Scan playlists: `musiclib-cli scan`
 
 ### Development Quick Start
 ```bash
@@ -29,5 +35,6 @@ makepkg -si
 
 ### Common Issues
 - **"Lock timeout"**: Another MusicLib process is writing; wait or `pkill -f musiclib`
-- **Missing Conky updates**: Check hook is installed in Audacious preferences
+- **Missing Conky updates**: Check hook is installed in Audacious preferences (run `musiclib-cli setup` to reconfigure)
 - **Mobile sync fails**: Verify device ID with `kdeconnect-cli -l`
+- **"Configuration not found"**: Run `musiclib-cli setup` for first-time configuration

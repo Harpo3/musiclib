@@ -9,80 +9,276 @@ musiclib-cli \- Music library command-line interface
 .SH DESCRIPTION
 .B musiclib-cli
 is a command-line dispatcher for the MusicLib music management system. It routes
-commands to backend shell scripts for database operations, rating management,
-mobile synchronization, and tag cleanup.
+commands to backend shell scripts for database operations, tag management, rating,
+mobile synchronization, and Audacious integration.
+.PP
+On first run, if no configuration file is found,
+.B musiclib-cli
+will prompt to launch the setup wizard. Run
+.B musiclib-cli setup
+at any time to reconfigure.
 .SH COMMANDS
+.SS Setup & Configuration
 .TP
-.B rate \fIFILE\fR \fIRATING\fR
-Rate a music file (1-5 stars). Updates the music library database.
+.B setup \fR[\fB\-\-force\fR]
+Interactive first-run configuration wizard. Detects Audacious installation,
+locates music directories, sets download directory, creates XDG directory
+structure, provides Audacious Song Change plugin setup instructions, and
+generates
+.IR musiclib.conf .
+Use
+.B \-\-force
+to overwrite an existing configuration. Auto-triggered when configuration
+is missing or invalid.
+.SS Library Management
 .TP
-.B mobile \fI[OPERATION]\fR
-Manage mobile device synchronization (requires KDE Connect).
+.B build \fR[\fITARGET_DIRECTORY\fR] [\fIOPTIONS\fR]
+Build or rebuild the music library database by scanning a music directory
+and extracting tag metadata. If an existing database is found, prompts for
+action (overwrite, backup, or save as alternate file). Supports
+.BR \-\-dry\-run ,
+.BR \-b / \-\-backup ,
+.BR \-\-output\ \fIFILE\fR ,
+and
+.BR \-v / \-\-verbose .
 .TP
-.B build
-Rebuild the music library database from scratch.
+.B new\-tracks \fR[\fIARTIST_NAME\fR] [\fIOPTIONS\fR]
+Import new music downloads into the library. Scans the download directory
+for ZIP or MP3 files, extracts and renames them, normalizes filenames,
+optionally applies loudness normalization via
+.BR rsgain ,
+creates the artist/album directory structure, appends records to
+.IR musiclib.dsv ,
+and syncs tags via
+.BR kid3-cli .
+Supports
+.BR \-\-source\ \fIDIR\fR ,
+.BR \-\-source\-dialog ,
+.BR \-\-no\-loudness ,
+.BR \-\-no\-art ,
+.BR \-\-dry\-run ,
+and
+.BR \-v / \-\-verbose .
 .TP
-.B tagclean \fIFILE\fR
-Clean and normalize music file tags.
+.B tagclean \fR[\fITARGET\fR] [\fIOPTIONS\fR]
+Clean and normalize ID3 tags. Converts ID3v1 to ID3v2.3, removes APE tags,
+embeds album art, normalizes frame structure, and removes junk frames.
+Target may be a file path, directory, or artist name. Supports
+.BR \-\-dry\-run ,
+.BR \-\-backup ,
+and
+.BR \-v / \-\-verbose .
 .TP
-.B audacious \fI[OPERATION]\fR
-Integrate with Audacious media player.
+.B tagrebuild \fR[\fITARGET\fR] [\fIOPTIONS\fR]
+Repair tags from database canonical values. Reads authoritative metadata from
+.IR musiclib.dsv ,
+writes ID3 tags from those values, and ensures tag/database consistency.
+Target may be a file path, directory, or artist name. Supports
+.BR \-\-dry\-run ,
+.BR \-\-force ,
+.BR \-\-verify ,
+and
+.BR \-v / \-\-verbose .
+.SS Rating
+.TP
+.B rate \fIFILEPATH\fR \fIRATING\fR
+Rate a music file from 0 to 5 (0 = unrated). Updates the music library
+database, writes POPM and Grouping tags to the file, regenerates Conky
+display assets, and sends a KDE notification. The file must already
+exist in the database.
+.SS Playback Integration
+.TP
+.B audacious\-hook
+Song change hook called automatically by Audacious via the Song Change
+plugin. Updates the last-played timestamp in the database, extracts album
+art, generates Conky display files, and logs the listen event. This command
+is configured once during
+.B setup
+and should not be called manually. Exit code 1 indicates no track is
+playing (not an error).
+.SS Mobile Sync (KDE Connect)
+.TP
+.B mobile upload \fR[\fIPLAYLIST_FILE\fR] [\fIOPTIONS\fR]
+Send a playlist and its audio files to a mobile device via
+.BR kdeconnect-cli .
+Converts playlist format for mobile, creates upload metadata, and logs the
+operation. Supports
+.BR \-\-device\ \fIID\fR ,
+.BR \-\-force ,
+and
+.BR \-v / \-\-verbose .
+.TP
+.B mobile sync \fR[\fIOPTIONS\fR]
+Sync playback timestamps from a mobile device. Generates synthetic
+last-played timestamps based on the upload window and updates both the
+database and file tags. Supports
+.BR \-\-force
+and
+.BR \-v / \-\-verbose .
+.TP
+.B mobile status
+Show current mobile sync status, including connected device, recent uploads,
+and pending sync state.
+.SS Maintenance
+.TP
+.B boost \fIALBUM_DIRECTORY\fR [\fIOPTIONS\fR]
+Apply ReplayGain loudness targeting to an album directory using
+.BR rsgain .
+Analyzes tracks, calculates album gain, and applies non-destructive gain
+tags. Supports
+.BR \-\-dry\-run ,
+.BR \-\-target\ \fIDB\fR
+(default: \-18), and
+.BR \-v / \-\-verbose .
+.TP
+.B scan \fR[\fIPLAYLIST_DIRECTORY\fR] [\fIOPTIONS\fR]
+Scan playlists for cross-references. Reads all
+.IR .audpl ,
+.IR .m3u ,
+and
+.I .pls
+files and generates a CSV mapping tracks to playlists. Supports
+.BR \-\-output\ \fIFILE\fR
+and
+.BR \-v / \-\-verbose .
+.SS Help & Information
+.TP
+.B help \fR[\fICOMMAND\fR]
+Show help for all commands or a specific command.
+.TP
+.B version
+Show version, backend API version, configuration path, and database
+track count.
 .SH OPTIONS
+These global options work with all commands:
 .TP
 .B \-h, \-\-help
 Show help message and exit.
 .TP
 .B \-\-version
 Show version information and exit.
+.TP
+.B \-\-config \fIFILE\fR
+Use an alternate configuration file instead of the default.
+.TP
+.B \-\-quiet
+Suppress non-error output.
+.TP
+.B \-\-debug
+Enable debug logging.
 .SH EXAMPLES
-Rate a music file 5 stars:
+First-time setup:
 .RS
-musiclib-cli rate "/path/to/song.mp3" 5
+musiclib-cli setup
 .RE
 .PP
-Build the database:
+Reconfigure existing installation:
+.RS
+musiclib-cli setup --force
+.RE
+.PP
+Build the database from configured music repository:
 .RS
 musiclib-cli build
 .RE
 .PP
-Clean tags in a file:
+Build from a specific directory with backup:
 .RS
-musiclib-cli tagclean "/path/to/song.mp3"
+musiclib-cli build /mnt/music/Music -b
+.RE
+.PP
+Import new downloads for an artist:
+.RS
+musiclib-cli new-tracks "radiohead"
+.RE
+.PP
+Import from an alternate download directory:
+.RS
+musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music
+.RE
+.PP
+Rate the currently playing Audacious track with 5 stars:
+.RS
+musiclib-cli rate "$(audtool --current-song-filename)" 5
+.RE
+.PP
+Clean tags for an artist directory:
+.RS
+musiclib-cli tagclean "radiohead" --dry-run --verbose
+.RE
+.PP
+Rebuild tags from database values:
+.RS
+musiclib-cli tagrebuild "radiohead" --force --verify
+.RE
+.PP
+Upload a playlist to a mobile device:
+.RS
+musiclib-cli mobile upload /path/to/playlist.m3u
+.RE
+.PP
+Apply ReplayGain to an album:
+.RS
+musiclib-cli boost "/mnt/music/music/radiohead/ok_computer"
+.RE
+.PP
+Scan playlists for cross-references:
+.RS
+musiclib-cli scan --output /tmp/playlist_cross_ref.csv
+.RE
+.PP
+Use an alternate configuration file:
+.RS
+musiclib-cli --config /tmp/test.conf build
 .RE
 .SH EXIT CODES
 .TP
 .B 0
-Success - operation completed
+Success \- operation completed, all side effects applied.
 .TP
 .B 1
-User error - invalid input or precondition not met
+User error \- invalid input, missing preconditions, or user cancellation.
+For
+.BR audacious\-hook ,
+exit code 1 indicates no track is playing (graceful, not an error).
 .TP
 .B 2
-System error - unrecoverable failure (missing tool, I/O error)
+System error \- unrecoverable failure (missing tool, I/O error, lock timeout).
 .TP
 .B 3
-Deferred success - operation queued due to database contention
+Deferred success \- operation queued due to database contention (proposed,
+not yet implemented; lock timeouts currently return exit code 2).
 .SH FILES
 .TP
 .B ~/.config/musiclib/musiclib.conf
-User configuration file
+User configuration file.
 .TP
 .B ~/.local/share/musiclib/data/musiclib.dsv
-Music library database
+Music library database (caret-delimited).
+.TP
+.B ~/.local/share/musiclib/data/conky_output/
+Conky display files generated by the Audacious hook.
+.TP
+.B ~/.local/share/musiclib/data/.pending_operations
+Pending operations file for deferred database writes.
 .TP
 .B ~/.local/share/musiclib/logs/musiclib.log
-Operation logs
+Operation logs.
 .SH ENVIRONMENT
 .TP
 .B MUSICLIB_ROOT
-Override the default musiclib root directory
+Override the default musiclib root directory.
 .TP
 .B MUSICLIB_CONFIG
-Override the default configuration file path
+Override the default configuration file path.
 .SH SEE ALSO
 .BR kid3-cli (1),
+.BR exiftool (1),
 .BR audacious (1),
-.BR kdeconnect-cli (1)
+.BR audtool (1),
+.BR kdeconnect-cli (1),
+.BR rsgain (1),
+.BR flock (1)
 .SH AUTHOR
 MusicLib Contributors
 .SH BUGS

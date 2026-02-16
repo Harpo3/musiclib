@@ -9,10 +9,10 @@ MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect int
 ## Architecture
 
 MusicLib uses a hybrid architecture:
-- **Shell script backend** (`/usr/lib/musiclib/bin/`) — authoritative for all write operations
-- **Qt/KDE GUI** (`musiclib-qt`) — smart client for library browsing, rating, maintenance
-- **C++ CLI dispatcher** (`musiclib-cli`) — thin wrapper for command-line access
-- **Flat-file database** (`musiclib.dsv`) — ^-delimited, human-readable, easily backed up
+- **Shell script backend** (`/usr/lib/musiclib/bin/`) – authoritative for all write operations
+- **Qt/KDE GUI** (`musiclib-qt`) – smart client for library browsing, rating, maintenance
+- **C++ CLI dispatcher** (`musiclib-cli`) – thin wrapper for command-line access
+- **Flat-file database** (`musiclib.dsv`) – ^-delimited, human-readable, easily backed up
 
 ```
 User Interfaces (GUI/CLI) → Shell Scripts → External Tools (kid3-cli, audtool, etc.)
@@ -59,16 +59,13 @@ sudo make install
 
 ### First-Run Setup
 
-**GUI**: Launch `musiclib-qt` and follow the setup wizard:
-1. Set music directory (`/mnt/music/` or `~/Music/`)
-2. Scan library to create initial database
-3. (Optional) Detect KDE Connect device for mobile sync
-4. Configure Conky output directory
-
-**CLI**: Edit `~/.config/musiclib/musiclib.conf` manually, then run:
+**CLI**:
 ```bash
-musiclib-cli rebuild
+musiclib-cli setup
 ```
+The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. Run `musiclib-cli setup --force` to reconfigure later.
+
+**GUI**: Launch `musiclib-qt` and follow the setup wizard (Phase 2+).
 
 ---
 
@@ -97,38 +94,41 @@ musiclib-cli rebuild
 **Subcommands**:
 
 ```bash
+# First-time setup (auto-detects Audacious, music dirs, etc.)
+musiclib-cli setup
+
+# Build/rebuild database from music repository
+musiclib-cli build
+
+# Import new music downloads
+musiclib-cli new-tracks "radiohead"
+
 # Rate a track (0–5 stars)
 musiclib-cli rate "/path/to/song.mp3" 4
 
+# Clean and normalize ID3 tags
+musiclib-cli tagclean "/mnt/music/Artist/Album/"
+
+# Rebuild corrupted tags from database values
+musiclib-cli tagrebuild "/mnt/music/Artist/Album/"
+
 # Upload playlist to Android device
-musiclib-cli mobile upload abc123def456 "/path/to/playlist.audpl"
+musiclib-cli mobile upload /path/to/playlist.m3u
 
 # Show mobile sync status
 musiclib-cli mobile status
-
-# Rebuild database from filesystem
-musiclib-cli rebuild
-
-# Clean tags (merge ID3v1→v2, remove APE)
-musiclib-cli tagclean "/mnt/music/Artist/Album/" --mode merge
-
-# Rebuild corrupted tags from database
-musiclib-cli tagrebuild "/path/to/corrupted.mp3"
 
 # Apply ReplayGain loudness targeting
 musiclib-cli boost "/mnt/music/Artist/Album/" --target -16
 
 # Scan playlists and generate cross-reference CSV
-musiclib-cli scan > playlist_report.csv
-
-# Import new track(s)
-musiclib-cli add-track "/tmp/new_album.zip" --auto-rate 3
+musiclib-cli scan --output playlist_report.csv
 ```
 
 **Help**:
 ```bash
-musiclib-cli --help
-musiclib-cli rate --help
+musiclib-cli help
+musiclib-cli help rate
 ```
 
 ---
@@ -148,8 +148,12 @@ LOCK_TIMEOUT=5
 ```
 
 **Audacious Hook** (for Conky updates):
-1. Open Audacious → Preferences → Plugins → Song Change
-2. Command: `/usr/lib/musiclib/bin/musiclib_audacious.sh`
+Configured automatically during `musiclib-cli setup`. To set up manually:
+1. Open Audacious → File → Settings → Plugins
+2. Enable "Song Change" (General section)
+3. Click "Settings" next to Song Change
+4. Set command to: `/usr/lib/musiclib/bin/musiclib_audacious.sh`
+5. Click OK and close Settings
 
 **Conky Integration**:
 - Point Conky config to `~/.local/share/musiclib/data/conky_output/`
@@ -209,7 +213,7 @@ cp ~/.local/share/musiclib/data/musiclib.dsv.backup.YYYYMMDD_HHMMSS \
    ~/.local/share/musiclib/data/musiclib.dsv
 
 # Or rebuild from filesystem (preserves ratings where possible)
-musiclib-cli rebuild
+musiclib-cli build -b
 ```
 
 ---
@@ -226,11 +230,11 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — Component diagrams, data flow, technology stack
-- [Backend API](docs/BACKEND_API.md) — Script invocation reference, exit codes, JSON errors
-- [Project Plan](docs/PROJECT_PLAN.md) — Roadmap, phased execution, milestones
-- [User Guide](docs/USER_GUIDE.md) — Screenshots, walkthroughs
-- [Glossary](docs/GLOSSARY.md) — Conky, POPM, audtool, KDE Connect, DSV, flock
+- [Architecture](docs/ARCHITECTURE.md) – Component diagrams, data flow, technology stack
+- [Backend API](docs/BACKEND_API.md) – Script invocation reference, exit codes, JSON errors
+- [Project Plan](docs/PROJECT_PLAN.md) – Roadmap, phased execution, milestones
+- [User Guide](docs/USER_GUIDE.md) – Screenshots, walkthroughs
+- [Glossary](docs/GLOSSARY.md) – Conky, POPM, audtool, KDE Connect, DSV, flock
 
 ---
 

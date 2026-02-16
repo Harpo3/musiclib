@@ -67,22 +67,35 @@ get_data_dir() {
 
 # Load configuration
 load_config() {
-    local config_dir
+    local system_config="/usr/lib/musiclib/config/musiclib.conf"
+    local user_config
 
-    # Use XDG-aware detection if MUSICLIB_ROOT not set
-    if [ -n "${MUSICLIB_ROOT:-}" ]; then
-        config_dir="${MUSICLIB_ROOT}/config"
+    # Determine user config location
+    if [ -n "${MUSICLIB_CONFIG_DIR:-}" ]; then
+        user_config="${MUSICLIB_CONFIG_DIR}/musiclib.conf"
+    elif [ -n "${MUSICLIB_ROOT:-}" ]; then
+        user_config="${MUSICLIB_ROOT}/config/musiclib.conf"
     else
-        config_dir="$(get_config_dir)"
+        user_config="$(get_config_dir)/musiclib.conf"
     fi
 
-    local config_file="$config_dir/musiclib.conf"
-    if [ ! -f "$config_file" ]; then
-        echo "Error: Configuration file not found: $config_file" >&2
-        echo "Please run the setup script first." >&2
+    # Load system defaults first
+    if [ -f "$system_config" ]; then
+        source "$system_config"
+    fi
+
+    # User config overrides system defaults
+    if [ -f "$user_config" ]; then
+        source "$user_config"
+    fi
+
+    # If neither exists, error
+    if [ ! -f "$system_config" ] && [ ! -f "$user_config" ]; then
+        echo "Error: No configuration found" >&2
+        echo "Please run 'musiclib-cli setup' first." >&2
         return 1
     fi
-    source "$config_file"
+
     return 0
 }
 

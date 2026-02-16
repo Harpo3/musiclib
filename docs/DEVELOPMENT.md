@@ -363,11 +363,15 @@ musiclib/
 │   ├── musiclib_utils_tag_functions.sh  # Tag repair/normalize functions
 │   ├── musiclib_rate.sh        # Rating operation
 │   ├── musiclib_mobile.sh      # KDE Connect sync
-│   ├── musiclib_audacious.sh   # Song-change hook
-│   ├── musiclib_rebuild.sh     # DB rebuild
+│   ├── musiclib_audacious.sh   # Song-change hook (automatic)
+│   ├── musiclib_build.sh       # DB build/rebuild
 │   ├── musiclib_tagclean.sh    # Tag cleaning
 │   ├── musiclib_tagrebuild.sh  # Tag repair from DB
 │   ├── musiclib_new_tracks.sh  # Import pipeline
+│   ├── musiclib_init_config.sh       # Setup wizard
+│   ├── musiclib_audacious_setup.sh   # Helper: Audacious plugin instructions (called by setup)
+│   ├── musiclib_audacious_test.sh    # Helper: Audacious integration verification (called by setup)
+│   ├── musiclib_process_pending.sh   # Deferred operation retry
 │   ├── boost_album.sh          # ReplayGain loudness
 │   └── audpl_scanner.sh        # Playlist cross-reference
 │
@@ -436,6 +440,18 @@ cd build && make -j$(nproc)
 ./musiclib-cli rate "/mnt/music/test.mp3" 4
 echo $?  # Should be 0 on success
 
+# Test setup wizard
+./musiclib-cli setup --force
+echo $?  # Should be 0 on success
+
+# Test new-tracks (dry run)
+./musiclib-cli new-tracks "test_artist" --dry-run
+echo $?
+
+# Test tagrebuild (dry run)
+./musiclib-cli tagrebuild "/mnt/music/test_dir" --dry-run
+echo $?
+
 # Test error handling
 ./musiclib-cli rate "/nonexistent.mp3" 4
 echo $?  # Should be 1 (user error)
@@ -478,6 +494,14 @@ echo $?
 
 # Test with invalid input (should exit 1)
 /usr/lib/musiclib/bin/musiclib_rate.sh "/mnt/music/test.mp3" 99
+echo $?
+
+# Test setup wizard
+/usr/lib/musiclib/bin/musiclib_init_config.sh --force
+echo $?
+
+# Test new-tracks import (dry run)
+/usr/lib/musiclib/bin/musiclib_new_tracks.sh "test_artist" --dry-run
 echo $?
 
 # Test lock contention
@@ -772,7 +796,7 @@ Now that your build environment is set up:
 
 2. **Start Phase 1 development**:
    - Create `src/cli/` directory
-   - Implement argument parser (subcommands: `rate`, `mobile`, `rebuild`, etc.)
+   - Implement argument parser (subcommands: `setup`, `rate`, `build`, `new-tracks`, `tagclean`, `tagrebuild`, `mobile`, `boost`, `scan`, `audacious-hook`, `process-pending`)
    - Implement script path resolution
    - Implement QProcess invocation with stdout/stderr capture
    - Test against existing shell scripts
@@ -796,6 +820,6 @@ This is currently a solo project, but if you're reading this as a potential cont
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2026-02-10  
-**Status**: Initial Release
+**Document Version**: 1.1  
+**Last Updated**: 2026-02-14  
+**Status**: Updated for Phase 0 CLI argument parser resolution

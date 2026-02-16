@@ -35,6 +35,7 @@ Makefile
 data/
 playlists/
 logs/
+config/musiclib.conf
 
 # ----- Test output -----
 Testing/
