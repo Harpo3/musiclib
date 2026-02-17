@@ -59,6 +59,15 @@ endif()
 add_subdirectory(src/common)
 add_subdirectory(src/cli)
 
+option(BUILD_GUI "Build Qt6/KDE GUI application" OFF)
+if(BUILD_GUI)
+    find_package(Qt6 REQUIRED COMPONENTS Widgets)
+    find_package(KF6CoreAddons REQUIRED)
+    find_package(KF6XmlGui REQUIRED)
+    find_package(KF6WidgetsAddons REQUIRED)
+    add_subdirectory(src/gui)
+endif()
+
 # Testing
 if(ENABLE_TESTING)
     enable_testing()
