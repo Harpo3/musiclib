@@ -995,6 +995,63 @@ mv musiclib.dsv.new musiclib.dsv
 
 ---
 
+## 10. Standalone Utilities
+
+### 10.1 Overview
+
+MusicLib includes standalone utility scripts that operate **outside** the normal API contract. These tools:
+
+- Do **not** use the dispatcher (`musiclib-cli`)
+- Do **not** follow the JSON error schema (Section 1.2)
+- Do **not** use database locking (Section 1.3)
+- Are **not** invoked by the GUI
+
+They exist for specific pre-setup or maintenance scenarios where the user runs them directly from the command line.
+
+**Location**: `~/.local/share/musiclib/utilities/`
+
+---
+
+### 10.2 `conform_musiclib.sh` — Filename Conformance Tool
+
+**Purpose**: Rename non-conforming music filenames to MusicLib naming standards **before** database creation.
+
+**Use Case**: User has music organized in `artist/album/` directories that also meet format requirements, but filenames still contain uppercase letters, spaces, or special characters that would cause inconsistent behavior in path matching and mobile sync.
+
+**When to Run**: Before `musiclib_init_config.sh` (setup wizard). If the setup wizard's library analysis reports non-conforming filenames and user chooses to exit and reorganize, this tool can help.
+
+**Invocation**:
+```bash
+# Preview changes (dry-run, default)
+~/.local/share/musiclib/utilities/conform_musiclib.sh /path/to/music
+
+# Actually rename files
+~/.local/share/musiclib/utilities/conform_musiclib.sh --execute /path/to/music
+
+# Verbose output
+~/.local/share/musiclib/utilities/conform_musiclib.sh --verbose /path/to/music
+```
+
+**Naming Rules Applied**:
+- Lowercase only (`Track_01.mp3` → `track_01.mp3`)
+- Spaces become underscores (`My Song.mp3` → `my_song.mp3`)
+- Non-ASCII transliterated (`Café.mp3` → `cafe.mp3`)
+- Multiple underscores collapsed (`a__b.mp3` → `a_b.mp3`)
+- Safe characters only: `a-z`, `0-9`, `_`, `-`, `.`
+
+**Safety Features**:
+- Dry-run by default (requires `--execute` to modify files)
+- Copy-verify-delete workflow (never moves; copies, verifies size match, then deletes original)
+- Collision detection (skips if target filename already exists)
+- Detailed logging to `~/.local/share/musiclib/logs/conform_YYYYMMDD_HHMMSS.log`
+
+**Exit Codes**:
+- 0: Success (or dry-run completed)
+- 1: Invalid arguments or user abort
+- 2: File operation failures
+
+**Warning**: This script modifies your files. Make backups first. Use solely at your own risk.
+
 **Document Version**: 1.0  
 **Last Updated**: 2026-02-14  
 **Status**: Implementation-Ready

@@ -70,24 +70,24 @@ BUILD_INITIAL_DB=false
 # Print colored output
 print_header() {
     echo ""
-    echo "═══════════════════════════════════════════"
+    echo "==========================================="
     echo "  $1"
-    echo "═══════════════════════════════════════════"
+    echo "==========================================="
     echo ""
 }
 
 print_step() {
     echo ""
     echo "[$1] $2"
-    echo "───────────────────────────────────────────"
+    echo "-------------------------------------------"
 }
 
 print_success() {
-    echo "✓ $1"
+    echo "[OK] $1"
 }
 
 print_error() {
-    echo "✗ ERROR: $1" >&2
+    echo "[X] ERROR: $1" >&2
 }
 
 print_info() {
@@ -135,6 +135,163 @@ count_audio_files() {
 }
 
 #############################################
+# Library Structure Analysis
+#############################################
+# Checks if a path conforms to expected structure:
+#   - Directory: artist/album/track.ext (2 levels deep from repo root)
+#   - Filename: lowercase, underscores instead of spaces, safe chars only
+#
+# Returns via global variables:
+#   ANALYSIS_TOTAL - total files scanned
+#   ANALYSIS_CONFORMING - count of conforming files
+#   ANALYSIS_NONCONFORMING - count of non-conforming files
+#   ANALYSIS_REPORT_FILE - path to detailed report
+
+analyze_library_structure() {
+    local music_repo="$1"
+    local report_dir="$DATA_DIR/logs"
+    local report_file="$report_dir/library_analysis.txt"
+    local temp_nonconforming=$(mktemp)
+
+    # Ensure report directory exists
+    mkdir -p "$report_dir" 2>/dev/null
+
+    # Initialize counters
+    local total=0
+    local conforming=0
+    local nonconforming=0
+
+    # Get repo path length for relative path calculation
+    local repo_len=${#music_repo}
+
+    # Scan all audio files
+    while IFS= read -r -d '' filepath; do
+        ((total++))
+
+        # Get path relative to music repo
+        local relpath="${filepath:$((repo_len + 1))}"
+
+        # Check structure: should be artist/album/filename (exactly 2 slashes)
+        local slash_count=$(echo "$relpath" | tr -cd '/' | wc -c)
+        local structure_ok=false
+
+        if [ "$slash_count" -eq 2 ]; then
+            structure_ok=true
+        fi
+
+        # Check filename normalization
+        local filename=$(basename "$filepath")
+        local filename_ok=true
+
+        # Check for uppercase letters
+        if [[ "$filename" =~ [A-Z] ]]; then
+            filename_ok=false
+        fi
+
+        # Check for spaces
+        if [[ "$filename" =~ \  ]]; then
+            filename_ok=false
+        fi
+
+        # Check for unsafe characters (anything not a-z, 0-9, _, -, .)
+        if [[ "$filename" =~ [^a-z0-9_.\-] ]]; then
+            filename_ok=false
+        fi
+
+        # Determine overall conformance
+        if [ "$structure_ok" = true ] && [ "$filename_ok" = true ]; then
+            ((conforming++))
+        else
+            ((nonconforming++))
+
+            # Build reason string
+            local reasons=""
+            if [ "$structure_ok" = false ]; then
+                reasons="structure"
+            fi
+            if [ "$filename_ok" = false ]; then
+                if [ -n "$reasons" ]; then
+                    reasons="$reasons, filename"
+                else
+                    reasons="filename"
+                fi
+            fi
+
+            # Write to temp file for report
+            echo "$filepath|$reasons" >> "$temp_nonconforming"
+        fi
+
+        # Progress indicator (every 500 files)
+        if [ $((total % 500)) -eq 0 ]; then
+            printf "\r  Scanned %d files..." "$total"
+        fi
+
+    done < <(find "$music_repo" -type f \( -iname '*.mp3' -o -iname '*.flac' -o -iname '*.m4a' -o -iname '*.ogg' \) -print0 2>/dev/null)
+
+    # Clear progress line
+    printf "\r                                        \r"
+
+    # Generate report file
+    {
+        echo "MusicLib Library Analysis Report"
+        echo "================================"
+        echo "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Music Repository: $music_repo"
+        echo ""
+        echo "Summary"
+        echo "-------"
+        echo "Total files scanned: $total"
+        echo "Conforming files: $conforming ($((conforming * 100 / (total > 0 ? total : 1)))%)"
+        echo "Non-conforming files: $nonconforming ($((nonconforming * 100 / (total > 0 ? total : 1)))%)"
+        echo ""
+        echo "Expected Structure"
+        echo "------------------"
+        echo "Directory: MUSIC_REPO/artist/album/track.ext"
+        echo "Filename:  lowercase, underscores (no spaces), safe characters only"
+        echo "           Allowed: a-z, 0-9, underscore, hyphen, period"
+        echo ""
+
+        if [ "$nonconforming" -gt 0 ]; then
+            echo "Non-Conforming Files"
+            echo "--------------------"
+            echo ""
+
+            # Sort and output non-conforming files
+            sort "$temp_nonconforming" | while IFS='|' read -r path reason; do
+                echo "[$reason] $path"
+            done
+
+            echo ""
+            echo "Recommendation"
+            echo "--------------"
+            echo "Consider moving non-conforming files to a separate location,"
+            echo "then use 'musiclib-cli new-tracks' to import them properly."
+            echo "This will normalize filenames and organize them into the"
+            echo "correct artist/album directory structure."
+        fi
+    } > "$report_file"
+
+    # Generate plain filepath list for non-conforming files
+    local nonconforming_list="$report_dir/nonconforming_files"
+    if [ "$nonconforming" -gt 0 ]; then
+        # Extract just the paths (strip the reason after the pipe)
+        sort "$temp_nonconforming" | cut -d'|' -f1 > "$nonconforming_list"
+    else
+        # Remove old list if no non-conforming files
+        rm -f "$nonconforming_list"
+    fi
+
+    # Cleanup
+    rm -f "$temp_nonconforming"
+
+    # Set global variables for caller
+    ANALYSIS_TOTAL=$total
+    ANALYSIS_CONFORMING=$conforming
+    ANALYSIS_NONCONFORMING=$nonconforming
+    ANALYSIS_REPORT_FILE="$report_file"
+}
+
+#############################################
 # Parse Command Line Arguments
 #############################################
 
@@ -149,13 +306,23 @@ Interactive setup wizard for MusicLib configuration.
 This wizard will:
   1. Detect Audacious installation
   2. Locate your music repository
-  3. Configure download directories
-  4. Create XDG directory structure
-  5. Optionally build initial database
-  6. Generate/update configuration file
+  3. Analyze library structure (directory layout, filename conventions)
+  4. Configure download directories
+  5. Create XDG directory structure
+  6. Optionally build initial database
+  7. Generate/update configuration file
 
 The wizard can be run multiple times to update configuration.
 It will read existing settings as defaults.
+
+Library Analysis:
+  MusicLib expects music files organized as: artist/album/track.ext
+  with normalized filenames (lowercase, underscores, safe characters).
+
+  The analysis step scans your library and reports any files that
+  don't conform to this structure. You can then choose to:
+    - Import as-is (some features may behave inconsistently)
+    - Exit and reorganize your library before continuing
 
 EOF
             exit 0
@@ -199,7 +366,7 @@ fi
 # Step 1: Detect Audacious
 #############################################
 
-print_step "1/5" "Checking Audacious..."
+print_step "1/7" "Checking Audacious..."
 
 # Check existing config for Audacious setting
 EXISTING_AUDACIOUS=""
@@ -254,7 +421,7 @@ fi
 # Step 2: Locate Music Repository
 #############################################
 
-print_step "2/5" "Checking music repository..."
+print_step "2/7" "Checking music repository..."
 
 # Check if existing config has MUSIC_REPO set
 # Read from existing config if available (even in force mode, to show as default)
@@ -406,10 +573,101 @@ if [ "${SCAN_FOR_MUSIC:-false}" = "true" ]; then
 fi  # End of SCAN_FOR_MUSIC block
 
 #############################################
-# Step 3: Set Download Directory
+# Step 3: Library Structure Analysis
 #############################################
 
-print_step "3/5" "Checking download directory..."
+print_step "3/7" "Analyzing library structure..."
+
+print_info "Scanning files in: $DETECTED_MUSIC_REPO"
+print_info "(This may take a moment for large libraries)"
+echo ""
+
+# Run the analysis
+analyze_library_structure "$DETECTED_MUSIC_REPO"
+
+# Display results
+echo ""
+print_info "Analysis Complete"
+echo ""
+echo "  Total files scanned:    $ANALYSIS_TOTAL"
+echo "  Conforming files:       $ANALYSIS_CONFORMING ($((ANALYSIS_CONFORMING * 100 / (ANALYSIS_TOTAL > 0 ? ANALYSIS_TOTAL : 1)))%)"
+echo "  Non-conforming files:   $ANALYSIS_NONCONFORMING ($((ANALYSIS_NONCONFORMING * 100 / (ANALYSIS_TOTAL > 0 ? ANALYSIS_TOTAL : 1)))%)"
+echo ""
+
+# Track conformance status for config file
+LIBRARY_CONFORMING=true
+
+if [ "$ANALYSIS_NONCONFORMING" -eq 0 ]; then
+    # All files conform
+    print_success "All files follow expected structure"
+    echo ""
+
+    if ! prompt_yn "Continue with setup?" "y"; then
+        echo "Setup cancelled."
+        exit 1
+    fi
+else
+    # Discrepancies found
+    echo "  Examples of non-conforming paths:"
+    echo ""
+
+    # Show first 5 examples from report
+    grep '^\[' "$ANALYSIS_REPORT_FILE" 2>/dev/null | head -5 | while read -r line; do
+        echo "    $line"
+    done
+
+    if [ "$ANALYSIS_NONCONFORMING" -gt 5 ]; then
+        echo "    ... and $((ANALYSIS_NONCONFORMING - 5)) more"
+    fi
+
+    echo ""
+    print_info "Full report saved to: $ANALYSIS_REPORT_FILE"
+    echo ""
+    echo "-----------------------------------------------------------------"
+    echo ""
+    echo "  Suggestion: Move non-conforming files to a temporary location,"
+    echo "  then use 'musiclib-cli new-tracks' to import them properly."
+    echo "  This normalizes filenames and organizes into artist/album folders."
+    echo ""
+    echo "-----------------------------------------------------------------"
+    echo ""
+    echo "Options:"
+    echo "  1) Import as-is (some features may behave inconsistently)"
+    echo "  2) Exit setup (reorganize library, then re-run setup)"
+    echo ""
+
+    selection=""
+    while true; do
+        read -p "Select [1-2]: " selection
+
+        case "$selection" in
+            1)
+                LIBRARY_CONFORMING=false
+                print_info "Proceeding with non-conforming library"
+                print_info "Note: Path matching and mobile sync may behave inconsistently"
+                break
+                ;;
+            2)
+                echo ""
+                print_info "Setup cancelled."
+                print_info "Review the report: $ANALYSIS_REPORT_FILE"
+                print_info "Evaluate use of ~/.local/share/musiclib/utilities/conform_musiclib.sh script."
+                print_info "It modifies your files. Make backups first and use solely at your own risk."
+                print_info "Re-run setup after reorganizing your library."
+                exit 1
+                ;;
+            *)
+                echo "Invalid selection. Please enter 1 or 2."
+                ;;
+        esac
+    done
+fi
+
+#############################################
+# Step 4: Set Download Directory
+#############################################
+
+print_step "4/7" "Checking download directory..."
 
 # Read existing download directory from config if available
 if [ -n "$EXISTING_CONFIG_FILE" ] && [ -f "$EXISTING_CONFIG_FILE" ]; then
@@ -447,10 +705,10 @@ else
 fi
 
 #############################################
-# Step 4: Database Setup
+# Step 5: Database Setup
 #############################################
 
-print_step "4/5" "Checking database..."
+print_step "5/7" "Checking database..."
 
 # Check for existing database in known locations
 # Priority order matches config file search
@@ -500,10 +758,10 @@ else
 fi
 
 #############################################
-# Step 5: KDE Connect (Mobile Sync)
+# Step 6: KDE Connect (Mobile Sync)
 #############################################
 
-print_step "5/5" "KDE Connect (Mobile Sync)..."
+print_step "6/7" "KDE Connect (Mobile Sync)..."
 
 DETECTED_DEVICE_ID=""
 
@@ -602,10 +860,10 @@ else
 fi
 
 #############################################
-# Create Directory Structure
+# Step 7: Create Directory Structure
 #############################################
 
-print_header "Creating Directory Structure"
+print_step "7/7" "Creating directory structure..."
 
 create_dir() {
     local dir="$1"
@@ -658,6 +916,11 @@ MUSICLIB_DATA_DIR="\$MUSICLIB_XDG_DATA"
 
 # Location of Music Repository top directory level
 MUSIC_REPO="$DETECTED_MUSIC_REPO"
+
+# Library structure conformance (set by setup wizard analysis)
+# true = all files follow artist/album/track structure with normalized names
+# false = some files have non-standard paths (features may behave inconsistently)
+LIBRARY_CONFORMING=$LIBRARY_CONFORMING
 
 # Database location (XDG default)
 MUSICDB="\${MUSICLIB_DATA_DIR}/data/musiclib.dsv"

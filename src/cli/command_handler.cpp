@@ -27,8 +27,8 @@ void CommandHandler::registerCommands() {
     // Register: mobile
     commands_["mobile"] = {
         "mobile",
-        "Mobile device sync operations (upload playlists, track playback)",
-        "upload|update-lastplayed|status [args...]",
+        "Mobile sync and Audacious playlist management",
+        "upload|refresh-audacious-only|update-lastplayed|status|logs|cleanup [args...]",
         "musiclib_mobile.sh",
         handleMobile
     };
@@ -63,8 +63,8 @@ void CommandHandler::registerCommands() {
     // Register: new-tracks
     commands_["new-tracks"] = {
         "new-tracks",
-        "Import new tracks from a directory",
-        "<directory>",
+        "Import new music downloads into library and database",
+        "[artist_name]",
         "musiclib_new_tracks.sh",
         handleNewTracks
     };
@@ -76,6 +76,15 @@ void CommandHandler::registerCommands() {
         "",
         "musiclib_process_pending.sh",
         handleProcessPending
+    };
+    
+    // Register: setup
+    commands_["setup"] = {
+        "setup",
+        "Interactive first-run configuration wizard",
+        "[--force]",
+        "musiclib_init_config.sh",
+        handleSetup
     };
     
     registered_ = true;
@@ -135,13 +144,27 @@ void CommandHandler::showHelp(const QString& cmd) {
     }
     else if (cmd == "mobile") {
         cout << "Subcommands:" << Qt::endl;
-        cout << "  upload <device-id> <playlist>  Upload playlist to mobile device" << Qt::endl;
-        cout << "  update-lastplayed <playlist>   Update last-played times" << Qt::endl;
+        cout << "  upload <playlist> [device-id]  Upload playlist to mobile device" << Qt::endl;
+        cout << "                                 Checks if Audacious version is newer and offers to refresh" << Qt::endl;
+        cout << "  refresh-audacious-only         Refresh all playlists from Audacious to Musiclib" << Qt::endl;
+        cout << "                                 No mobile upload is performed" << Qt::endl;
+        cout << "  update-lastplayed <playlist>   Update last-played times for a playlist" << Qt::endl;
         cout << "  status                         Show current mobile playlist status" << Qt::endl;
+        cout << "  logs [filter]                  View mobile operations log" << Qt::endl;
+        cout << "                                 Filters: errors, warnings, stats, today" << Qt::endl;
+        cout << "  cleanup                        Remove orphaned metadata files" << Qt::endl;
+        cout << Qt::endl;
+        cout << "Configuration:" << Qt::endl;
+        cout << "  AUDACIOUS_PLAYLISTS_DIR - Audacious playlists location" << Qt::endl;
+        cout << "                            (default: ~/.config/audacious/playlists)" << Qt::endl;
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
-        cout << "  musiclib-cli mobile upload abc123 \"/path/to/playlist.audpl\"" << Qt::endl;
+        cout << "  musiclib-cli mobile upload workout.audpl" << Qt::endl;
+        cout << "  musiclib-cli mobile upload \"/path/to/playlist.audpl\" abc123" << Qt::endl;
+        cout << "  musiclib-cli mobile refresh-audacious-only" << Qt::endl;
         cout << "  musiclib-cli mobile status" << Qt::endl;
+        cout << "  musiclib-cli mobile logs errors" << Qt::endl;
+        cout << "  musiclib-cli mobile cleanup" << Qt::endl;
     }
     else if (cmd == "build") {
         cout << "Options:" << Qt::endl;
@@ -181,10 +204,25 @@ void CommandHandler::showHelp(const QString& cmd) {
     }
     else if (cmd == "new-tracks") {
         cout << "Arguments:" << Qt::endl;
-        cout << "  <directory>  Directory containing new audio files to import" << Qt::endl;
+        cout << "  [artist_name]  Artist folder name (optional, prompts if omitted)" << Qt::endl;
+        cout << Qt::endl;
+        cout << "Description:" << Qt::endl;
+        cout << "  Imports new music downloads into the library and database." << Qt::endl;
+        cout << "  Processes files from the download directory ($NEW_DOWNLOAD_DIR) by:" << Qt::endl;
+        cout << "    1. Extracting ZIP files (if present)" << Qt::endl;
+        cout << "    2. Pausing for tag editing in kid3-qt" << Qt::endl;
+        cout << "    3. Normalizing MP3 filenames from ID3 tags" << Qt::endl;
+        cout << "    4. Standardizing volume levels with rsgain" << Qt::endl;
+        cout << "    5. Organizing files into artist/album folder structure" << Qt::endl;
+        cout << "    6. Adding tracks to the musiclib.dsv database" << Qt::endl;
+        cout << Qt::endl;
+        cout << "  IMPORTANT: Check the album tag during the pause - it determines" << Qt::endl;
+        cout << "  the folder name in the repository." << Qt::endl;
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
-        cout << "  musiclib-cli new-tracks \"/mnt/music/new_album/\"" << Qt::endl;
+        cout << "  musiclib-cli new-tracks                    # Prompts for artist name" << Qt::endl;
+        cout << "  musiclib-cli new-tracks \"Pink Floyd\"       # Imports as pink_floyd" << Qt::endl;
+        cout << "  musiclib-cli new-tracks \"the_beatles\"      # Imports as the_beatles" << Qt::endl;
     }
     else if (cmd == "process-pending") {
         cout << "Description:" << Qt::endl;
@@ -193,6 +231,26 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
         cout << "  musiclib-cli process-pending" << Qt::endl;
+    }
+    else if (cmd == "setup") {
+        cout << "Options:" << Qt::endl;
+        cout << "  --force    Overwrite existing configuration" << Qt::endl;
+        cout << Qt::endl;
+        cout << "Description:" << Qt::endl;
+        cout << "  Interactive wizard for first-run configuration. This wizard will:" << Qt::endl;
+        cout << "    1. Detect Audacious installation" << Qt::endl;
+        cout << "    2. Locate your music repository" << Qt::endl;
+        cout << "    3. Configure download directories" << Qt::endl;
+        cout << "    4. Create XDG directory structure" << Qt::endl;
+        cout << "    5. Optionally build initial database" << Qt::endl;
+        cout << "    6. Generate/update configuration file" << Qt::endl;
+        cout << Qt::endl;
+        cout << "  The wizard can be run multiple times to update configuration." << Qt::endl;
+        cout << "  It will read existing settings as defaults." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Examples:" << Qt::endl;
+        cout << "  musiclib-cli setup                # First-time setup" << Qt::endl;
+        cout << "  musiclib-cli setup --force        # Reconfigure existing installation" << Qt::endl;
     }
 }
 
@@ -256,8 +314,19 @@ int CommandHandler::handleRate(const QStringList& args) {
 
 int CommandHandler::handleMobile(const QStringList& args) {
     if (args.isEmpty()) {
-        cerr << "Error: 'mobile' requires a subcommand (upload|update-lastplayed|status)" << Qt::endl;
+        cerr << "Error: 'mobile' requires a subcommand" << Qt::endl;
+        cerr << "Valid subcommands: upload, refresh-audacious-only, update-lastplayed, status, logs, cleanup" << Qt::endl;
         showHelp("mobile");
+        return 1;
+    }
+    
+    // Validate known subcommands for better error messages
+    QString subcommand = args[0];
+    QStringList validSubcommands = {"upload", "refresh-audacious-only", "update-lastplayed", "status", "logs", "cleanup"};
+    
+    if (!validSubcommands.contains(subcommand)) {
+        cerr << "Error: Unknown mobile subcommand '" << subcommand << "'" << Qt::endl;
+        cerr << "Valid subcommands: " << validSubcommands.join(", ") << Qt::endl;
         return 1;
     }
     
@@ -334,22 +403,18 @@ int CommandHandler::handleTagrebuild(const QStringList& args) {
 }
 
 int CommandHandler::handleNewTracks(const QStringList& args) {
-    if (args.size() != 1) {
-        cerr << "Error: 'new-tracks' requires exactly 1 argument (directory)" << Qt::endl;
+    // new-tracks accepts 0 or 1 argument:
+    // 0 args: script will prompt for artist name
+    // 1 arg:  artist name provided
+    
+    if (args.size() > 1) {
+        cerr << "Error: 'new-tracks' accepts at most 1 argument (artist name)" << Qt::endl;
         showHelp("new-tracks");
         return 1;
     }
     
-    QString directory = args[0];
-    
-    // Validate directory exists
-    QFileInfo dirInfo(directory);
-    if (!dirInfo.exists() || !dirInfo.isDir()) {
-        cerr << "Error: Directory not found: " << directory << Qt::endl;
-        return 1;
-    }
-    
-    return CLIUtils::executeScript("musiclib_new_tracks.sh", {directory});
+    // Pass arguments directly to script (it handles prompting if no artist provided)
+    return CLIUtils::executeScript("musiclib_new_tracks.sh", args);
 }
 
 int CommandHandler::handleProcessPending(const QStringList& args) {
@@ -359,4 +424,21 @@ int CommandHandler::handleProcessPending(const QStringList& args) {
     }
     
     return CLIUtils::executeScript("musiclib_process_pending.sh", {});
+}
+
+int CommandHandler::handleSetup(const QStringList& args) {
+    // Setup accepts optional --force flag
+    QStringList validArgs;
+    
+    for (const QString& arg : args) {
+        if (arg == "--force") {
+            validArgs << arg;
+        } else {
+            cerr << "Error: Unknown option '" << arg << "'" << Qt::endl;
+            showHelp("setup");
+            return 1;
+        }
+    }
+    
+    return CLIUtils::executeScript("musiclib_init_config.sh", validArgs);
 }

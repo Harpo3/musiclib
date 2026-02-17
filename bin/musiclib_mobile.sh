@@ -5,7 +5,7 @@
 #        musiclib_mobile.sh update-lastplayed <playlist_name>
 #        musiclib_mobile.sh status
 #
-# Backend API Version: 1.0
+# Backend API Version: 1.1
 # Exit Codes: 0 (success), 1 (user/validation error), 2 (system error)
 #
 
@@ -34,6 +34,9 @@ if ! check_required_tools kdeconnect-cli sed bc; then
     error_exit 2 "Required tools not available" "tools" "kdeconnect-cli, sed, bc"
     exit 2
 fi
+
+# Default Audacious playlists directory (can be overridden in config)
+AUDACIOUS_PLAYLISTS_DIR="${AUDACIOUS_PLAYLISTS_DIR:-$HOME/.config/audacious/playlists}"
 
 #############################################
 # Mobile-specific logging
@@ -78,6 +81,186 @@ rotate_mobile_log() {
 rotate_mobile_log
 
 #############################################
+# Playlist sync functions
+#############################################
+
+# Check if Audacious version of a playlist is newer than Musiclib version
+# Arguments: $1 = playlist name (with or without .audpl extension)
+# Returns: 0 if newer or new, 1 if same/older/not found
+# Sets global variables: PLAYLIST_STATUS, AUDACIOUS_SOURCE_FILE, AUDACIOUS_TITLE
+check_playlist_updates() {
+    local playlist_input="$1"
+    
+    # Strip .audpl extension if present for comparison
+    local playlist_name="${playlist_input%.audpl}"
+    
+    # Safety check for Audacious playlists directory
+    if [[ ! -d "$AUDACIOUS_PLAYLISTS_DIR" ]]; then
+        [ "$VERBOSE" = true ] && echo "Audacious playlists directory not found: $AUDACIOUS_PLAYLISTS_DIR"
+        PLAYLIST_STATUS="not_found"
+        return 1
+    fi
+    
+    # Musiclib playlist file path
+    local musiclib_file="$PLAYLISTS_DIR/${playlist_name}.audpl"
+    
+    shopt -s nullglob
+    for file in "$AUDACIOUS_PLAYLISTS_DIR"/*.audpl; do
+        # Read first line only
+        local first_line=$(head -n 1 "$file" 2>/dev/null)
+        
+        if [[ -z "$first_line" || "$first_line" != title=* ]]; then
+            continue
+        fi
+        
+        # Extract everything after title=
+        local title_raw="${first_line#title=}"
+        
+        # If empty after extraction, skip
+        [[ -z "$title_raw" ]] && continue
+        
+        # Basic URL-decode (handles %20 → space, %21 → !, etc.)
+        local title_decoded=$(printf '%b' "${title_raw//%/\\x}")
+        
+        # Sanitize: replace any non-alphanumeric (except - _ .) with _
+        local title_safe=$(echo "$title_decoded" | tr -s '[:space:][:punct:]' '_' | tr -d '\000-\037' | sed 's/__*/_/g; s/^_//; s/_$//')
+        
+        # If after sanitization we have nothing useful, use basename
+        if [[ -z "$title_safe" ]]; then
+            title_safe=$(basename "$file" .audpl)
+        fi
+        
+        # Check if this matches the playlist we're looking for (case-insensitive)
+        if [[ "${title_safe,,}" == "${playlist_name,,}" ]]; then
+            # Found matching playlist in Audacious
+            AUDACIOUS_SOURCE_FILE="$file"
+            AUDACIOUS_TITLE="$title_decoded"
+            
+            # Check if Musiclib version exists
+            if [[ ! -f "$musiclib_file" ]]; then
+                PLAYLIST_STATUS="new"
+                return 0
+            fi
+            
+            # Compare modification times
+            local audacious_mtime=$(stat -c%Y "$file" 2>/dev/null || echo 0)
+            local musiclib_mtime=$(stat -c%Y "$musiclib_file" 2>/dev/null || echo 0)
+            
+            if [[ $audacious_mtime -gt $musiclib_mtime ]]; then
+                PLAYLIST_STATUS="newer"
+                return 0
+            else
+                PLAYLIST_STATUS="same"
+                return 1
+            fi
+        fi
+    done
+    shopt -u nullglob
+    
+    # Playlist not found in Audacious
+    PLAYLIST_STATUS="not_found"
+    return 1
+}
+
+# Copy a single playlist from Audacious to Musiclib
+# Uses global variables set by check_playlist_updates(): AUDACIOUS_SOURCE_FILE, AUDACIOUS_TITLE
+scan_single_playlist() {
+    if [[ -z "${AUDACIOUS_SOURCE_FILE:-}" ]]; then
+        echo "Error: No source file set. Run check_playlist_updates first."
+        return 1
+    fi
+    
+    # Create destination directory if it doesn't exist
+    mkdir -p "$PLAYLISTS_DIR" || { echo "Error: Cannot create $PLAYLISTS_DIR"; return 1; }
+    
+    # Read first line to get title
+    local first_line=$(head -n 1 "$AUDACIOUS_SOURCE_FILE" 2>/dev/null)
+    local title_raw="${first_line#title=}"
+    
+    # URL-decode
+    local title_decoded=$(printf '%b' "${title_raw//%/\\x}")
+    
+    # Sanitize for filename
+    local title_safe=$(echo "$title_decoded" | tr -s '[:space:][:punct:]' '_' | tr -d '\000-\037' | sed 's/__*/_/g; s/^_//; s/_$//')
+    
+    if [[ -z "$title_safe" ]]; then
+        title_safe=$(basename "$AUDACIOUS_SOURCE_FILE" .audpl)
+    fi
+    
+    local dest="$PLAYLISTS_DIR/$title_safe.audpl"
+    
+    # Copy with preserve attributes
+    cp -vp "$AUDACIOUS_SOURCE_FILE" "$dest"
+    
+    mobile_log "INFO" "PLAYLIST_SYNC" "Copied playlist from Audacious: $title_safe"
+    echo "Playlist copied: $title_safe.audpl"
+    
+    return 0
+}
+
+# Scan and process all Audacious playlists (full sync)
+scan_playlists() {
+    echo "=== Scanning and processing Audacious playlists ==="
+    
+    # Create destination directory if it doesn't exist
+    mkdir -p "$PLAYLISTS_DIR" || { echo "Error: Cannot create $PLAYLISTS_DIR"; exit 1; }
+    
+    # Safety check
+    if [[ ! -d "$AUDACIOUS_PLAYLISTS_DIR" ]]; then
+        echo "Error: Source directory $AUDACIOUS_PLAYLISTS_DIR not found."
+        exit 1
+    fi
+    
+    shopt -s nullglob  # so the loop doesn't run if no files
+    local count=0
+    
+    for file in "$AUDACIOUS_PLAYLISTS_DIR"/*.audpl; do
+        # Read first line only
+        first_line=$(head -n 1 "$file" 2>/dev/null)
+        
+        if [[ -z "$first_line" || "$first_line" != title=* ]]; then
+            echo "Skipping $file  (no title= on first line)"
+            continue
+        fi
+        
+        # Extract everything after title=
+        title_raw="${first_line#title=}"
+        
+        # If empty after extraction → skip
+        [[ -z "$title_raw" ]] && {
+            echo "Skipping $file  (empty title)"
+            continue
+        }
+        
+        # Basic URL-decode first (handles %20 → space, %21 → !, etc.)
+        title_decoded=$(printf '%b' "${title_raw//%/\\x}")
+        
+        # Sanitize: replace any non-alphanumeric (except - _ .) with _
+        # This catches spaces, !@#$%^&*()+= etc.
+        title_safe=$(echo "$title_decoded" | tr -s '[:space:][:punct:]' '_' | tr -d '\000-\037' | sed 's/__*/_/g; s/^_//; s/_$//')
+        
+        # If after sanitization we have nothing useful → fallback to basename
+        if [[ -z "$title_safe" ]]; then
+            title_safe=$(basename "$file" .audpl)
+            echo "Warning: Empty/unsafe title in $file → using basename $title_safe"
+        fi
+        
+        # Final destination filename
+        dest="$PLAYLISTS_DIR/$title_safe.audpl"
+        
+        # Copy with verbose + preserve attributes (overwrites if exists)
+        cp -vp "$file" "$dest"
+        ((count++))
+    done
+    
+    shopt -u nullglob
+    
+    echo ""
+    echo "Scan complete! Processed $count playlist files to $PLAYLISTS_DIR"
+    mobile_log "INFO" "PLAYLIST_SYNC" "Full sync completed: $count playlists"
+}
+
+#############################################
 # Upload playlist to Android via KDE Connect
 #############################################
 upload_playlist() {
@@ -95,11 +278,55 @@ upload_playlist() {
         audpl_file="$PLAYLISTS_DIR/$audpl_input"
     fi
 
+    # Extract playlist name for checking updates
+    local playlist_name=$(basename "$audpl_file" .audpl)
+
     # Validate dependencies
     if ! validate_dependencies; then
         error_exit 2 "Dependencies validation failed"
         exit 2
     fi
+
+    #############################################
+    # Check for playlist updates from Audacious
+    #############################################
+    if check_playlist_updates "$playlist_name"; then
+        case "$PLAYLIST_STATUS" in
+            newer)
+                echo ""
+                echo "Audacious version of '$playlist_name' is newer than Musiclib copy."
+                read -p "Refresh from Audacious? [y/N] " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    scan_single_playlist
+                    echo ""
+                    read -p "Continue with upload? [Y/n] " -n 1 -r
+                    echo ""
+                    if [[ $REPLY =~ ^[Nn]$ ]]; then
+                        echo "Upload cancelled. Playlist was refreshed."
+                        mobile_log "INFO" "UPLOAD" "User refreshed playlist but cancelled upload: $playlist_name"
+                        exit 0
+                    fi
+                fi
+                ;;
+            new)
+                echo ""
+                echo "This is a new Audacious playlist."
+                read -p "Copy now and proceed with upload? [y/N] " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    scan_single_playlist
+                    # Update audpl_file to point to newly copied file
+                    audpl_file="$PLAYLISTS_DIR/${playlist_name}.audpl"
+                else
+                    echo "Upload cancelled. Playlist not copied."
+                    mobile_log "INFO" "UPLOAD" "User declined to copy new playlist: $playlist_name"
+                    exit 0
+                fi
+                ;;
+        esac
+    fi
+    # If same, older, or not found in Audacious, continue with upload
 
     mobile_log "INFO" "UPLOAD" "Starting upload: $(basename "$audpl_file")"
     mobile_log "INFO" "UPLOAD" "Device ID: $device_id"
@@ -449,6 +676,11 @@ Usage: musiclib_mobile.sh <command> [arguments]
 Commands:
   upload <playlist.audpl> [device_id]
       Transfer playlist and music files to Android via KDE Connect
+      Checks if Audacious version is newer and offers to refresh first
+
+  refresh-audacious-only
+      Refresh all playlists from Audacious to Musiclib playlists directory
+      No mobile upload is performed
 
   update-lastplayed <playlist_name>
       Manually trigger last-played time updates for a playlist
@@ -465,11 +697,17 @@ Commands:
 
 Examples:
   musiclib_mobile.sh upload ~/music/workout.audpl
+  musiclib_mobile.sh upload workout.audpl
+  musiclib_mobile.sh refresh-audacious-only
   musiclib_mobile.sh update-lastplayed workout
   musiclib_mobile.sh status
   musiclib_mobile.sh logs
   musiclib_mobile.sh logs errors
   musiclib_mobile.sh cleanup
+
+Configuration:
+  AUDACIOUS_PLAYLISTS_DIR - Audacious playlists location
+                           (default: ~/.local/share/audacious/playlists)
 
 EOF
 }
@@ -485,6 +723,10 @@ case "$COMMAND" in
             exit 1
         fi
         upload_playlist "$2" "${3:-}"
+        ;;
+
+    refresh-audacious-only)
+        scan_playlists
         ;;
 
     update-lastplayed)

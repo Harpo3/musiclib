@@ -16,9 +16,10 @@ QTextStream cout(stdout);
 QTextStream cerr(stderr);
 
 void showVersion() {
-    cout << "musiclib-cli version 0.1.0" << Qt::endl;
+    cout << "musiclib-cli version 0.2.0" << Qt::endl;
     cout << "Music library management CLI dispatcher" << Qt::endl;
-    cout << "Copyright (c) 2025 - Licensed under MIT" << Qt::endl;
+    cout << "Backend API Version: 1.1" << Qt::endl;
+    cout << "Copyright (c) 2025-2026 - Licensed under MIT" << Qt::endl;
 }
 
 void showGlobalHelp() {
@@ -39,15 +40,26 @@ void showGlobalHelp() {
     cout << "Use 'musiclib-cli <subcommand> --help' for subcommand-specific help." << Qt::endl;
     cout << Qt::endl;
     cout << "Examples:" << Qt::endl;
-    cout << "  musiclib-cli rate \"/mnt/music/song.mp3\" 4" << Qt::endl;
-    cout << "  musiclib-cli build --dry-run" << Qt::endl;
-    cout << "  musiclib-cli mobile upload device-id \"/path/to/playlist.audpl\"" << Qt::endl;
+    cout << "  musiclib-cli setup                                     # First-time configuration" << Qt::endl;
+    cout << "  musiclib-cli rate 4                                    # Rate currently playing track" << Qt::endl;
+    cout << "  musiclib-cli rate 4 \"/mnt/music/song.mp3\"              # Rate specific file" << Qt::endl;
+    cout << "  musiclib-cli build --dry-run                           # Preview database rebuild" << Qt::endl;
+    cout << "  musiclib-cli mobile upload workout.audpl               # Upload playlist to mobile" << Qt::endl;
+    cout << "  musiclib-cli mobile refresh-audacious-only             # Sync all Audacious playlists" << Qt::endl;
+    cout << "  musiclib-cli mobile status                             # Show mobile sync status" << Qt::endl;
+    cout << "  musiclib-cli new-tracks \"Pink Floyd\"                  # Import new downloads for artist" << Qt::endl;
+    cout << "  musiclib-cli tagclean process /mnt/music/album -r      # Clean tags recursively" << Qt::endl;
+    cout << "  musiclib-cli tagrebuild \"/mnt/music/corrupted.mp3\"     # Repair tags from database" << Qt::endl;
+    cout << "  musiclib-cli process-pending                           # Retry deferred operations" << Qt::endl;
 }
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("musiclib-cli");
-    QCoreApplication::setApplicationVersion("0.1.0");
+    QCoreApplication::setApplicationVersion("0.2.0");
+    
+    // Initialize command registry early so help can display available commands
+    CommandHandler::registerCommands();
     
     QStringList args = QCoreApplication::arguments();
     
@@ -92,9 +104,6 @@ int main(int argc, char *argv[]) {
     
     // Extract subcommand
     QString subcommand = args.takeFirst();
-    
-    // Initialize command registry
-    CommandHandler::registerCommands();
     
     // Execute subcommand
     int exitCode = CommandHandler::executeCommand(subcommand, args);

@@ -45,7 +45,7 @@ yay -S musiclib-qt
 
 **Build**:
 ```bash
-git clone https://github.com/yourusername/musiclib.git
+git clone https://github.com/Harpo3/musiclib.git
 cd musiclib
 mkdir build && cd build
 cmake .. -DCMAKE_INSTALL_PREFIX=/usr
@@ -63,7 +63,7 @@ sudo make install
 ```bash
 musiclib-cli setup
 ```
-The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. Run `musiclib-cli setup --force` to reconfigure later.
+The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. For large libraries, this can take a long time, as in hours. The build script will provide a time estimate. Run `musiclib-cli setup --force` to reconfigure later.
 
 **GUI**: Launch `musiclib-qt` and follow the setup wizard (Phase 2+).
 
@@ -91,9 +91,19 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect)
 
 ### CLI Interface
 
-**Subcommands**:
+**Available Subcommands**:
 
 ```bash
+  build             Full database build/rebuild from filesystem scan
+  mobile            Mobile sync and Audacious playlist management
+  new-tracks        Import new tracks from a directory
+  process-pending   Process deferred operations (queued ratings, etc.)
+  rate              Set star rating for a track (0-5 stars)
+  tagclean          Clean and normalize audio file tags
+  tagrebuild        Repair track tags from database values
+
+# Usage Examples
+
 # First-time setup (auto-detects Audacious, music dirs, etc.)
 musiclib-cli setup
 

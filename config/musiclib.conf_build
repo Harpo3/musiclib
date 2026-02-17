@@ -3,6 +3,7 @@
 MUSIC_REPO="$HOME/Music"
 MUSICDB="${MUSICLIB_DATA_DIR:-$HOME/.local/share/musiclib}/data/musiclib.dsv"
 PLAYLISTS_DIR="${MUSICLIB_DATA_DIR:-$HOME/.local/share/musiclib}/playlists"
+AUDACIOUS_PLAYLISTS_DIR="$HOME/.config/audacious/playlists"
 MOBILE_DIR="$PLAYLISTS_DIR/mobile"
 SCRIPTS_DIR="/usr/lib/musiclib/bin"
 NEW_DOWNLOAD_DIR="$HOME/Downloads"

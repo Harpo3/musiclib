@@ -120,4 +120,19 @@ Helper script for Audacious Song Change plugin configuration, called by `musicli
 
 Diagnostic and verification script for Audacious integration, called by `musiclib_init_config.sh` during the setup wizard's optional verification step. It runs a sequence of checks: confirms Audacious is running via `pgrep`, verifies `audtool` is on the PATH, checks whether a track is currently playing, locates and confirms the hook script is present and executable, triggers the hook manually, and validates that Conky output files (`detail.txt`, `starrating.png`) are updated afterward. Each check reports pass/fail status with guidance on how to resolve failures. It is not exposed as a standalone CLI command — users interact with it through `musiclib-cli setup`.
 
+
+## Standalone Utilities
+
+The following scripts are standalone utilities that operate outside the normal dispatcher and API contract. They are not invoked by the GUI or CLI dispatcher.
+
+**conform_musiclib.sh**
+
+Pre-setup utility that renames non-conforming music filenames to MusicLib naming standards before database creation. It targets users whose music library has the correct directory structure (`artist/album/`) but has filenames containing uppercase letters, spaces, accented characters, or other special characters that would cause inconsistent behavior in path matching, mobile sync, and other MusicLib operations.
+
+The script scans all music files in the specified repository, identifies filenames that violate MusicLib's naming conventions (lowercase only, underscores instead of spaces, safe ASCII characters), and either reports what would change (dry-run mode, the default) or performs the renames (with `--execute` flag). For safety, it uses a copy-verify-delete workflow: it copies the file to the new conforming name, verifies the copy succeeded by comparing file sizes, and only then deletes the original. If a target filename already exists (collision), the file is skipped with a warning.
+
+Non-ASCII characters are transliterated to ASCII equivalents using Perl's UTF-8 transliteration (with iconv fallback), so accented characters like `é`, `ñ`, or `ü` become their unaccented counterparts. The script writes detailed logs to `~/.local/share/musiclib/logs/conform_YYYYMMDD_HHMMSS.log` for post-run review. It can read `MUSIC_REPO` from `musiclib.conf` if available, or accept the path as a command-line argument.
+
+This tool is referenced by `musiclib_init_config.sh` during the setup wizard's library analysis phase. If non-conforming filenames are detected and the user chooses to exit setup to reorganize their library, the wizard points them to this utility. It lives in `~/.local/share/musiclib/utilities/` rather than the main `bin/` directory to emphasize its standalone, pre-setup nature.
+
 [1] Bounded between 30 seconds and 4 minutes means that, even though the script first computes the scrobble point as 50% of the track length, it then enforces a hard minimum of 30 seconds and a hard maximum of 240 seconds for that wait time. If half the track is shorter than 30 seconds it will still wait 30 seconds, and if half the track is longer than 4 minutes it will cap the wait at 4 minutes instead of waiting longer. The wait time matters because the script only scrobbles once it has observed that much continuous playback time on that specific track; if you pause for more than 4 minutes, you can break the assumption that “time elapsed since starting this track ≈ time actually listened.” The loop is literally counting three‑second “still playing this same file” checks up to a capped threshold (max 240 seconds), so any long pause (status no longer “playing” or file changed) stops the monitor and prevents a scrobble, even if wall‑clock time has marched past that 4‑minute cap.
