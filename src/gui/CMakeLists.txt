@@ -1,6 +1,8 @@
 set(GUI_SOURCES
     main.cpp
     mainwindow.cpp
+    librarymodel.cpp
+    libraryview.cpp
 )
 
 add_executable(musiclib-qt ${GUI_SOURCES})
