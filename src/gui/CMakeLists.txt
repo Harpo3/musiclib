@@ -3,6 +3,8 @@ set(GUI_SOURCES
     mainwindow.cpp
     librarymodel.cpp
     libraryview.cpp
+    ratingdelegate.cpp
+    scriptrunner.cpp
 )
 
 add_executable(musiclib-qt ${GUI_SOURCES})

@@ -142,7 +142,7 @@ QVariant LibraryModel::data(const QModelIndex &index, int role) const
         case TrackColumn::SongLength:    return formatDuration(track.songLength);
         case TrackColumn::Rating:        return track.rating;
         case TrackColumn::Custom2:       return track.custom2;
-        case TrackColumn::GroupDesc:     return track.groupDesc;
+        case TrackColumn::GroupDesc:     return QString();
         case TrackColumn::LastTimePlayed: return formatLastPlayed(track.lastTimePlayed);
         default:                         return QVariant();
         }
@@ -204,4 +204,11 @@ QString LibraryModel::formatLastPlayed(const QString &serialTime) const
     QDateTime dt = QDateTime::fromSecsSinceEpoch(unixSecs, QTimeZone::utc());
     if (!dt.isValid()) return QString();
     return dt.toLocalTime().toString("MM/dd/yy");
+}
+Qt::ItemFlags LibraryModel::flags(const QModelIndex &index) const
+{
+    Qt::ItemFlags f = QAbstractTableModel::flags(index);
+    if (static_cast<TrackColumn>(index.column()) == TrackColumn::GroupDesc)
+        f |= Qt::ItemIsEditable;
+    return f;
 }

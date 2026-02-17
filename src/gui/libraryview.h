@@ -7,6 +7,8 @@ class QLineEdit;
 class QLabel;
 class QSortFilterProxyModel;
 class LibraryModel;
+class RatingDelegate;
+class ScriptRunner;
 
 class LibraryView : public QWidget
 {
@@ -27,6 +29,10 @@ signals:
 private slots:
     void onFilterChanged(const QString &text);
     void onModelLoadError(const QString &message);
+    void onRatingChanged(int sourceRow, int newRating);
+    void onRateSuccess(const QString &filePath, int stars);
+    void onRateDeferred(const QString &filePath, int stars);
+    void onRateError(const QString &filePath, int stars, const QString &message);
 
 private:
     void setupColumns();
@@ -36,4 +42,6 @@ private:
     QTableView            *m_tableView;
     QLineEdit             *m_filterEdit;
     QLabel                *m_countLabel;
+    RatingDelegate        *m_ratingDelegate;
+    ScriptRunner          *m_scriptRunner;
 };

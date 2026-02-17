@@ -47,6 +47,7 @@ class LibraryModel : public QAbstractTableModel
 
 public:
     explicit LibraryModel(QObject *parent = nullptr);
+    Qt::ItemFlags flags(const QModelIndex &index) const override;
 
     // Load DSV from path; returns true on success
     bool loadFromFile(const QString &path);
