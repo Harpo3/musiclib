@@ -46,8 +46,12 @@ void ScriptRunner::rate(const QString &filePath, int stars)
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &ScriptRunner::onProcessFinished);
 
-    // Run: bash musiclib_rate.sh "<filepath>" <stars>
-    process->start("bash", QStringList() << script << filePath << QString::number(stars));
+    // Run: bash musiclib_rate.sh <stars> "<filepath>"
+    // Star rating first, filepath second (optional arg for GUI mode)
+    process->start("bash", QStringList()
+        << script
+        << QString::number(stars)
+        << filePath);
 }
 
 void ScriptRunner::onProcessFinished(int exitCode)

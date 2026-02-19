@@ -1,8 +1,13 @@
 #!/bin/bash
 #
-# musiclib_rate.sh - Rate currently playing track in Audacious
-# Usage: musiclib_rate.sh <star_rating>
-# Bind to META+1 through META+5 for quick rating
+# musiclib_rate.sh - Rate a track's star rating
+# Usage: musiclib_rate.sh <star_rating> [filepath]
+#
+# When filepath is provided, rates that specific file (GUI mode).
+# When filepath is omitted, rates the currently playing track in Audacious
+# (keyboard shortcut mode).
+#
+# Bind META+1 through META+5 for quick rating of current track.
 #
 # Exit codes:
 #   0 - Success
@@ -35,12 +40,6 @@ fi
 MUSIC_DIR="${MUSIC_DIR:-$MUSICLIB_ROOT/data/conky_output}"
 MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
 STAR_DIR="${STAR_DIR:-$MUSIC_DIR/stars}"
-
-# Check required tools
-check_required_tools audtool kid3-cli || {
-    error_exit 2 "Required tools not available" "missing" "audtool or kid3-cli"
-    exit 2
-}
 
 # Star rating to POPM mapping (midpoints from RatingGroups)
 declare -A STAR_TO_POPM=(
@@ -76,9 +75,9 @@ declare -A STAR_TO_IMAGE=(
 # Validate Input
 #############################################
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <star_rating>"
+    echo "Usage: $0 <star_rating> [filepath]"
     echo ""
-    echo "Rate the currently playing track in Audacious"
+    echo "Rate a track in the MusicLib database"
     echo ""
     echo "Arguments:"
     echo "  star_rating    Number from 0-5"
@@ -89,7 +88,11 @@ if [ $# -eq 0 ]; then
     echo "                 4 = 4 stars"
     echo "                 5 = 5 stars"
     echo ""
-    echo "Keyboard shortcuts (bind these):"
+    echo "  filepath       (Optional) Absolute path to the audio file."
+    echo "                 If omitted, rates the currently playing track"
+    echo "                 in Audacious."
+    echo ""
+    echo "Keyboard shortcuts (bind these for current-track rating):"
     echo "  META+0  = Needs rating (0 stars)"
     echo "  META+1  = 1 star"
     echo "  META+2  = 2 stars"
@@ -108,18 +111,35 @@ if [[ ! "$STAR_RATING" =~ ^[0-5]$ ]]; then
 fi
 
 #############################################
-# Get Current Track
+# Determine Track Filepath
 #############################################
-if ! pgrep -x audacious >/dev/null; then
-    error_exit 1 "Audacious is not running"
-    exit 1
-fi
+if [ $# -ge 2 ]; then
+    # GUI mode: filepath provided as second argument
+    FILEPATH="$2"
 
-FILEPATH=$(audtool --current-song-filename 2>/dev/null || echo "")
+    # kid3-cli is always required for tag writes
+    check_required_tools kid3-cli || {
+        error_exit 2 "Required tools not available" "missing" "kid3-cli"
+        exit 2
+    }
+else
+    # Keyboard shortcut mode: get filepath from Audacious
+    check_required_tools audtool kid3-cli || {
+        error_exit 2 "Required tools not available" "missing" "audtool or kid3-cli"
+        exit 2
+    }
 
-if [ -z "$FILEPATH" ]; then
-    error_exit 1 "No track is currently playing"
-    exit 1
+    if ! pgrep -x audacious >/dev/null; then
+        error_exit 1 "Audacious is not running"
+        exit 1
+    fi
+
+    FILEPATH=$(audtool --current-song-filename 2>/dev/null || echo "")
+
+    if [ -z "$FILEPATH" ]; then
+        error_exit 1 "No track is currently playing"
+        exit 1
+    fi
 fi
 
 if [ ! -f "$FILEPATH" ]; then
@@ -149,7 +169,7 @@ if ! kid3-cli -c "set POPM $POPM_VALUE" "$FILEPATH" 2>/dev/null; then
     echo "POPM tag write failed, attempting repair..."
 
     if rebuild_tag "$FILEPATH"; then
-        echo "  âœ“ Tag rebuild successful, retrying POPM write..."
+        echo "  ✓ Tag rebuild successful, retrying POPM write..."
 
         # Retry POPM write
         if ! kid3-cli -c "set POPM $POPM_VALUE" "$FILEPATH" 2>/dev/null; then
@@ -283,13 +303,13 @@ if [ "$success" = false ]; then
     # All retries failed - queue the operation for later processing
     PENDING_FILE="${MUSICLIB_ROOT}/data/.pending_operations"
     TIMESTAMP=$(date +%s)
-    
+
     # Ensure pending operations directory exists
     mkdir -p "$(dirname "$PENDING_FILE")" 2>/dev/null || true
-    
+
     # Queue the rating operation
     echo "$TIMESTAMP|musiclib_rate.sh|rate|$FILEPATH|$STAR_RATING" >> "$PENDING_FILE"
-    
+
     # Show user feedback - rating is queued
     if command -v kdialog >/dev/null 2>&1; then
         track_title=$(audtool --current-song-tuple-data title 2>/dev/null || basename "$FILEPATH")
@@ -297,12 +317,12 @@ if [ "$success" = false ]; then
         kdialog --title 'Rating Queued' --passivepopup \
             "Rating $star_display for $track_artist" - "$track_title queued (database busy)..." 5 &
     fi
-    
+
     # Log the queued operation
     if command -v log_message >/dev/null 2>&1; then
         log_message "PENDING: Rating $FILEPATH -> $STAR_RATING stars (database locked)"
     fi
-    
+
     # Exit with code 3 = "operation queued"
     error_exit 3 "Operation queued due to database lock contention" \
         "timeout" "${MAX_ATTEMPTS}x${RETRY_DELAY}s" "filepath" "$FILEPATH" "stars" "$STAR_RATING"

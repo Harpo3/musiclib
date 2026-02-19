@@ -17,18 +17,18 @@ All MusicLib backend scripts use a standardized exit code contract:
 | Exit Code | Semantic | When to Use | Example |
 |-----------|----------|-------------|---------|
 | **0** | Success | Operation completed successfully, all side effects applied | `musiclib_rate.sh` updates rating in DSV, file tags, Conky assets, and DB |
-| **1** | User/Validation Error | Invalid input, missing preconditions, user cancellation | Invalid star rating (not 0–5), file not in database, user Ctrl-C |
+| **1** | User/Validation Error | Invalid input, missing preconditions, user cancellation | Invalid star rating (not 0â€“5), file not in database, user Ctrl-C |
 | **2** | System/Operational Error | Config missing, tool unavailable, I/O failure, lock timeout | `kid3-cli` not installed, DB file unreadable, permissions denied, `flock` timeout >5s |
-| **3** | Deferred | Operation queued for retry due to lock contention | Lock timeout → operation added to pending queue, success notification delayed |
+| **3** | Deferred | Operation queued for retry due to lock contention | Lock timeout â†’ operation added to pending queue, success notification delayed |
 
 **Current Status**: Exit code 3 (deferred operations) is **proposed design, not yet implemented**. Currently, lock timeouts return exit code 2.
 
 **Usage Rules**:
-1. **Exit 0 only on complete success** — All required side effects must be applied (file tags, DB updates, notifications, Conky artifacts). Partial success is exit 2.
-2. **Exit 1 for user errors** — Validate arguments and preconditions before operations. Exit 1 immediately with no side effects if validation fails.
-3. **Exit 2 for system failures** — Config errors, missing tools, permissions, I/O failures, lock timeouts (until exit 3 implemented).
-4. **Exit 3 for deferred work** — Operation queued to process pending file, user gets "pending" notification now, "completed" notification later.
-5. **No other exit codes** — Scripts must only use 0, 1, 2, or 3.
+1. **Exit 0 only on complete success** â€” All required side effects must be applied (file tags, DB updates, notifications, Conky artifacts). Partial success is exit 2.
+2. **Exit 1 for user errors** â€” Validate arguments and preconditions before operations. Exit 1 immediately with no side effects if validation fails.
+3. **Exit 2 for system failures** â€” Config errors, missing tools, permissions, I/O failures, lock timeouts (until exit 3 implemented).
+4. **Exit 3 for deferred work** â€” Operation queued to process pending file, user gets "pending" notification now, "completed" notification later.
+5. **No other exit codes** â€” Scripts must only use 0, 1, 2, or 3.
 
 ---
 
@@ -109,7 +109,7 @@ Scripts access locking through `musiclib_utils.sh` functions, not direct `flock`
 
 ##### `error_exit(exit_code, error_message, [key value ...])`
 
-Outputs JSON error to stderr and returns exit code. **Does not exit** — caller must handle.
+Outputs JSON error to stderr and returns exit code. **Does not exit** â€” caller must handle.
 
 **Signature**:
 ```bash
@@ -182,7 +182,7 @@ release_db_lock
 
 - Lock file: `${MUSICDB}.lock` (e.g., `~/.local/share/musiclib/data/musiclib.dsv.lock`)
 - Automatically created/removed by utility functions
-- Safe for NFS with kernel ≥2.6.12 (document: local filesystems recommended)
+- Safe for NFS with kernel â‰¥2.6.12 (document: local filesystems recommended)
 
 ---
 
@@ -231,36 +231,46 @@ echo "Music repo: $MUSIC_REPO"
 
 **Invocation**:
 ```bash
-musiclib_rate.sh FILEPATH RATING
+musiclib_rate.sh STAR_RATING [FILEPATH]
 ```
 
 **Parameters**:
-- `FILEPATH`: Absolute path to audio file (must exist in DB)
-- `RATING`: Integer 0–5 (0=unrated, 5=highest)
+- `STAR_RATING`: Integer 0–5 (0=unrated, 5=highest)
+- `FILEPATH`: *(Optional)* Absolute path to audio file. When provided, rates that specific file directly (GUI mode). When omitted, queries Audacious for the currently playing track (keyboard shortcut mode).
+
+**Behavior by mode**:
+- **GUI mode** (`FILEPATH` provided): Requires `kid3-cli`. Does **not** require Audacious to be running. Allows rating any track in the library regardless of playback state.
+- **Keyboard shortcut mode** (`FILEPATH` omitted): Requires both `audtool` and `kid3-cli`. Audacious must be running with a track playing. Rates whatever is currently playing.
 
 **Side Effects**:
-- Updates `musiclib.dsv` (Rating column)
+- Updates `musiclib.dsv` (Rating and GroupDesc columns)
 - Updates POPM tag in file (via `kid3-cli`)
-- Updates Grouping tag (star symbols: ★★★★★)
-- Regenerates Conky assets (`starrating.png`, `detail.txt`)
+- Updates Work/TIT1 tag to match GroupDesc
+- Regenerates Conky assets (`starrating.png`, `currgpnum.txt`)
 - Logs to `musiclib.log`
-- Sends KNotification (if GUI running)
+- Shows KDE notification (via `kdialog`, if available)
 
 **Exit Codes**:
 - 0: Success
-- 1: Invalid rating, file not in DB, file not found
-- 2: `kid3-cli` unavailable, tag write failure, DB lock timeout
+- 1: Invalid rating, no track playing (shortcut mode only), file not found
+- 2: `kid3-cli` unavailable, tag write failure, DB I/O error
+- 3: Deferred — operation queued due to database lock contention
 
-**Example**:
+**Examples**:
 ```bash
-musiclib-cli rate "/mnt/music/Pink Floyd/Dark Side/Money.mp3" 5
+# GUI mode: rate a specific file
+musiclib-cli rate 5 "/mnt/music/Pink Floyd/Dark Side/Money.mp3"
+
+# Keyboard shortcut mode: rate currently playing track
+musiclib_rate.sh 4
 ```
 
-**Equivalent GUI**: Right-click track → Rate → 5 stars, or inline star click
+**Equivalent GUI**: Inline star click in library view, or right-click track → Rate submenu
+
 
 ---
 
-### 2.2 `musiclib-cli mobile upload` → `musiclib_mobile.sh upload`
+### 2.2 `musiclib-cli mobile upload` â†’ `musiclib_mobile.sh upload`
 
 **Purpose**: Transfer playlist to Android device via KDE Connect, update last-played timestamps.
 
@@ -298,11 +308,11 @@ musiclib_mobile.sh upload DEVICE_ID PLAYLIST_FILE
 musiclib-cli mobile upload abc123def456 "/home/user/.local/share/musiclib/playlists/workout.audpl"
 ```
 
-**Equivalent GUI**: Mobile panel → Select playlist → Select device → Upload
+**Equivalent GUI**: Mobile panel â†’ Select playlist â†’ Select device â†’ Upload
 
 ---
 
-### 2.3 `musiclib-cli mobile status` → `musiclib_mobile.sh status`
+### 2.3 `musiclib-cli mobile status` â†’ `musiclib_mobile.sh status`
 
 **Purpose**: Show last mobile upload timestamp and device info.
 
@@ -324,7 +334,7 @@ Playlist: workout.audpl (42 tracks)
 
 ---
 
-### 2.4 `musiclib-cli build` → `musiclib_build.sh`
+### 2.4 `musiclib-cli build` â†’ `musiclib_build.sh`
 
 **Purpose**: Full DB build/rebuild from filesystem scan of `MUSIC_REPO`.
 
@@ -360,13 +370,13 @@ musiclib-cli build --dry-run
 musiclib-cli build
 ```
 
-**Equivalent GUI**: Maintenance panel → Database Operations → Build Library
+**Equivalent GUI**: Maintenance panel â†’ Database Operations â†’ Build Library
 
 ---
 
-### 2.5 `musiclib-cli tagclean` → `musiclib_tagclean.sh`
+### 2.5 `musiclib-cli tagclean` â†’ `musiclib_tagclean.sh`
 
-**Purpose**: Merge ID3v1 → ID3v2, remove APE tags, embed album art, normalize tag structure.
+**Purpose**: Merge ID3v1 â†’ ID3v2, remove APE tags, embed album art, normalize tag structure.
 
 **Invocation**:
 ```bash
@@ -378,7 +388,7 @@ musiclib_tagclean.sh PATH [--mode MODE]
 - `--mode MODE`: `merge` (default), `strip`, `embed-art`
 
 **Modes**:
-- `merge`: ID3v1 → ID3v2.4, remove ID3v1, remove APE, embed art if missing
+- `merge`: ID3v1 â†’ ID3v2.4, remove ID3v1, remove APE, embed art if missing
 - `strip`: Remove ID3v1 and APE only
 - `embed-art`: Embed `folder.jpg` from directory if no art present
 
@@ -397,11 +407,11 @@ musiclib_tagclean.sh PATH [--mode MODE]
 musiclib-cli tagclean "/mnt/music/Pink Floyd" --mode merge
 ```
 
-**Equivalent GUI**: Maintenance panel → Tag Operations → Clean Tags → Select directory → Mode: Merge
+**Equivalent GUI**: Maintenance panel â†’ Tag Operations â†’ Clean Tags â†’ Select directory â†’ Mode: Merge
 
 ---
 
-### 2.6 `musiclib-cli tagrebuild` → `musiclib_tagrebuild.sh`
+### 2.6 `musiclib-cli tagrebuild` â†’ `musiclib_tagrebuild.sh`
 
 **Purpose**: Rebuild corrupted tags from DB values (repair tool).
 
@@ -435,11 +445,11 @@ musiclib_tagrebuild.sh FILEPATH
 musiclib-cli tagrebuild "/mnt/music/corrupted/song.mp3"
 ```
 
-**Equivalent GUI**: Maintenance panel → Tag Operations → Rebuild Tags → Select file
+**Equivalent GUI**: Maintenance panel â†’ Tag Operations â†’ Rebuild Tags â†’ Select file
 
 ---
 
-### 2.7 `musiclib-cli boost` → `boost_album.sh`
+### 2.7 `musiclib-cli boost` â†’ `boost_album.sh`
 
 **Purpose**: Apply ReplayGain loudness targeting to album (via `rsgain`).
 
@@ -471,11 +481,11 @@ boost_album.sh ALBUM_DIR [--target TARGET_LUFS]
 musiclib-cli boost "/mnt/music/Pink Floyd/The Wall" --target -16
 ```
 
-**Equivalent GUI**: Maintenance panel → Loudness Operations → Boost Album → Select directory
+**Equivalent GUI**: Maintenance panel â†’ Loudness Operations â†’ Boost Album â†’ Select directory
 
 ---
 
-### 2.8 `musiclib-cli scan` → `audpl_scanner.sh`
+### 2.8 `musiclib-cli scan` â†’ `audpl_scanner.sh`
 
 **Purpose**: Scan playlists and generate cross-reference CSV (which playlists contain which tracks).
 
@@ -507,11 +517,11 @@ chill.audpl,/mnt/music/Pink Floyd/Dark Side/Time.mp3,Pink Floyd,The Dark Side of
 musiclib-cli scan > playlist_cross_reference.csv
 ```
 
-**Equivalent GUI**: Maintenance panel → Playlist Operations → Scan Playlists
+**Equivalent GUI**: Maintenance panel â†’ Playlist Operations â†’ Scan Playlists
 
 ---
 
-### 2.9 `musiclib-cli new-tracks` → `musiclib_new_tracks.sh`
+### 2.9 `musiclib-cli new-tracks` â†’ `musiclib_new_tracks.sh`
 
 **Purpose**: Import new music downloads into library (normalize tags, rename, add to DB).
 
@@ -559,11 +569,11 @@ musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music
 musiclib-cli new-tracks "pink_floyd" --dry-run
 ```
 
-**Equivalent GUI**: Maintenance panel → Import New Tracks → Select artist → Import
+**Equivalent GUI**: Maintenance panel â†’ Import New Tracks â†’ Select artist â†’ Import
 
 ---
 
-### 2.10 `musiclib-cli audacious-hook` → `musiclib_audacious.sh` (Song-Change Hook)
+### 2.10 `musiclib-cli audacious-hook` â†’ `musiclib_audacious.sh` (Song-Change Hook)
 
 **Purpose**: Update Conky display assets and last-played timestamp when Audacious plays a new track.
 
@@ -586,13 +596,13 @@ musiclib_audacious.sh
 3. Extract album art to Conky display directory
 4. Write track metadata to Conky text files (artist, album, title, rating, last played)
 5. Select appropriate star-rating PNG for display
-6. Monitor playback to scrobble threshold (50% of track, bounded 30s–4min)
+6. Monitor playback to scrobble threshold (50% of track, bounded 30sâ€“4min)
 7. Once threshold met, update `LastTimePlayed` in DSV and file tag
 8. Append to `audacioushist.log`
 9. Optionally send KNotification
 
 **Side Effects** (all atomic via lock):
-- **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies – all written to `$MUSIC_DISPLAY_DIR/`
+- **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies â€“ all written to `$MUSIC_DISPLAY_DIR/`
 - **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` (only after scrobble threshold met)
 - **File tags**: Updates `Songs-DB_Custom1` tag with last-played timestamp
 - **Logs**: Appends to `audacioushist.log` and `musiclib.log`
@@ -656,15 +666,15 @@ STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
 
 **Troubleshooting**:
 
-If the hook is not firing: check that the Song Change plugin is enabled in Audacious (Settings → Plugins), verify the command path is correct, confirm the hook script is executable (`chmod +x`), and ensure `audtool` is installed.
+If the hook is not firing: check that the Song Change plugin is enabled in Audacious (Settings â†’ Plugins), verify the command path is correct, confirm the hook script is executable (`chmod +x`), and ensure `audtool` is installed.
 
 If Conky files are not updating: check the output directory exists and has correct permissions, and check for database lock timeouts in `musiclib.log`.
 
-**Performance**: Typical execution 50–200ms. CPU negligible, memory <5MB, disk I/O ~50KB per song change.
+**Performance**: Typical execution 50â€“200ms. CPU negligible, memory <5MB, disk I/O ~50KB per song change.
 
 ---
 
-### 2.11 `musiclib-cli setup` → `musiclib_init_config.sh`
+### 2.11 `musiclib-cli setup` â†’ `musiclib_init_config.sh`
 
 **Purpose**: Interactive first-run configuration wizard. Detects system capabilities, creates directory structure, generates configuration, provides Audacious Song Change plugin setup instructions, and optionally verifies the integration.
 
@@ -737,9 +747,9 @@ ID^Artist^IDAlbum^Album^AlbumArtist^SongTitle^SongPath^Genre^SongLength^Rating^C
 | `SongPath` | String | Absolute file path | `/mnt/music/Pink Floyd/Dark Side/Time.mp3` |
 | `Genre` | String | Genre | `Progressive Rock` |
 | `SongLength` | Integer | Duration (milliseconds) | `415320` |
-| `Rating` | Integer | Star rating (0–5) | `5` |
+| `Rating` | Integer | Star rating (0â€“5) | `5` |
 | `Custom2` | String | Reserved (future use) | `` |
-| `GroupDesc` | String | Star symbols for Conky | `★★★★★` |
+| `GroupDesc` | String | Star symbols for Conky | `â˜…â˜…â˜…â˜…â˜…` |
 | `LastTimePlayed` | Float | Excel serial time | `45678.543210` |
 
 **Notes**:
@@ -775,7 +785,7 @@ ScriptResult runScript(const QString& scriptPath, const QStringList& args) {
 
 // Usage
 auto result = runScript("/usr/lib/musiclib/bin/musiclib_rate.sh", 
-                        {filePath, "4"});
+                        {"4", filePath});
 if (result.exitCode != 0) {
     auto errorDoc = QJsonDocument::fromJson(result.stderr);
     auto errorObj = errorDoc.object();
@@ -806,13 +816,15 @@ connect(&debounceTimer, &QTimer::timeout,
 **Example** (`musiclib-cli rate`):
 ```cpp
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: musiclib-cli rate FILEPATH RATING\n";
+    if (argc < 2) {
+        std::cerr << "Usage: musiclib-cli rate RATING [FILEPATH]\n";
         return 1;
     }
 
     std::string scriptPath = "/usr/lib/musiclib/bin/musiclib_rate.sh";
-    std::vector<std::string> args = {argv[1], argv[2]};
+    std::vector<std::string> args = {argv[1]};  // RATING
+    if (argc >= 3)
+        args.push_back(argv[2]);                // optional FILEPATH
 
     int exitCode = execScript(scriptPath, args);
     return exitCode;
@@ -834,10 +846,10 @@ Test files should live in `tests/fixtures/`:
 
 ### 5.2 Expected Behaviors (Idempotency)
 
-- Running `musiclib_new_tracks.sh` twice on same file → exit 1 (already in DB), no DB change
-- Running `musiclib_rate.sh` with same rating → exit 0 (no-op update, DSV unchanged)
-- Running `musiclib_rebuild.sh --dry-run` → exit 1 (informational, not an error), no DB change
-- Running `musiclib_tagclean.sh` twice on same file → exit 0 (idempotent, tags already clean)
+- Running `musiclib_new_tracks.sh` twice on same file â†’ exit 1 (already in DB), no DB change
+- Running `musiclib_rate.sh` with same rating â†’ exit 0 (no-op update, DSV unchanged)
+- Running `musiclib_rebuild.sh --dry-run` â†’ exit 1 (informational, not an error), no DB change
+- Running `musiclib_tagclean.sh` twice on same file â†’ exit 0 (idempotent, tags already clean)
 
 ### 5.3 Integration Test Examples
 
@@ -880,7 +892,7 @@ if (apiVersion != "1.0") {
 When adding columns to `musiclib.dsv`:
 1. **Append** new columns to end (preserve column indices)
 2. Provide **default values** for existing rows in `musiclib_rebuild.sh`
-3. Update `BACKEND_API_VERSION` minor number (1.0 → 1.1)
+3. Update `BACKEND_API_VERSION` minor number (1.0 â†’ 1.1)
 4. Document in `docs/MIGRATION.md`
 
 **Example**:
@@ -1012,7 +1024,7 @@ They exist for specific pre-setup or maintenance scenarios where the user runs t
 
 ---
 
-### 10.2 `conform_musiclib.sh` — Filename Conformance Tool
+### 10.2 `conform_musiclib.sh` â€” Filename Conformance Tool
 
 **Purpose**: Rename non-conforming music filenames to MusicLib naming standards **before** database creation.
 
@@ -1033,10 +1045,10 @@ They exist for specific pre-setup or maintenance scenarios where the user runs t
 ```
 
 **Naming Rules Applied**:
-- Lowercase only (`Track_01.mp3` → `track_01.mp3`)
-- Spaces become underscores (`My Song.mp3` → `my_song.mp3`)
-- Non-ASCII transliterated (`Café.mp3` → `cafe.mp3`)
-- Multiple underscores collapsed (`a__b.mp3` → `a_b.mp3`)
+- Lowercase only (`Track_01.mp3` â†’ `track_01.mp3`)
+- Spaces become underscores (`My Song.mp3` â†’ `my_song.mp3`)
+- Non-ASCII transliterated (`CafÃ©.mp3` â†’ `cafe.mp3`)
+- Multiple underscores collapsed (`a__b.mp3` â†’ `a_b.mp3`)
 - Safe characters only: `a-z`, `0-9`, `_`, `-`, `.`
 
 **Safety Features**:

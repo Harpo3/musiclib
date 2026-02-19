@@ -40,17 +40,17 @@ void showGlobalHelp() {
     cout << "Use 'musiclib-cli <subcommand> --help' for subcommand-specific help." << Qt::endl;
     cout << Qt::endl;
     cout << "Examples:" << Qt::endl;
-    cout << "  musiclib-cli setup                                     # First-time configuration" << Qt::endl;
-    cout << "  musiclib-cli rate 4                                    # Rate currently playing track" << Qt::endl;
-    cout << "  musiclib-cli rate 4 \"/mnt/music/song.mp3\"              # Rate specific file" << Qt::endl;
-    cout << "  musiclib-cli build --dry-run                           # Preview database rebuild" << Qt::endl;
-    cout << "  musiclib-cli mobile upload workout.audpl               # Upload playlist to mobile" << Qt::endl;
-    cout << "  musiclib-cli mobile refresh-audacious-only             # Sync all Audacious playlists" << Qt::endl;
-    cout << "  musiclib-cli mobile status                             # Show mobile sync status" << Qt::endl;
-    cout << "  musiclib-cli new-tracks \"Pink Floyd\"                  # Import new downloads for artist" << Qt::endl;
-    cout << "  musiclib-cli tagclean process /mnt/music/album -r      # Clean tags recursively" << Qt::endl;
-    cout << "  musiclib-cli tagrebuild \"/mnt/music/corrupted.mp3\"     # Repair tags from database" << Qt::endl;
-    cout << "  musiclib-cli process-pending                           # Retry deferred operations" << Qt::endl;
+    cout << "  musiclib-cli setup                                               # First-time configuration" << Qt::endl;
+    cout << "  musiclib-cli rate 4                                              # Rate currently playing track" << Qt::endl;
+    cout << "  musiclib-cli rate 4 \"/mnt/music/artist/album/song.mp3\"         # Rate specific file" << Qt::endl;
+    cout << "  musiclib-cli build --dry-run                                     # Preview database rebuild" << Qt::endl;
+    cout << "  musiclib-cli mobile upload workout.audpl                         # Upload playlist to mobile" << Qt::endl;
+    cout << "  musiclib-cli mobile refresh-audacious-only                       # Sync all Audacious playlists" << Qt::endl;
+    cout << "  musiclib-cli mobile status                                       # Show mobile sync status" << Qt::endl;
+    cout << "  musiclib-cli new-tracks \"Pink Floyd\"                           # Import new downloads for artist" << Qt::endl;
+    cout << "  musiclib-cli tagclean process /mnt/music/artist/album -r         # Clean tags recursively" << Qt::endl;
+    cout << "  musiclib-cli tagrebuild \"/mnt/music/artist/album/corrupted.mp3\"    # Repair tags from database" << Qt::endl;
+    cout << "  musiclib-cli process-pending                                     # Retry deferred operations" << Qt::endl;
 }
 
 int main(int argc, char *argv[]) {

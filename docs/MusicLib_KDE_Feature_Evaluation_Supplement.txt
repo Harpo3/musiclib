@@ -12,6 +12,9 @@ A small `sanitize_dsv_field()` function in `musiclib_utils.sh` that strips or re
 
 The combination of sanitize-on-write plus field-count validation on read covers both prevention and detection without adding meaningful overhead.
 
+GUI Feature to add or remove columns from table view, including file path.
+
+
 **`musiclib_mobile.sh` multi-format playlist support**
 
 musiclib_mobile.sh upload assumes only playlist.audpl format, however, any format convertable to .m3u playlist (which uses basenames only) should be included.

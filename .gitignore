@@ -36,6 +36,7 @@ data/
 playlists/
 logs/
 config/musiclib.conf
+config/*.confbak
 
 # ----- Test output -----
 Testing/

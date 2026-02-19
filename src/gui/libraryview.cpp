@@ -52,6 +52,7 @@ LibraryView::LibraryView(QWidget *parent)
     m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
     m_tableView->setAlternatingRowColors(true);
+    m_tableView->setMouseTracking(true);       // needed for hover preview on stars
     m_tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_tableView->verticalHeader()->hide();
     m_tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
@@ -60,6 +61,7 @@ LibraryView::LibraryView(QWidget *parent)
     m_tableView->sortByColumn(static_cast<int>(TrackColumn::Artist), Qt::AscendingOrder);
 
     // Install star rating delegate on the GroupDesc (Stars) column
+    m_ratingDelegate->setView(m_tableView);    // delegate needs view for hover repaints
     m_tableView->setItemDelegateForColumn(
         static_cast<int>(TrackColumn::GroupDesc), m_ratingDelegate);
 
