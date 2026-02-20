@@ -1,28 +1,54 @@
-#pragma once
+// mainwindow.h
+// MusicLib Qt GUI - Main Window (Dolphin-style sidebar layout)
+// Phase 2: Settings Dialog prerequisite - Main window redesign
+//
+// Replaces QTabWidget (tabs at top) with:
+//   - QListWidget sidebar for panel navigation (Dolphin Places-style)
+//   - QStackedWidget for panel content
+//   - KToolBar with Now Playing, Album, Playlist, Audacious, Kid3 actions
+//   - Rich status bar with track details from conky output + audtool
+//
+// Copyright (c) 2026 MusicLib Project
+
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
 
 #include <KXmlGuiWindow>
 
-class QTabWidget;
-class QLabel;
+#include <QListWidget>
+#include <QStackedWidget>
+#include <QLabel>
+#include <QTimer>
+#include <QComboBox>
+#include <QProcess>
+#include <QFileSystemWatcher>
+#include <QToolButton>
+
+// Forward declarations - existing panels
 class LibraryView;
-class ScriptRunner;
+class LibraryModel;
 class MaintenancePanel;
+class ScriptRunner;
+
+// Forward declaration - new album window
+class AlbumWindow;
 
 /**
- * Main application window for MusicLib.
+ * @brief Main application window with Dolphin-style sidebar navigation.
  *
- * Inherits KXmlGuiWindow for native KDE integration:
- *   - Standard menus (File, Settings, Help) via setupGUI()
- *   - Configurable toolbar
- *   - Window size/position saved automatically via KConfig
- *   - Status bar
- *
- * The central widget is a QTabWidget. Phase 2 panels plug in
- * via addTab():
- *   Tab 0: Library   (this file)
- *   Tab 1: Maintenance  (this file)
- *   Tab 2: Mobile       (future)
- *   Tab 3: Settings     (future, or as a dialog)
+ * Layout:
+ *   ┌─────────┬────────────────────────────────────┐
+ *   │ Toolbar: Now Playing ★★★ | Album | Playlist ▼ | Audacious | Kid3 │
+ *   ├─────────┼────────────────────────────────────┤
+ *   │         │                                    │
+ *   │ Library │     Active Panel Content           │
+ *   │ Maint.  │                                    │
+ *   │ Mobile  │                                    │
+ *   │ Settings│                                    │
+ *   │         │                                    │
+ *   ├─────────┴────────────────────────────────────┤
+ *   │ Status: Playing: Artist - Album (Year) - Title  Last Played: ...  │
+ *   └─────────────────────────────────────────────────────────────────────┘
  */
 class MainWindow : public KXmlGuiWindow
 {
@@ -32,34 +58,132 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+    /// Switch to a specific panel by index
+    void switchToPanel(int index);
+
+    /// Switch to Mobile panel with a specific playlist pre-selected
+    void switchToMobileWithPlaylist(const QString &playlistPath);
+
+    /// Panel indices for sidebar navigation
+    enum PanelIndex {
+        PanelLibrary = 0,
+        PanelMaintenance,
+        PanelMobile,
+        PanelSettings,
+        PanelCount  // sentinel - must be last
+    };
+
+public Q_SLOTS:
+    /// Refresh now-playing data from conky output files and audtool
+    void refreshNowPlaying();
+
+    /// Rate the currently playing track (called from toolbar stars or global shortcut)
+    void rateCurrentTrack(int stars);
+
+    /// Open album detail window for the currently playing track
+    void showAlbumWindow();
+
+    /// Raise or launch Audacious
+    void activateAudacious();
+
+    /// Raise or launch Kid3-qt
+    void activateKid3();
+
+private Q_SLOTS:
+    /// Sidebar selection changed
+    void onSidebarItemChanged(int currentRow);
+
+    /// Playlist dropdown selection changed
+    void onPlaylistSelected(int index);
+
+    /// DSV file changed on disk (QFileSystemWatcher)
+    void onDatabaseChanged(const QString &path);
+
+    /// Now-playing poll timer fired
+    void onNowPlayingTimer();
+
+    /// Handle audtool process finished (for async queries)
+    void onAudtoolFinished(int exitCode, QProcess::ExitStatus exitStatus);
+
 private:
-    void setupTabs();
+    // ── Setup methods ──
+    void setupSidebar();
+    void setupPanels();
+    void setupToolbar();
     void setupStatusBar();
+    void setupNowPlayingTimer();
+    void setupFileWatcher();
     void setupActions();
-    void loadDatabase();
 
-    /**
-     * Read musiclib.conf and return the value for a given key.
-     * Config search order:
-     *   1. ~/musiclib/config/musiclib.conf  (dev / legacy layout)
-     *   2. ~/.config/musiclib/musiclib.conf (XDG standard)
-     * Returns empty string if key not found.
-     */
-    QString configValue(const QString &key) const;
+    // ── Data reading helpers ──
+    /// Read a single-line text file, trimmed. Returns empty string on failure.
+    QString readConkyFile(const QString &filename) const;
 
-    /**
-     * Resolve the database path from config or fall back to
-     * the well-known default location.
-     */
-    QString resolveDatabasePath() const;
+    /// Get the conky output directory path from config
+    QString conkyOutputDir() const;
 
-    // --- Widgets ---
-    QTabWidget   *m_tabWidget       = nullptr;
-    LibraryView  *m_libraryView     = nullptr;
-    ScriptRunner      *m_scriptRunner      = nullptr;
-    MaintenancePanel  *m_maintenancePanel  = nullptr;
+    /// Query audtool for a value (synchronous, with short timeout)
+    QString queryAudtool(const QStringList &args) const;
 
-    // --- Status bar widgets (permanent) ---
-    QLabel       *m_trackCountLabel = nullptr;
-    QLabel       *m_dbPathLabel     = nullptr;
+    /// Populate the playlist dropdown from the playlists directory
+    void populatePlaylistDropdown();
+
+    /// Raise an external application window, launching if needed
+    void raiseOrLaunchApp(const QString &processName, const QString &executablePath);
+
+    /// Build status bar text from current now-playing data
+    QString buildStatusBarText() const;
+
+    // ── Layout widgets ──
+    QListWidget    *m_sidebar;         ///< Left navigation panel
+    QStackedWidget *m_panelStack;      ///< Stacked content panels
+
+    // ── Panels ──
+    LibraryView      *m_libraryPanel;       ///< Library browser panel
+    MaintenancePanel *m_maintenancePanel;   ///< Maintenance operations panel
+    QWidget          *m_mobilePanel;        ///< Mobile sync panel
+    QWidget          *m_settingsPanel;      ///< Settings/config panel (placeholder)
+
+    // ── Toolbar widgets ──
+    QLabel      *m_nowPlayingLabel;    ///< "Artist – Title" text in toolbar
+    QToolButton *m_starButtons[6];     ///< Star rating buttons 0-5 (0 = clear)
+    QComboBox   *m_playlistDropdown;   ///< Playlist selector dropdown
+
+    // ── Status bar widgets ──
+    QLabel *m_statusLabel;             ///< Rich status bar text
+
+    // ── Data model ──
+    LibraryModel *m_libraryModel;      ///< DSV data model
+    ScriptRunner *m_scriptRunner;      ///< Shell script invoker
+
+    // ── Timers and watchers ──
+    QTimer             *m_nowPlayingTimer;  ///< Poll conky output files
+    QFileSystemWatcher *m_fileWatcher;      ///< Watch musiclib.dsv for changes
+
+    // ── Current now-playing state (cached from last poll) ──
+    struct NowPlayingData {
+        QString artist;
+        QString album;
+        QString title;
+        QString year;
+        QString comment;         // detail.txt
+        QString lastPlayed;
+        QString ratingGroup;     // currgpnum.txt (0-5)
+        QString playlistName;
+        int     playlistPosition = 0;
+        int     playlistLength   = 0;
+        QString songPath;        // full path of current track
+        bool    isPlaying        = false;
+    };
+    NowPlayingData m_nowPlaying;
+
+    // ── Album window ──
+    AlbumWindow *m_albumWindow = nullptr;
+
+    // ── Config cache ──
+    QString m_musicDisplayDir;   // conky output directory
+    QString m_databasePath;      // musiclib.dsv path
+    QString m_playlistsDir;      // playlists directory
 };
+
+#endif // MAINWINDOW_H
