@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "libraryview.h"
+#include "maintenancepanel.h"
+#include "scriptrunner.h"
 
 #include <KStandardAction>
 #include <KActionCollection>
@@ -43,9 +45,13 @@ void MainWindow::setupTabs()
     m_tabWidget->addTab(m_libraryView,
                         QIcon::fromTheme("view-media-playlist"),
                         i18n("Library"));
+    
+    // --- Tab 1: Maintenance ---
+    m_scriptRunner = new ScriptRunner(this);
+    m_maintenancePanel = new MaintenancePanel(m_scriptRunner, this);
+    m_tabWidget->addTab(m_maintenancePanel, QIcon::fromTheme("configure"), i18n("Maintenance"));
 
     // Future tabs will be added here, e.g.:
-    //   m_tabWidget->addTab(m_maintenancePanel, QIcon::fromTheme("configure"), i18n("Maintenance"));
     //   m_tabWidget->addTab(m_mobilePanel,      QIcon::fromTheme("smartphone"), i18n("Mobile"));
 
     setCentralWidget(m_tabWidget);

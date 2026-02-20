@@ -5,6 +5,7 @@ set(GUI_SOURCES
     libraryview.cpp
     ratingdelegate.cpp
     scriptrunner.cpp
+    maintenancepanel.cpp
 )
 
 add_executable(musiclib-qt ${GUI_SOURCES})

@@ -5,6 +5,8 @@
 class QTabWidget;
 class QLabel;
 class LibraryView;
+class ScriptRunner;
+class MaintenancePanel;
 
 /**
  * Main application window for MusicLib.
@@ -18,7 +20,7 @@ class LibraryView;
  * The central widget is a QTabWidget. Phase 2 panels plug in
  * via addTab():
  *   Tab 0: Library   (this file)
- *   Tab 1: Maintenance  (future)
+ *   Tab 1: Maintenance  (this file)
  *   Tab 2: Mobile       (future)
  *   Tab 3: Settings     (future, or as a dialog)
  */
@@ -54,6 +56,8 @@ private:
     // --- Widgets ---
     QTabWidget   *m_tabWidget       = nullptr;
     LibraryView  *m_libraryView     = nullptr;
+    ScriptRunner      *m_scriptRunner      = nullptr;
+    MaintenancePanel  *m_maintenancePanel  = nullptr;
 
     // --- Status bar widgets (permanent) ---
     QLabel       *m_trackCountLabel = nullptr;
