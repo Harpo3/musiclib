@@ -65,6 +65,7 @@ if(BUILD_GUI)
     find_package(KF6CoreAddons REQUIRED)
     find_package(KF6XmlGui REQUIRED)
     find_package(KF6WidgetsAddons REQUIRED)
+    find_package(KF6I18n REQUIRED)
     add_subdirectory(src/gui)
 endif()
 

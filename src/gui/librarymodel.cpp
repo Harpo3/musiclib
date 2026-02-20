@@ -29,6 +29,21 @@ LibraryModel::LibraryModel(QObject *parent)
             this, &LibraryModel::reloadDebounced);
 }
 
+LibraryModel::~LibraryModel()
+{
+    // Shut down async machinery before Qt destroys child objects.
+    // Without this, the watcher or timer can fire during KXmlGuiWindow
+    // teardown, calling slots on a partially-destroyed object tree.
+    if (m_debounceTimer) {
+        m_debounceTimer->stop();
+        disconnect(m_debounceTimer, nullptr, this, nullptr);
+    }
+    if (m_watcher) {
+        m_watcher->removePaths(m_watcher->files());
+        disconnect(m_watcher, nullptr, this, nullptr);
+    }
+}
+
 bool LibraryModel::loadFromFile(const QString &path)
 {
     m_dsvPath = path;

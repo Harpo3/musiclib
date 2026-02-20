@@ -16,6 +16,7 @@ target_link_libraries(musiclib-qt
         KF6::CoreAddons
         KF6::XmlGui
         KF6::WidgetsAddons
+        KF6::I18n
 )
 
 target_include_directories(musiclib-qt
