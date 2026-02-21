@@ -83,11 +83,11 @@ public Q_SLOTS:
     /// Open album detail window for the currently playing track
     void showAlbumWindow();
 
-    /// Raise or launch Audacious
-    void activateAudacious();
+    /// Raise Audacious to the foreground, or launch it if not running.
+    void onRaiseAudacious();
 
-    /// Raise or launch Kid3-qt
-    void activateKid3();
+    /// Open the currently playing track in Kid3, or raise Kid3 if already running.
+    void onOpenKid3();
 
 private Q_SLOTS:
     /// Sidebar selection changed
@@ -128,8 +128,13 @@ private:
     /// Populate the playlist dropdown from the playlists directory
     void populatePlaylistDropdown();
 
-    /// Raise an external application window, launching if needed
-    void raiseOrLaunchApp(const QString &processName, const QString &executablePath);
+    /// Raise an external window by WM_CLASS (X11) or caption (Wayland).
+    /// On X11: uses KX11Extras::forceActiveWindow() with KWindowInfo for class matching.
+    /// On Wayland: uses KWin D-Bus activateWindow().
+    void raiseWindowByClass(const QString &windowClass);
+
+    /// Check whether a process is currently running (by exact name match via pgrep)
+    bool isProcessRunning(const QString &processName) const;
 
     /// Build status bar text from current now-playing data
     QString buildStatusBarText() const;

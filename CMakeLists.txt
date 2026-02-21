@@ -61,11 +61,12 @@ add_subdirectory(src/cli)
 
 option(BUILD_GUI "Build Qt6/KDE GUI application" OFF)
 if(BUILD_GUI)
-    find_package(Qt6 REQUIRED COMPONENTS Widgets)
+    find_package(Qt6 REQUIRED COMPONENTS Widgets DBus)
     find_package(KF6CoreAddons REQUIRED)
     find_package(KF6XmlGui REQUIRED)
     find_package(KF6WidgetsAddons REQUIRED)
     find_package(KF6I18n REQUIRED)
+    find_package(KF6WindowSystem REQUIRED)
     add_subdirectory(src/gui)
 endif()
 

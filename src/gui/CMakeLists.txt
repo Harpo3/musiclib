@@ -15,10 +15,12 @@ target_link_libraries(musiclib-qt
     PRIVATE
         musiclib_common
         Qt6::Widgets
+        Qt6::DBus
         KF6::CoreAddons
         KF6::XmlGui
         KF6::WidgetsAddons
         KF6::I18n
+        KF6::WindowSystem
 )
 
 target_include_directories(musiclib-qt

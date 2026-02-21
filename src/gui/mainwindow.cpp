@@ -14,6 +14,10 @@
 #include <KActionCollection>
 #include <KStandardAction>
 #include <KLocalizedString>
+#include <KWindowSystem>
+#include <KX11Extras>
+#include <KWindowInfo>
+#include <netwm_def.h>
 
 #include <QApplication>
 #include <QHBoxLayout>
@@ -30,6 +34,8 @@
 #include <QIcon>
 #include <QFont>
 #include <QMessageBox>
+#include <QThread>
+#include <QDBusInterface>
 
 // ═════════════════════════════════════════════════════════════
 // Construction / Destruction
@@ -292,16 +298,19 @@ void MainWindow::setupToolbar()
     QAction *audaciousAction = new QAction(
         QIcon::fromTheme(QStringLiteral("audacious")),
         i18n("Audacious"), this);
-    audaciousAction->setToolTip(i18n("Switch to Audacious (launch if needed)"));
-    connect(audaciousAction, &QAction::triggered, this, &MainWindow::activateAudacious);
+    audaciousAction->setToolTip(i18n("Launch Audacious or raise it to the foreground"));
+    connect(audaciousAction, &QAction::triggered,
+            this, &MainWindow::onRaiseAudacious);
     toolbar->addAction(audaciousAction);
 
     // ── Kid3 button ──
     QAction *kid3Action = new QAction(
         QIcon::fromTheme(QStringLiteral("kid3-qt")),
         i18n("Kid3"), this);
-    kid3Action->setToolTip(i18n("Switch to Kid3 tag editor (launch if needed)"));
-    connect(kid3Action, &QAction::triggered, this, &MainWindow::activateKid3);
+    kid3Action->setToolTip(
+        i18n("Open current track in Kid3, or raise Kid3 if already open"));
+    connect(kid3Action, &QAction::triggered,
+            this, &MainWindow::onOpenKid3);
     toolbar->addAction(kid3Action);
 }
 
@@ -609,52 +618,122 @@ void MainWindow::showAlbumWindow()
 }
 
 // ═════════════════════════════════════════════════════════════
-// External app activation (Audacious, Kid3)
+// External app: Audacious — raise to foreground or launch
 // ═════════════════════════════════════════════════════════════
 
-void MainWindow::activateAudacious()
+void MainWindow::onRaiseAudacious()
 {
-    raiseOrLaunchApp(QStringLiteral("audacious"),
-                     QStringLiteral("/usr/bin/audacious"));
-}
-
-void MainWindow::activateKid3()
-{
-    raiseOrLaunchApp(QStringLiteral("kid3-qt"),
-                     QStringLiteral("/usr/bin/kid3-qt"));
-}
-
-void MainWindow::raiseOrLaunchApp(const QString &processName,
-                                  const QString &executablePath)
-{
-    // Try to raise using wmctrl (works on both X11 and Wayland with XWayland)
-    // If the process isn't running, launch it.
-
-    // Check if process is running
-    QProcess pgrep;
-    pgrep.start(QStringLiteral("pgrep"), {QStringLiteral("-x"), processName});
-    pgrep.waitForFinished(2000);
-
-    if (pgrep.exitCode() == 0) {
-        // Process is running — try to raise its window
-        // Use xdotool for X11, or kdotool / dbus for Wayland
-        QProcess raise;
-        raise.start(QStringLiteral("wmctrl"),
-                    {QStringLiteral("-xa"), processName});
-        raise.waitForFinished(2000);
-
-        // Fallback if wmctrl isn't available: try xdotool
-        if (raise.exitCode() != 0) {
-            QProcess xdotool;
-            xdotool.start(QStringLiteral("xdotool"),
-                         {QStringLiteral("search"), QStringLiteral("--name"),
-                          processName, QStringLiteral("windowactivate")});
-            xdotool.waitForFinished(2000);
-        }
-    } else {
-        // Not running — launch it
-        QProcess::startDetached(executablePath, {});
+    if (!isProcessRunning(QStringLiteral("audacious"))) {
+        // Audacious not running — launch it.
+        // Newly launched apps get raised via KWin startup notification.
+        QProcess::startDetached(QStringLiteral("/usr/bin/audacious"), {});
+        return;
     }
+
+    // Audacious is running — ensure the window is visible (mapped),
+    // then raise it to the foreground.
+    QProcess showCmd;
+    showCmd.start(QStringLiteral("audtool"),
+                  {QStringLiteral("--mainwin-show"), QStringLiteral("on")});
+    showCmd.waitForFinished(2000);
+
+    // Brief delay to let KWin process the map request before we raise.
+    // Without this, the raise call may arrive before the window is
+    // registered as visible, causing it to be silently ignored.
+    QThread::msleep(100);
+
+    raiseWindowByClass(QStringLiteral("audacious"));
+}
+
+// ═════════════════════════════════════════════════════════════
+// External app: Kid3 — open current track or raise existing
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::onOpenKid3()
+{
+    // Query audtool for the currently playing track path.
+    // Used when launching Kid3 fresh so it opens to the track's
+    // album directory with the file selected.
+    QString currentTrackPath;
+    QProcess audtoolQuery;
+    audtoolQuery.start(QStringLiteral("audtool"),
+                       {QStringLiteral("--current-song-filename")});
+    if (audtoolQuery.waitForFinished(2000)) {
+        if (audtoolQuery.exitCode() == 0) {
+            currentTrackPath = QString::fromUtf8(
+                audtoolQuery.readAllStandardOutput()).trimmed();
+        }
+    }
+
+    if (isProcessRunning(QStringLiteral("kid3-qt"))) {
+        // Kid3 is already open — raise the existing window rather than
+        // launching a second instance (Kid3 does not enforce single-instance).
+        //
+        // Future enhancement: use Kid3's D-Bus interface
+        // (org.kde.kid3 /Kid3 openDirectory) to navigate the existing
+        // instance to the currently playing track's directory.
+        raiseWindowByClass(QStringLiteral("kid3"));
+    } else {
+        // Kid3 not running — launch with track path if available
+        if (!currentTrackPath.isEmpty() && QFile::exists(currentTrackPath)) {
+            // kid3 opens the file's parent directory and selects the file
+            // when given a file path on the command line.
+            QProcess::startDetached(
+                QStringLiteral("/usr/bin/kid3-qt"), {currentTrackPath});
+        } else {
+            // No track playing or file missing — launch Kid3 bare
+            QProcess::startDetached(QStringLiteral("/usr/bin/kid3-qt"), {});
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+// Window raise helper — KX11Extras (X11) / KWin D-Bus (Wayland)
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::raiseWindowByClass(const QString &windowClass)
+{
+    // Raises the target window to the foreground.
+    //
+    // X11:     KX11Extras provides window enumeration and forceActiveWindow().
+    //          KWindowInfo::windowClassClass() returns QByteArray.
+    // Wayland: Window enumeration is restricted by the security model.
+    //          Use KWin's D-Bus interface to activate by caption.
+
+    if (KWindowSystem::isPlatformX11()) {
+        // X11 path: enumerate windows via KX11Extras, match by WM_CLASS
+        const QByteArray targetClass = windowClass.toLower().toUtf8();
+        const QList<WId> windowList = KX11Extras::windows();
+        for (WId wid : windowList) {
+            KWindowInfo info(wid, NET::Properties(), NET::WM2WindowClass);
+            if (info.windowClassClass().toLower().contains(targetClass)) {
+                KX11Extras::forceActiveWindow(wid);
+                return;
+            }
+        }
+    } else if (KWindowSystem::isPlatformWayland()) {
+        // Wayland path: use KWin's D-Bus interface to activate by caption.
+        // This is the only available method for raising by name on Wayland.
+        QDBusInterface kwin(QStringLiteral("org.kde.KWin"),
+                            QStringLiteral("/KWin"),
+                            QStringLiteral("org.kde.KWin"));
+        if (kwin.isValid()) {
+            kwin.call(QStringLiteral("activateWindow"), windowClass);
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+// Process check helper
+// ═════════════════════════════════════════════════════════════
+
+bool MainWindow::isProcessRunning(const QString &processName) const
+{
+    QProcess pgrep;
+    pgrep.start(QStringLiteral("pgrep"),
+                {QStringLiteral("-x"), processName});
+    pgrep.waitForFinished(1000);
+    return (pgrep.exitCode() == 0);
 }
 
 // ═════════════════════════════════════════════════════════════

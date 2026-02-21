@@ -37,7 +37,8 @@ if ! load_config 2>/dev/null; then
 fi
 
 # Fallback configuration
-MUSIC_DIR="${MUSIC_DIR:-$MUSICLIB_ROOT/data/conky_output}"
+MUSIC_DISPLAY_DIR="${MUSIC_DISPLAY_DIR:-}"
+MUSIC_DIR="${MUSIC_DIR:-${MUSIC_DISPLAY_DIR:-$MUSICLIB_ROOT/data/conky_output}}"
 MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
 STAR_DIR="${STAR_DIR:-$MUSIC_DIR/stars}"
 
