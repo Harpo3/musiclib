@@ -1,12 +1,15 @@
 // mainwindow.h
 // MusicLib Qt GUI - Main Window (Dolphin-style sidebar layout)
-// Phase 2: Settings Dialog prerequisite - Main window redesign
+// Phase 2: Settings Dialog — KConfigXT mirroring musiclib.conf
 //
 // Replaces QTabWidget (tabs at top) with:
 //   - QListWidget sidebar for panel navigation (Dolphin Places-style)
 //   - QStackedWidget for panel content
 //   - KToolBar with Now Playing, Album, Playlist, Audacious, Kid3 actions
 //   - Rich status bar with track details from conky output + audtool
+//
+// Settings panel is a KConfigDialog opened on demand (not embedded in
+// the stacked widget).  Sidebar "Settings" entry triggers the dialog.
 //
 // Copyright (c) 2026 MusicLib Project
 
@@ -29,9 +32,14 @@ class LibraryView;
 class LibraryModel;
 class MaintenancePanel;
 class ScriptRunner;
+class MobilePanel;  
 
 // Forward declaration - new album window
 class AlbumWindow;
+
+// Forward declarations - settings
+class ConfWriter;
+class SettingsDialog;
 
 /**
  * @brief Main application window with Dolphin-style sidebar navigation.
@@ -49,6 +57,10 @@ class AlbumWindow;
  *   ├─────────┴────────────────────────────────────┤
  *   │ Status: Playing: Artist - Album (Year) - Title  Last Played: ...  │
  *   └─────────────────────────────────────────────────────────────────────┘
+ *
+ * The "Settings" sidebar entry opens a KConfigDialog rather than switching
+ * to an embedded panel.  This follows KDE convention where settings are
+ * a modal-ish dialog, not a permanent workspace panel.
  */
 class MainWindow : public KXmlGuiWindow
 {
@@ -65,12 +77,14 @@ public:
     void switchToMobileWithPlaylist(const QString &playlistPath);
 
     /// Panel indices for sidebar navigation
+    /// Note: PanelSettings is a virtual entry — clicking it opens the
+    /// KConfigDialog rather than switching the stacked widget.
     enum PanelIndex {
         PanelLibrary = 0,
         PanelMaintenance,
         PanelMobile,
-        PanelSettings,
-        PanelCount  // sentinel - must be last
+        PanelSettings,       // opens dialog, not a panel
+        PanelCount           // sentinel - must be last
     };
 
 public Q_SLOTS:
@@ -89,6 +103,9 @@ public Q_SLOTS:
     /// Open the currently playing track in Kid3, or raise Kid3 if already running.
     void onOpenKid3();
 
+    /// Open the Settings dialog (KConfigDialog).
+    void showSettingsDialog();
+
 private Q_SLOTS:
     /// Sidebar selection changed
     void onSidebarItemChanged(int currentRow);
@@ -105,6 +122,12 @@ private Q_SLOTS:
     /// Handle audtool process finished (for async queries)
     void onAudtoolFinished(int exitCode, QProcess::ExitStatus exitStatus);
 
+    /// Settings dialog reported a database path change
+    void onDatabasePathChanged();
+
+    /// Settings dialog reported a poll interval change
+    void onPollIntervalChanged(int newIntervalMs);
+
 private:
     // ── Setup methods ──
     void setupSidebar();
@@ -114,6 +137,7 @@ private:
     void setupNowPlayingTimer();
     void setupFileWatcher();
     void setupActions();
+    void setupConfWriter();
 
     // ── Data reading helpers ──
     /// Read a single-line text file, trimmed. Returns empty string on failure.
@@ -129,8 +153,6 @@ private:
     void populatePlaylistDropdown();
 
     /// Raise an external window by WM_CLASS (X11) or caption (Wayland).
-    /// On X11: uses KX11Extras::forceActiveWindow() with KWindowInfo for class matching.
-    /// On Wayland: uses KWin D-Bus activateWindow().
     void raiseWindowByClass(const QString &windowClass);
 
     /// Check whether a process is currently running (by exact name match via pgrep)
@@ -146,8 +168,7 @@ private:
     // ── Panels ──
     LibraryView      *m_libraryPanel;       ///< Library browser panel
     MaintenancePanel *m_maintenancePanel;   ///< Maintenance operations panel
-    QWidget          *m_mobilePanel;        ///< Mobile sync panel
-    QWidget          *m_settingsPanel;      ///< Settings/config panel (placeholder)
+    MobilePanel          *m_mobilePanel;        ///< Mobile sync panel
 
     // ── Toolbar widgets ──
     QLabel      *m_nowPlayingLabel;    ///< "Artist – Title" text in toolbar
@@ -185,10 +206,17 @@ private:
     // ── Album window ──
     AlbumWindow *m_albumWindow = nullptr;
 
+    // ── Settings / config ──
+    ConfWriter *m_confWriter;          ///< Shell config file reader/writer
+    int m_lastSidebarIndex = 0;        ///< Tracks previous sidebar selection
+                                       ///  (used to restore after Settings dialog)
+
     // ── Config cache ──
     QString m_musicDisplayDir;   // conky output directory
     QString m_databasePath;      // musiclib.dsv path
     QString m_playlistsDir;      // playlists directory
+    QString m_audaciousPlaylistsDir;  // AUDACIOUS_PLAYLISTS_DIR
+    QString m_mobileDir;              // MOBILE_DIR (playlists/mobile)
 };
 
 #endif // MAINWINDOW_H

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=MusicLib
+Exec=musiclib-qt
+Icon=musiclib
+Terminal=false
+Categories=AudioVideo;

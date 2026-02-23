@@ -1,0 +1,153 @@
+# MusicLib Configuration File
+# Edit these values to customize your setup
+#
+# This configuration follows the XDG Base Directory Specification:
+# - Configuration files: ~/.config/musiclib/ (or $XDG_CONFIG_HOME/musiclib)
+# - Application data: ~/.local/share/musiclib/ (or $XDG_DATA_HOME/musiclib)
+#
+# Legacy layout (~/musiclib/) is still supported for backward compatibility.
+# The musiclib_utils.sh script will auto-detect which layout is in use.
+
+#############################################
+# XDG BASE DIRECTORY DEFAULTS
+#############################################
+
+# Legacy root directory
+MUSICLIB_ROOT="$HOME/musiclib"
+
+# XDG-compliant directories
+MUSICLIB_XDG_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/musiclib"
+MUSICLIB_XDG_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/musiclib"
+
+# Auto-detect which layout is in use:
+# - If XDG data directory has database, use XDG
+# - Otherwise, use legacy ~/musiclib layout
+if [ -f "$MUSICLIB_XDG_DATA/data/musiclib.dsv" ]; then
+    # XDG layout is in use
+    MUSICLIB_CONFIG_DIR="$MUSICLIB_XDG_CONFIG"
+    MUSICLIB_DATA_DIR="$MUSICLIB_XDG_DATA"
+elif [ -f "$MUSICLIB_ROOT/data/musiclib.dsv" ]; then
+    # Legacy layout is in use
+    MUSICLIB_CONFIG_DIR="$MUSICLIB_ROOT/config"
+    MUSICLIB_DATA_DIR="$MUSICLIB_ROOT"
+else
+    # No existing installation - default to XDG for new installs
+    MUSICLIB_CONFIG_DIR="$MUSICLIB_XDG_CONFIG"
+    MUSICLIB_DATA_DIR="$MUSICLIB_XDG_DATA"
+fi
+
+#############################################
+# CORE PATHS
+#############################################
+
+# Location of Music Repository top directory level
+MUSIC_REPO="/mnt/music/Music"
+
+# Database location (XDG default)
+MUSICDB="${MUSICLIB_DATA_DIR}/data/musiclib.dsv"
+
+# Playlists directory (XDG default)
+PLAYLISTS_DIR="${MUSICLIB_DATA_DIR}/playlists"
+MOBILE_DIR="$PLAYLISTS_DIR/mobile"
+
+# Scripts directory (system-wide installation)
+# Note: For installed systems, scripts are in /usr/lib/musiclib/bin/
+# For development, they're in $MUSICLIB_ROOT/bin or current directory
+SCRIPTS_DIR="/usr/lib/musiclib/bin"
+
+# Log file (XDG default)
+LOGFILE="${MUSICLIB_DATA_DIR}/logs/musiclib.log"
+
+#############################################
+# AUDACIOUS INTEGRATION
+#############################################
+
+# Conky output directory (XDG default)
+MUSIC_DISPLAY_DIR="${MUSICLIB_DATA_DIR}/data/conky_output"
+
+# Scrobble threshold (percentage of song that must play to count as "played")
+SCROBBLE_THRESHOLD_PCT=50
+
+# Star rating images directory
+STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
+
+# Audacious playlists source directory (for playlist sync)
+AUDACIOUS_PLAYLISTS_DIR="$HOME/.config/audacious/playlists"
+
+#############################################
+# MOBILE SYNC (KDE CONNECT)
+#############################################
+
+# Android device ID (find with: kdeconnect-cli -a)
+# Example: DEVICE_ID="e44edf16df3e4945a660bd76cd9f6f9a"
+DEVICE_ID="e44edf16df3e4945a660bd76cd9f6f9a"
+
+# Mobile playlist settings
+MIN_PLAY_WINDOW=3600  # Minimum time window (seconds) for synthetic timestamps
+CURRENT_PLAYLIST_FILE="$MOBILE_DIR/current_playlist"
+
+# Sets the limit for number of days since last mobile upload
+# Applies to processing database updates during playlist replacement
+# Determines the time window applicable to calculation of synthetic timestamps
+MOBILE_WINDOW_DAYS=40
+
+#############################################
+# DATABASE SETTINGS
+#############################################
+
+# Default database values for new tracks
+DEFAULT_RATING=0
+DEFAULT_GROUPDESC=0
+
+# Database lock timeout (seconds)
+# How long to wait for exclusive DB access before failing
+LOCK_TIMEOUT=5
+
+# Backend API version (checked by GUI/CLI for compatibility)
+BACKEND_API_VERSION="1.0"
+
+#############################################
+# TAG MANAGEMENT
+#############################################
+
+# Directory where new downloads / unzipped files are processed
+NEW_DOWNLOAD_DIR="$HOME/Downloads/newmusic"
+
+# Directory where tag backups are stored (XDG default)
+TAG_BACKUP_DIR="${MUSICLIB_DATA_DIR}/data/tag_backups"
+
+# Number of days mp3 backups from tag changes are kept
+MAX_BACKUP_AGE_DAYS=30
+
+#############################################
+# RATING SYSTEM (POPM VALUES)
+#############################################
+
+# Sets the POPM Values for the rating system
+# Groups are assigned using a range of POPM values (0-255)
+# If default values are changed, then tags and database need to be re-validated
+#
+# POPM (Popularimeter) is the ID3v2 frame used to store ratings
+# Rating mapping:
+#   0 stars = 0 POPM
+#   1 star  = 64 POPM (RatingGroup1)
+#   2 stars = 65-128 POPM (RatingGroup2)
+#   3 stars = 129-185 POPM (RatingGroup3)
+#   4 stars = 186-200 POPM (RatingGroup4)
+#   5 stars = 201-255 POPM (RatingGroup5)
+
+# RATINGGROUP# = "LOW POPM,HIGH POPM"
+RatingGroup1="64,64"
+RatingGroup2="65,128"
+RatingGroup3="129,185"
+RatingGroup4="186,200"
+RatingGroup5="201,255"
+
+#############################################
+# EXTERNAL DEPENDENCIES
+#############################################
+
+# Command names (override if using different paths/versions)
+EXIFTOOL_CMD="exiftool"
+KID3_CMD="kid3-cli"
+KDECONNECT_CMD="kdeconnect-cli"

@@ -73,7 +73,7 @@ load_config() {
     # Determine user config location
     if [ -n "${MUSICLIB_CONFIG_DIR:-}" ]; then
         user_config="${MUSICLIB_CONFIG_DIR}/musiclib.conf"
-    elif [ -n "${MUSICLIB_ROOT:-}" ]; then
+    elif [ -n "${MUSICLIB_ROOT:-}" ] && [ -f "${MUSICLIB_ROOT}/config/musiclib.conf" ]; then
         user_config="${MUSICLIB_ROOT}/config/musiclib.conf"
     else
         user_config="$(get_config_dir)/musiclib.conf"

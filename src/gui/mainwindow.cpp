@@ -1,14 +1,17 @@
 // mainwindow.cpp
 // MusicLib Qt GUI - Main Window Implementation (Dolphin-style sidebar layout)
-// Phase 2: Settings Dialog prerequisite - Main window redesign
+// Phase 2: Settings Dialog — KConfigXT mirroring musiclib.conf
 // Copyright (c) 2026 MusicLib Project
 
 #include "mainwindow.h"
 #include "albumwindow.h"
+#include "confwriter.h"
 #include "librarymodel.h"
 #include "libraryview.h"
 #include "maintenancepanel.h"
 #include "scriptrunner.h"
+#include "settingsdialog.h"
+#include "mobile_panel.h"
 
 #include <KXmlGuiWindow>
 #include <KActionCollection>
@@ -48,7 +51,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_libraryPanel(nullptr)
     , m_maintenancePanel(nullptr)
     , m_mobilePanel(nullptr)
-    , m_settingsPanel(nullptr)
     , m_nowPlayingLabel(nullptr)
     , m_playlistDropdown(nullptr)
     , m_statusLabel(nullptr)
@@ -57,31 +59,16 @@ MainWindow::MainWindow(QWidget *parent)
     , m_nowPlayingTimer(nullptr)
     , m_fileWatcher(nullptr)
     , m_albumWindow(nullptr)
+    , m_confWriter(nullptr)
 {
     setWindowTitle(i18n("MusicLib"));
 
-    // ── Resolve config paths ──
-    // These follow XDG conventions established by musiclib_init_config.sh.
-    // Fallback to ~/musiclib for legacy installs.
-    QString xdgData = QDir::homePath() + QStringLiteral("/.local/share/musiclib");
-    QString xdgConfig = QDir::homePath() + QStringLiteral("/.config/musiclib");
-    QString legacyRoot = QDir::homePath() + QStringLiteral("/musiclib");
-
-    // Use XDG path if it exists, otherwise fall back to legacy
-    if (QDir(xdgData).exists()) {
-        m_musicDisplayDir = xdgData + QStringLiteral("/data/conky_output");
-        m_databasePath    = xdgData + QStringLiteral("/data/musiclib.dsv");
-        m_playlistsDir    = xdgData + QStringLiteral("/playlists");
-    } else {
-        m_musicDisplayDir = legacyRoot + QStringLiteral("/data/conky_output");
-        m_databasePath    = legacyRoot + QStringLiteral("/data/musiclib.dsv");
-        m_playlistsDir    = legacyRoot + QStringLiteral("/playlists");
-    }
+    // ── Load configuration via ConfWriter ──
+    // This replaces the hardcoded XDG/legacy path detection.
+    // ConfWriter searches: $MUSICLIB_CONFIG_DIR → XDG → ~/musiclib/config/
+    setupConfWriter();
 
     // ── Create data model for album window and status queries ──
-    // Note: LibraryView creates and manages its own internal LibraryModel.
-    // This separate model instance is used by the Album window and for
-    // looking up track data by SongPath (e.g., finding IDAlbum).
     m_libraryModel = new LibraryModel(this);
     m_libraryModel->loadFromFile(m_databasePath);
 
@@ -135,6 +122,88 @@ MainWindow::~MainWindow()
         m_albumWindow->close();
         delete m_albumWindow;
     }
+    // m_confWriter is parented to this, so Qt deletes it automatically.
+}
+
+// ═════════════════════════════════════════════════════════════
+// Configuration setup — ConfWriter + path resolution
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::setupConfWriter()
+{
+    m_confWriter = new ConfWriter();
+
+    if (m_confWriter->loadFromDefaultLocation()) {
+        // Config loaded — read paths from it.
+        // ConfWriter handles shell variable resolution by storing
+        // resolved paths, so we get clean absolute paths here.
+        m_musicDisplayDir = m_confWriter->value(
+            QStringLiteral("MUSIC_DISPLAY_DIR"));
+        m_databasePath = m_confWriter->value(
+            QStringLiteral("MUSICDB"));
+        m_playlistsDir = m_confWriter->value(
+            QStringLiteral("PLAYLISTS_DIR"));
+        // Mobile-specific paths    
+        m_audaciousPlaylistsDir = m_confWriter->value(
+            QStringLiteral("AUDACIOUS_PLAYLISTS_DIR"));
+        m_mobileDir = m_confWriter->value(
+            QStringLiteral("MOBILE_DIR"));
+
+        // Fallback for unresolved shell variables or missing values
+        if (m_audaciousPlaylistsDir.isEmpty()
+            || m_audaciousPlaylistsDir.contains(QLatin1Char('$'))) {
+            m_audaciousPlaylistsDir = QDir::homePath()
+                + QStringLiteral("/.config/audacious/playlists");
+        }
+        if (m_mobileDir.isEmpty()
+            || m_mobileDir.contains(QLatin1Char('$'))) {
+            m_mobileDir = m_playlistsDir + QStringLiteral("/mobile");
+        }
+
+        // If any values contain unresolved shell variables (e.g. from
+        // a wizard-generated config with ${MUSICLIB_DATA_DIR}), fall
+        // back to XDG defaults.  ConfWriter reads literally, so shell
+        // expansions appear as raw text.
+        QString xdgData = QDir::homePath()
+            + QStringLiteral("/.local/share/musiclib");
+
+        if (m_musicDisplayDir.contains(QLatin1Char('$'))) {
+            m_musicDisplayDir = xdgData
+                + QStringLiteral("/data/conky_output");
+        }
+        if (m_databasePath.contains(QLatin1Char('$'))) {
+            m_databasePath = xdgData
+                + QStringLiteral("/data/musiclib.dsv");
+        }
+        if (m_playlistsDir.contains(QLatin1Char('$'))) {
+            m_playlistsDir = xdgData + QStringLiteral("/playlists");
+        }
+    } else {
+        // No config file found — use XDG defaults (same as before).
+        // This path is hit on first launch before the setup wizard runs.
+        QString xdgData = QDir::homePath()
+            + QStringLiteral("/.local/share/musiclib");
+        QString legacyRoot = QDir::homePath()
+            + QStringLiteral("/musiclib");
+
+        if (QDir(xdgData).exists()) {
+            m_musicDisplayDir = xdgData
+                + QStringLiteral("/data/conky_output");
+            m_databasePath = xdgData
+                + QStringLiteral("/data/musiclib.dsv");
+            m_playlistsDir = xdgData + QStringLiteral("/playlists");
+        } else {
+            m_musicDisplayDir = legacyRoot
+                + QStringLiteral("/data/conky_output");
+            m_databasePath = legacyRoot
+                + QStringLiteral("/data/musiclib.dsv");
+            m_playlistsDir = legacyRoot
+                + QStringLiteral("/playlists");
+                    m_audaciousPlaylistsDir = QDir::homePath()
+            + QStringLiteral("/.config/audacious/playlists");
+            m_mobileDir = m_playlistsDir + QStringLiteral("/mobile");
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -178,8 +247,6 @@ void MainWindow::setupPanels()
     m_panelStack = new QStackedWidget(this);
 
     // ── Library panel (existing) ──
-    // LibraryView creates its own LibraryModel internally.
-    // We tell it to load the database, then keep a reference to its model.
     m_libraryPanel = new LibraryView(this);
     m_libraryPanel->loadDatabase(m_databasePath);
     m_panelStack->addWidget(m_libraryPanel);   // index 0
@@ -188,37 +255,24 @@ void MainWindow::setupPanels()
     m_maintenancePanel = new MaintenancePanel(m_scriptRunner, this);
     m_panelStack->addWidget(m_maintenancePanel);   // index 1
 
-    // ── Mobile panel ──
-    // Placeholder — will be replaced when Mobile Panel is built.
-    m_mobilePanel = new QWidget(this);
-    auto *mobileLayout = new QVBoxLayout(m_mobilePanel);
-    auto *mobileLabel = new QLabel(
-        i18n("Mobile Sync Panel\n\n"
-             "Playlist upload, device selection, dry-run preview,\n"
-             "progress tracking, and status view.\n\n"
-             "(Connect existing MobilePanel widget here)"),
-        m_mobilePanel);
-    mobileLabel->setAlignment(Qt::AlignCenter);
-    mobileLayout->addWidget(mobileLabel);
+   // ── Mobile panel ──
+    m_mobilePanel = new MobilePanel(
+        m_playlistsDir,
+        m_audaciousPlaylistsDir,
+        m_mobileDir,
+        this);
     m_panelStack->addWidget(m_mobilePanel);   // index 2
 
-    // ── Settings panel ──
-    // Placeholder — this is the next task after this main window redesign.
-    m_settingsPanel = new QWidget(this);
-    auto *settingsLayout = new QVBoxLayout(m_settingsPanel);
-    auto *settingsLabel = new QLabel(
-        i18n("Settings Panel\n\n"
-             "KConfigXT settings mirroring musiclib.conf:\n"
-             "• Music directory, DB path\n"
-             "• KDE Connect device detection\n"
-             "• Default rating for new tracks\n"
-             "• Global shortcut assignments\n"
-             "• System tray behavior\n\n"
-             "(Settings panel implementation pending)"),
-        m_settingsPanel);
-    settingsLabel->setAlignment(Qt::AlignCenter);
-    settingsLayout->addWidget(settingsLabel);
-    m_panelStack->addWidget(m_settingsPanel);   // index 3
+    // Upload completion → status bar notification
+    connect(m_mobilePanel, &MobilePanel::uploadCompleted,
+            this, [this](const QString &playlistName, int trackCount) {
+        statusBar()->showMessage(
+            i18n("Uploaded %1 (%2 tracks)", playlistName, trackCount), 5000);
+    });
+
+    // ── Settings ──
+    // No stacked widget entry for Settings.  The sidebar "Settings" row
+    // opens a KConfigDialog instead.  See onSidebarItemChanged().
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -240,9 +294,6 @@ void MainWindow::setupToolbar()
     toolbar->addWidget(m_nowPlayingLabel);
 
     // ── Star rating buttons (0–5) ──
-    // Displayed as clickable star characters in the toolbar.
-    // Button 0 is hidden (clear rating), buttons 1-5 are shown.
-    // Active stars are filled (★), inactive are empty (☆).
     for (int i = 0; i <= 5; ++i) {
         m_starButtons[i] = new QToolButton(this);
         m_starButtons[i]->setAutoRaise(true);
@@ -250,9 +301,7 @@ void MainWindow::setupToolbar()
             i == 0 ? i18n("Clear rating")
                    : i18n("Rate %1 star(s)", i));
 
-        // Star 0 (clear) uses an icon; stars 1-5 use text characters
         if (i == 0) {
-            // Hidden by default — accessible via right-click or context menu
             m_starButtons[i]->setVisible(false);
         } else {
             m_starButtons[i]->setText(QString(QChar(0x2606)));  // ☆ empty star
@@ -321,7 +370,7 @@ void MainWindow::setupToolbar()
 void MainWindow::setupStatusBar()
 {
     m_statusLabel = new QLabel(i18n("Ready"), this);
-    statusBar()->addWidget(m_statusLabel, 1);  // stretch factor 1 = fill width
+    statusBar()->addWidget(m_statusLabel, 1);
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -333,7 +382,9 @@ void MainWindow::setupActions()
     // Standard quit action
     KStandardAction::quit(qApp, &QCoreApplication::quit, actionCollection());
 
-    // Could add more KDE standard actions here (preferences, etc.)
+    // Standard preferences action — opens Settings dialog from menu bar
+    KStandardAction::preferences(this, &MainWindow::showSettingsDialog,
+                                 actionCollection());
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -371,26 +422,86 @@ void MainWindow::setupNowPlayingTimer()
 
 void MainWindow::onSidebarItemChanged(int currentRow)
 {
+    if (currentRow == PanelSettings) {
+        // Settings is not an embedded panel — open the dialog instead.
+        // Restore the sidebar selection to the previous panel so
+        // the highlight doesn't sit on "Settings" while the dialog
+        // is open (or after it closes).
+        showSettingsDialog();
+
+        // Restore previous selection without re-triggering this slot
+        m_sidebar->blockSignals(true);
+        m_sidebar->setCurrentRow(m_lastSidebarIndex);
+        m_sidebar->blockSignals(false);
+        return;
+    }
+
     if (currentRow >= 0 && currentRow < m_panelStack->count()) {
         m_panelStack->setCurrentIndex(currentRow);
+        m_lastSidebarIndex = currentRow;
     }
 }
 
 void MainWindow::switchToPanel(int index)
 {
-    if (index >= 0 && index < PanelCount) {
+    if (index >= 0 && index < PanelSettings) {
         m_sidebar->setCurrentRow(index);
     }
 }
 
 void MainWindow::switchToMobileWithPlaylist(const QString &playlistPath)
 {
+    m_mobilePanel->setPlaylist(playlistPath);
     switchToPanel(PanelMobile);
+}
 
-    // If the mobile panel has a method to pre-select a playlist, call it here.
-    // For now, just switch to the panel — the playlist selection will be
-    // handled when the mobile panel is fully implemented.
-    Q_UNUSED(playlistPath);
+// ═════════════════════════════════════════════════════════════
+// Settings dialog
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::showSettingsDialog()
+{
+    // KConfigDialog manages singleton instances by name.
+    // If the dialog already exists, it just raises it.
+    if (KConfigDialog::showDialog(QStringLiteral("MusicLibSettings"))) {
+        return;
+    }
+
+    auto *dialog = new SettingsDialog(this, m_confWriter);
+
+    // Connect signals for live-refresh when settings change
+    connect(dialog, &SettingsDialog::databasePathChanged,
+            this, &MainWindow::onDatabasePathChanged);
+    connect(dialog, &SettingsDialog::pollIntervalChanged,
+            this, &MainWindow::onPollIntervalChanged);
+
+    dialog->show();
+}
+
+void MainWindow::onDatabasePathChanged()
+{
+    // Re-read paths from ConfWriter (it was just saved by the dialog)
+    setupConfWriter();
+
+    // Reload models with the (possibly new) database path
+    m_libraryModel->loadFromFile(m_databasePath);
+    m_libraryPanel->loadDatabase(m_databasePath);
+
+    // Update the file watcher
+    if (!m_fileWatcher->files().isEmpty()) {
+        m_fileWatcher->removePaths(m_fileWatcher->files());
+    }
+    if (QFile::exists(m_databasePath)) {
+        m_fileWatcher->addPath(m_databasePath);
+    }
+
+    // Refresh playlists dropdown (PLAYLISTS_DIR may have changed)
+    populatePlaylistDropdown();
+}
+
+void MainWindow::onPollIntervalChanged(int newIntervalMs)
+{
+    m_nowPlayingTimer->setInterval(newIntervalMs);
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -419,7 +530,6 @@ void MainWindow::populatePlaylistDropdown()
         return;
     }
 
-    // List .audpl, .m3u, .m3u8, .pls files
     QStringList filters;
     filters << QStringLiteral("*.audpl")
             << QStringLiteral("*.m3u")
@@ -442,16 +552,10 @@ void MainWindow::onDatabaseChanged(const QString &path)
 {
     Q_UNUSED(path);
 
-    // Reload models after a brief debounce
-    // (QFileSystemWatcher may fire multiple times for a single write)
     QTimer::singleShot(500, this, [this]() {
-        // Reload the album-query model
         m_libraryModel->loadFromFile(m_databasePath);
-
-        // Reload the LibraryView's internal model
         m_libraryPanel->loadDatabase(m_databasePath);
 
-        // Re-add the watch (some systems drop the watch after modification)
         if (!m_fileWatcher->files().contains(m_databasePath)) {
             m_fileWatcher->addPath(m_databasePath);
         }
@@ -485,15 +589,11 @@ void MainWindow::refreshNowPlaying()
     if (m_nowPlaying.isPlaying) {
         m_nowPlaying.songPath = queryAudtool({QStringLiteral("--current-song-filename")});
 
-        // Playlist position and length
         QString posStr = queryAudtool({QStringLiteral("--playlist-position")});
         QString lenStr = queryAudtool({QStringLiteral("--playlist-length")});
         m_nowPlaying.playlistPosition = posStr.toInt();
         m_nowPlaying.playlistLength   = lenStr.toInt();
 
-        // Try to determine the playlist name from Audacious
-        // audtool doesn't directly expose the playlist filename,
-        // so we read from the mobile tracking if available.
         QString currentPlaylistFile = m_playlistsDir
             + QStringLiteral("/mobile/current_playlist");
         QFile cpFile(currentPlaylistFile);
@@ -501,18 +601,13 @@ void MainWindow::refreshNowPlaying()
             m_nowPlaying.playlistName = QTextStream(&cpFile).readLine().trimmed();
             cpFile.close();
         }
-        // If no mobile tracking, try to get from audtool
-        if (m_nowPlaying.playlistName.isEmpty()) {
-            // audtool doesn't expose playlist filenames directly,
-            // so we leave this blank or use a generic label
-        }
     }
 
     // ── Update toolbar: Now Playing label ──
     if (m_nowPlaying.isPlaying && !m_nowPlaying.artist.isEmpty()) {
         m_nowPlayingLabel->setText(
             m_nowPlaying.artist
-            + QStringLiteral(" \u2013 ")   // en-dash
+            + QStringLiteral(" \u2013 ")
             + m_nowPlaying.title);
     } else {
         m_nowPlayingLabel->setText(i18n("Not playing"));
@@ -522,9 +617,9 @@ void MainWindow::refreshNowPlaying()
     int currentRating = m_nowPlaying.ratingGroup.toInt();
     for (int i = 1; i <= 5; ++i) {
         if (i <= currentRating) {
-            m_starButtons[i]->setText(QString(QChar(0x2605)));  // ★ filled
+            m_starButtons[i]->setText(QString(QChar(0x2605)));  // ★
         } else {
-            m_starButtons[i]->setText(QString(QChar(0x2606)));  // ☆ empty
+            m_starButtons[i]->setText(QString(QChar(0x2606)));  // ☆
         }
     }
 
@@ -547,19 +642,15 @@ void MainWindow::rateCurrentTrack(int stars)
         return;
     }
 
-    // Invoke musiclib_rate.sh via ScriptRunner::rate()
-    // rate() expects the file path and star count.
-    // It reads the current track path from audtool internally via the script,
-    // but the ScriptRunner::rate() API requires us to pass the path explicitly.
     m_scriptRunner->rate(m_nowPlaying.songPath, stars);
 
-    // Optimistic UI update — show the new rating immediately
+    // Optimistic UI update
     m_nowPlaying.ratingGroup = QString::number(stars);
     for (int i = 1; i <= 5; ++i) {
         if (i <= stars) {
-            m_starButtons[i]->setText(QString(QChar(0x2605)));  // ★
+            m_starButtons[i]->setText(QString(QChar(0x2605)));
         } else {
-            m_starButtons[i]->setText(QString(QChar(0x2606)));  // ☆
+            m_starButtons[i]->setText(QString(QChar(0x2606)));
         }
     }
 
@@ -580,7 +671,6 @@ void MainWindow::showAlbumWindow()
         return;
     }
 
-    // Find the IDAlbum for the current track by looking up SongPath in the model
     int albumId = -1;
     const int rowCount = m_libraryModel->rowCount();
     for (int row = 0; row < rowCount; ++row) {
@@ -596,7 +686,6 @@ void MainWindow::showAlbumWindow()
         return;
     }
 
-    // Create or reuse album window
     if (!m_albumWindow) {
         m_albumWindow = new AlbumWindow(this);
     }
@@ -624,22 +713,15 @@ void MainWindow::showAlbumWindow()
 void MainWindow::onRaiseAudacious()
 {
     if (!isProcessRunning(QStringLiteral("audacious"))) {
-        // Audacious not running — launch it.
-        // Newly launched apps get raised via KWin startup notification.
         QProcess::startDetached(QStringLiteral("/usr/bin/audacious"), {});
         return;
     }
 
-    // Audacious is running — ensure the window is visible (mapped),
-    // then raise it to the foreground.
     QProcess showCmd;
     showCmd.start(QStringLiteral("audtool"),
                   {QStringLiteral("--mainwin-show"), QStringLiteral("on")});
     showCmd.waitForFinished(2000);
 
-    // Brief delay to let KWin process the map request before we raise.
-    // Without this, the raise call may arrive before the window is
-    // registered as visible, causing it to be silently ignored.
     QThread::msleep(100);
 
     raiseWindowByClass(QStringLiteral("audacious"));
@@ -651,9 +733,6 @@ void MainWindow::onRaiseAudacious()
 
 void MainWindow::onOpenKid3()
 {
-    // Query audtool for the currently playing track path.
-    // Used when launching Kid3 fresh so it opens to the track's
-    // album directory with the file selected.
     QString currentTrackPath;
     QProcess audtoolQuery;
     audtoolQuery.start(QStringLiteral("audtool"),
@@ -666,22 +745,12 @@ void MainWindow::onOpenKid3()
     }
 
     if (isProcessRunning(QStringLiteral("kid3-qt"))) {
-        // Kid3 is already open — raise the existing window rather than
-        // launching a second instance (Kid3 does not enforce single-instance).
-        //
-        // Future enhancement: use Kid3's D-Bus interface
-        // (org.kde.kid3 /Kid3 openDirectory) to navigate the existing
-        // instance to the currently playing track's directory.
         raiseWindowByClass(QStringLiteral("kid3"));
     } else {
-        // Kid3 not running — launch with track path if available
         if (!currentTrackPath.isEmpty() && QFile::exists(currentTrackPath)) {
-            // kid3 opens the file's parent directory and selects the file
-            // when given a file path on the command line.
             QProcess::startDetached(
                 QStringLiteral("/usr/bin/kid3-qt"), {currentTrackPath});
         } else {
-            // No track playing or file missing — launch Kid3 bare
             QProcess::startDetached(QStringLiteral("/usr/bin/kid3-qt"), {});
         }
     }
@@ -693,15 +762,7 @@ void MainWindow::onOpenKid3()
 
 void MainWindow::raiseWindowByClass(const QString &windowClass)
 {
-    // Raises the target window to the foreground.
-    //
-    // X11:     KX11Extras provides window enumeration and forceActiveWindow().
-    //          KWindowInfo::windowClassClass() returns QByteArray.
-    // Wayland: Window enumeration is restricted by the security model.
-    //          Use KWin's D-Bus interface to activate by caption.
-
     if (KWindowSystem::isPlatformX11()) {
-        // X11 path: enumerate windows via KX11Extras, match by WM_CLASS
         const QByteArray targetClass = windowClass.toLower().toUtf8();
         const QList<WId> windowList = KX11Extras::windows();
         for (WId wid : windowList) {
@@ -712,8 +773,6 @@ void MainWindow::raiseWindowByClass(const QString &windowClass)
             }
         }
     } else if (KWindowSystem::isPlatformWayland()) {
-        // Wayland path: use KWin's D-Bus interface to activate by caption.
-        // This is the only available method for raising by name on Wayland.
         QDBusInterface kwin(QStringLiteral("org.kde.KWin"),
                             QStringLiteral("/KWin"),
                             QStringLiteral("org.kde.KWin"));
@@ -770,7 +829,6 @@ QString MainWindow::queryAudtool(const QStringList &args) const
     proc.start(QStringLiteral("audtool"), args);
 
     if (!proc.waitForFinished(1000)) {
-        // audtool didn't respond in 1 second — Audacious may not be running
         proc.kill();
         return QString();
     }
@@ -792,8 +850,6 @@ QString MainWindow::buildStatusBarText() const
         return i18n("Stopped");
     }
 
-    // Format: Playing: Artist - Album (Year) - Title  Last Played: date
-    //         Playlist: name (pos of total)
     QString text = QStringLiteral("Playing: ")
         + m_nowPlaying.artist
         + QStringLiteral(" - ")
@@ -834,5 +890,4 @@ void MainWindow::onAudtoolFinished(int exitCode, QProcess::ExitStatus exitStatus
 {
     Q_UNUSED(exitCode);
     Q_UNUSED(exitStatus);
-    // Reserved for future async audtool queries
 }

@@ -52,8 +52,8 @@ LibraryView::LibraryView(QWidget *parent)
     m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
     m_tableView->setAlternatingRowColors(true);
-    m_tableView->setMouseTracking(true);       // needed for hover preview on stars
     m_tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_tableView->setMouseTracking(true);
     m_tableView->verticalHeader()->hide();
     m_tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_tableView->horizontalHeader()->setStretchLastSection(false);
@@ -61,7 +61,6 @@ LibraryView::LibraryView(QWidget *parent)
     m_tableView->sortByColumn(static_cast<int>(TrackColumn::Artist), Qt::AscendingOrder);
 
     // Install star rating delegate on the GroupDesc (Stars) column
-    m_ratingDelegate->setView(m_tableView);    // delegate needs view for hover repaints
     m_tableView->setItemDelegateForColumn(
         static_cast<int>(TrackColumn::GroupDesc), m_ratingDelegate);
 
@@ -135,9 +134,18 @@ void LibraryView::setupColumns()
 void LibraryView::onFilterChanged(const QString &text)
 {
     m_proxyModel->setFilterFixedString(text);
-    m_countLabel->setText(tr("%1 / %2 tracks")
-        .arg(m_proxyModel->rowCount())
-        .arg(m_model->rowCount()));
+
+    if (text.isEmpty()) {
+        // Force the proxy to re-evaluate all rows, then re-sort
+        m_proxyModel->invalidate();
+        m_proxyModel->sort(static_cast<int>(TrackColumn::Artist), Qt::AscendingOrder);
+        m_tableView->horizontalHeader()->setSortIndicator(
+            static_cast<int>(TrackColumn::Artist), Qt::AscendingOrder);
+    }
+
+    m_countLabel->setText(text.isEmpty()
+        ? tr("%1 tracks").arg(m_model->rowCount())
+        : tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount()));
 }
 
 void LibraryView::onModelLoadError(const QString &message)

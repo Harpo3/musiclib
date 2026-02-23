@@ -15,13 +15,13 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MUSICLIB_ROOT="${MUSICLIB_ROOT:-$(dirname "$SCRIPT_DIR")}"
 
-# Load utilities and config - handle bootstrap error carefully
-if [ ! -f "$MUSICLIB_ROOT/bin/musiclib_utils.sh" ]; then
-    echo '{"error":"musiclib_utils.sh not found","script":"musiclib_audacious.sh","code":2,"context":{"path":"'"$MUSICLIB_ROOT/bin/musiclib_utils.sh"'"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
+# Load utilities and config
+if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
+    {
+        echo "{\"error\":\"Failed to load musiclib_utils.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$SCRIPT_DIR/musiclib_utils.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
+    } >&2
     exit 2
 fi
-
-source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"
 
 if ! load_config 2>/dev/null; then
     error_exit 2 "Configuration load failed"

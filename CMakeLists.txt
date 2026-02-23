@@ -67,6 +67,9 @@ if(BUILD_GUI)
     find_package(KF6WidgetsAddons REQUIRED)
     find_package(KF6I18n REQUIRED)
     find_package(KF6WindowSystem REQUIRED)
+    find_package(KF6Config REQUIRED)          # KConfigXT code generator + runtime
+    find_package(KF6ConfigWidgets REQUIRED)   # KConfigDialog
+    find_package(KF6KIO REQUIRED)             # KUrlRequester with Places panel
     add_subdirectory(src/gui)
 endif()
 

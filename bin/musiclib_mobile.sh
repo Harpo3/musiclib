@@ -9,6 +9,7 @@
 #        musiclib_mobile.sh status
 #        musiclib_mobile.sh logs [filter]
 #        musiclib_mobile.sh cleanup
+#        musiclib_mobile.sh check-update <playlist_name>
 #
 # Backend API Version: 1.0
 # Exit Codes: 0 (success), 1 (user/validation error), 2 (system error)
@@ -1065,6 +1066,13 @@ Commands:
   cleanup
       Remove orphaned metadata files from mobile directory.
 
+  check-update <playlist_name>
+      Check if Audacious has a newer version of the named playlist.
+      Outputs a machine-readable status line to stdout.
+      Exit 0 = newer or new version found. Exit 1 = same, older, or not found.
+      Output: STATUS:<newer|new|same|not_found>
+      Intended for GUI pre-flight checks before upload.
+
 Options:
   --non-interactive     Skip interactive prompts (for GUI invocation).
                         Auto-refreshes newer Audacious playlists.
@@ -1083,6 +1091,7 @@ Examples:
   musiclib_mobile.sh status
   musiclib_mobile.sh logs errors
   musiclib_mobile.sh cleanup
+  musiclib_mobile.sh check-update workout
 
 Configuration:
   AUDACIOUS_PLAYLISTS_DIR - Audacious playlists location
@@ -1324,6 +1333,26 @@ case "$COMMAND" in
             echo "No orphaned files found"
         else
             echo "Removed $removed orphaned file(s)"
+        fi
+        ;;
+
+    check-update)
+        if [ $# -lt 2 ]; then
+            show_usage
+            error_exit 1 "Missing playlist name argument"
+            exit 1
+        fi
+        # Machine-readable playlist freshness check for GUI pre-flight.
+        # Calls the existing check_playlist_updates() internal function
+        # and outputs its PLAYLIST_STATUS variable.
+        # Exit 0 = newer or new (action may be needed)
+        # Exit 1 = same or not_found (safe to proceed)
+        if check_playlist_updates "$2"; then
+            echo "STATUS:${PLAYLIST_STATUS}"
+            exit 0
+        else
+            echo "STATUS:${PLAYLIST_STATUS}"
+            exit 1
         fi
         ;;
 

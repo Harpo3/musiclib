@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  musiclib.kcfg — KConfigXT schema for MusicLib GUI settings.
+
+  Authority model:
+    musiclib.conf  = authoritative source (shell scripts read this)
+    KConfig        = GUI read-cache (synced from .conf on startup,
+                     written back to .conf on Apply)
+
+  Copyright (c) 2026 MusicLib Project
+-->
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+
+  <include>QDir</include>
+  <include>QStandardPaths</include>
+
+  <kcfgfile name="musiclibrc"/>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Group: Paths — Core directory and file locations
+       All paths use type="Path" which expands $HOME automatically.
+       ══════════════════════════════════════════════════════════ -->
+  <group name="Paths">
+    <entry name="MusicRepo" type="Path">
+      <label>Root directory of the music repository</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/Music")</default>
+    </entry>
+
+    <entry name="MusicDatabase" type="Path">
+      <label>Path to the musiclib.dsv database file</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/.local/share/musiclib/data/musiclib.dsv")</default>
+    </entry>
+
+    <entry name="PlaylistsDir" type="Path">
+      <label>Directory containing playlist files</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/.local/share/musiclib/playlists")</default>
+    </entry>
+
+    <entry name="NewDownloadDir" type="Path">
+      <label>Directory where new track imports are sourced from</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/Downloads")</default>
+    </entry>
+
+    <entry name="ScriptsDir" type="Path">
+      <label>Backend shell scripts directory</label>
+      <default>/usr/lib/musiclib/bin</default>
+    </entry>
+
+    <entry name="ConkyOutputDir" type="Path">
+      <label>Directory for Conky display output files</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/.local/share/musiclib/data/conky_output")</default>
+    </entry>
+
+    <entry name="TagBackupDir" type="Path">
+      <label>Directory where tag backups are stored</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/.local/share/musiclib/data/tag_backups")</default>
+    </entry>
+
+    <entry name="LogFile" type="Path">
+      <label>Main log file path</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/.local/share/musiclib/logs/musiclib.log")</default>
+    </entry>
+  </group>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Group: Audacious — Player integration settings
+       ══════════════════════════════════════════════════════════ -->
+  <group name="Audacious">
+    <entry name="AudaciousPlaylistsDir" type="Path">
+      <label>Audacious playlists directory</label>
+      <default code="true">QDir::homePath() + QStringLiteral("/.config/audacious/playlists")</default>
+    </entry>
+
+    <entry name="ScrobbleThresholdPct" type="Int">
+      <label>Percentage of song that must play to count as played</label>
+      <default>50</default>
+      <min>1</min>
+      <max>100</max>
+    </entry>
+  </group>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Group: Mobile — KDE Connect sync settings
+       ══════════════════════════════════════════════════════════ -->
+  <group name="Mobile">
+    <entry name="DeviceId" type="String">
+      <label>KDE Connect device identifier</label>
+      <default></default>
+    </entry>
+
+    <entry name="MinPlayWindow" type="Int">
+      <label>Minimum time window (seconds) for synthetic timestamps</label>
+      <default>3600</default>
+      <min>60</min>
+      <max>86400</max>
+    </entry>
+
+    <entry name="MobileWindowDays" type="Int">
+      <label>Maximum days since last mobile upload</label>
+      <default>40</default>
+      <min>1</min>
+      <max>365</max>
+    </entry>
+  </group>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Group: Database — DB behavior and defaults
+       ══════════════════════════════════════════════════════════ -->
+  <group name="Database">
+    <entry name="DefaultRating" type="Int">
+      <label>Default star rating for newly imported tracks</label>
+      <default>0</default>
+      <min>0</min>
+      <max>5</max>
+    </entry>
+
+    <entry name="DefaultGroupDesc" type="Int">
+      <label>Default group descriptor for new tracks</label>
+      <default>0</default>
+      <min>0</min>
+      <max>5</max>
+    </entry>
+
+    <entry name="LockTimeout" type="Int">
+      <label>Database lock timeout in seconds</label>
+      <default>5</default>
+      <min>1</min>
+      <max>30</max>
+    </entry>
+
+    <entry name="MaxBackupAgeDays" type="Int">
+      <label>Number of days tag backups are retained</label>
+      <default>30</default>
+      <min>1</min>
+      <max>365</max>
+    </entry>
+  </group>
+
+  <!-- ══════════════════════════════════════════════════════════
+       Group: GUI — Settings that live in KConfig only
+       (not mirrored to musiclib.conf)
+       ══════════════════════════════════════════════════════════ -->
+  <group name="GUI">
+    <entry name="ShowSystemTray" type="Bool">
+      <label>Show MusicLib icon in the system tray</label>
+      <default>true</default>
+    </entry>
+
+    <entry name="MinimizeToTray" type="Bool">
+      <label>Minimize to system tray instead of taskbar</label>
+      <default>false</default>
+    </entry>
+
+    <entry name="NowPlayingPollInterval" type="Int">
+      <label>Now-playing poll interval in milliseconds</label>
+      <default>3000</default>
+      <min>1000</min>
+      <max>30000</max>
+    </entry>
+  </group>
+
+</kcfg>
