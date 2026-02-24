@@ -71,6 +71,7 @@ public:
     explicit MobilePanel(const QString &playlistsDir,
                          const QString &audaciousPlaylistsDir,
                          const QString &mobileDir,
+                         const QString &configDeviceId,
                          QWidget *parent = nullptr);
     ~MobilePanel() override;
 
@@ -156,6 +157,7 @@ private:
     QString m_playlistsDir;          // ~/.local/share/musiclib/playlists/
     QString m_audaciousPlaylistsDir; // ~/.config/audacious/playlists/
     QString m_mobileDir;             // ~/.local/share/musiclib/playlists/mobile/
+    QString m_configDeviceId;        // DEVICE_ID from musiclib.conf (for default selection)
 
     // --- Async processes ---
     // MobilePanel manages its own QProcess instances rather than using

@@ -149,21 +149,18 @@ void MainWindow::setupConfWriter()
         m_mobileDir = m_confWriter->value(
             QStringLiteral("MOBILE_DIR"));
 
-        // Fallback for unresolved shell variables or missing values
+        // Fallback for unresolved shell variables or missing values.
+        // ConfWriter reads literally, so shell expansions like
+        // ${MUSICLIB_DATA_DIR} appear as raw text.
+        //
+        // IMPORTANT: m_playlistsDir must be resolved BEFORE m_mobileDir,
+        // because the m_mobileDir fallback derives from m_playlistsDir.
         if (m_audaciousPlaylistsDir.isEmpty()
             || m_audaciousPlaylistsDir.contains(QLatin1Char('$'))) {
             m_audaciousPlaylistsDir = QDir::homePath()
                 + QStringLiteral("/.config/audacious/playlists");
         }
-        if (m_mobileDir.isEmpty()
-            || m_mobileDir.contains(QLatin1Char('$'))) {
-            m_mobileDir = m_playlistsDir + QStringLiteral("/mobile");
-        }
 
-        // If any values contain unresolved shell variables (e.g. from
-        // a wizard-generated config with ${MUSICLIB_DATA_DIR}), fall
-        // back to XDG defaults.  ConfWriter reads literally, so shell
-        // expansions appear as raw text.
         QString xdgData = QDir::homePath()
             + QStringLiteral("/.local/share/musiclib");
 
@@ -177,6 +174,11 @@ void MainWindow::setupConfWriter()
         }
         if (m_playlistsDir.contains(QLatin1Char('$'))) {
             m_playlistsDir = xdgData + QStringLiteral("/playlists");
+        }
+        // m_mobileDir fallback AFTER m_playlistsDir is fully resolved
+        if (m_mobileDir.isEmpty()
+            || m_mobileDir.contains(QLatin1Char('$'))) {
+            m_mobileDir = m_playlistsDir + QStringLiteral("/mobile");
         }
     } else {
         // No config file found — use XDG defaults (same as before).
@@ -192,6 +194,9 @@ void MainWindow::setupConfWriter()
             m_databasePath = xdgData
                 + QStringLiteral("/data/musiclib.dsv");
             m_playlistsDir = xdgData + QStringLiteral("/playlists");
+            m_audaciousPlaylistsDir = QDir::homePath()
+                + QStringLiteral("/.config/audacious/playlists");
+            m_mobileDir = m_playlistsDir + QStringLiteral("/mobile");
         } else {
             m_musicDisplayDir = legacyRoot
                 + QStringLiteral("/data/conky_output");
@@ -199,8 +204,8 @@ void MainWindow::setupConfWriter()
                 + QStringLiteral("/data/musiclib.dsv");
             m_playlistsDir = legacyRoot
                 + QStringLiteral("/playlists");
-                    m_audaciousPlaylistsDir = QDir::homePath()
-            + QStringLiteral("/.config/audacious/playlists");
+            m_audaciousPlaylistsDir = QDir::homePath()
+                + QStringLiteral("/.config/audacious/playlists");
             m_mobileDir = m_playlistsDir + QStringLiteral("/mobile");
         }
     }
@@ -260,6 +265,7 @@ void MainWindow::setupPanels()
         m_playlistsDir,
         m_audaciousPlaylistsDir,
         m_mobileDir,
+        m_confWriter->value(QStringLiteral("DEVICE_ID")),
         this);
     m_panelStack->addWidget(m_mobilePanel);   // index 2
 
@@ -594,8 +600,8 @@ void MainWindow::refreshNowPlaying()
         m_nowPlaying.playlistPosition = posStr.toInt();
         m_nowPlaying.playlistLength   = lenStr.toInt();
 
-        QString currentPlaylistFile = m_playlistsDir
-            + QStringLiteral("/mobile/current_playlist");
+        QString currentPlaylistFile = m_mobileDir
+            + QStringLiteral("/current_playlist");
         QFile cpFile(currentPlaylistFile);
         if (cpFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
             m_nowPlaying.playlistName = QTextStream(&cpFile).readLine().trimmed();

@@ -26,11 +26,13 @@
 MobilePanel::MobilePanel(const QString &playlistsDir,
                          const QString &audaciousPlaylistsDir,
                          const QString &mobileDir,
+                         const QString &configDeviceId,
                          QWidget *parent)
     : QWidget(parent)
     , m_playlistsDir(playlistsDir)
     , m_audaciousPlaylistsDir(audaciousPlaylistsDir)
     , m_mobileDir(mobileDir)
+    , m_configDeviceId(configDeviceId)
     , m_deviceScanProcess(nullptr)
     , m_uploadProcess(nullptr)
     , m_statusProcess(nullptr)
@@ -380,8 +382,36 @@ void MobilePanel::onDeviceScanFinished(int exitCode, QProcess::ExitStatus /*exit
             restoreIndex = m_deviceCombo->count() - 1;
     }
 
-    if (restoreIndex >= 0)
+    if (restoreIndex >= 0) {
         m_deviceCombo->setCurrentIndex(restoreIndex);
+    } else if (m_deviceCombo->count() > 0) {
+        // No previous UI selection — pick a smart default
+        int defaultIndex = -1;
+
+        // First: prefer the device matching DEVICE_ID from config
+        if (!m_configDeviceId.isEmpty()) {
+            for (int i = 0; i < m_deviceCombo->count(); ++i) {
+                if (m_deviceCombo->itemData(i).toString() == m_configDeviceId) {
+                    defaultIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // Second: fall back to first reachable device
+        if (defaultIndex < 0) {
+            for (int i = 0; i < devices.size(); ++i) {
+                if (devices[i].reachable) {
+                    defaultIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (defaultIndex >= 0)
+            m_deviceCombo->setCurrentIndex(defaultIndex);
+        // else: no reachable devices — placeholder text shows naturally
+    }
 
     // Update status indicator based on selected device
     bool anyReachable = false;
@@ -441,10 +471,33 @@ void MobilePanel::refreshPlaylists()
             restoreIndex = m_playlistCombo->count() - 1;
     }
 
-    if (restoreIndex >= 0)
+    if (restoreIndex >= 0) {
         m_playlistCombo->setCurrentIndex(restoreIndex);
-    else if (m_playlistCombo->count() > 0)
-        m_playlistCombo->setCurrentIndex(0);
+    } else if (m_playlistCombo->count() > 0) {
+        // No previous UI selection — try to match the currently uploaded playlist
+        int currentPlaylistIndex = -1;
+        QString currentPlaylistFile = m_mobileDir + QStringLiteral("/current_playlist");
+        QFile cpFile(currentPlaylistFile);
+        if (cpFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString currentName = QString::fromUtf8(cpFile.readAll()).trimmed();
+            cpFile.close();
+            if (!currentName.isEmpty()) {
+                for (int i = 0; i < m_playlistCombo->count(); ++i) {
+                    QString entryName = QFileInfo(
+                        m_playlistCombo->itemData(i).toString()).completeBaseName();
+                    if (entryName == currentName) {
+                        currentPlaylistIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (currentPlaylistIndex >= 0)
+            m_playlistCombo->setCurrentIndex(currentPlaylistIndex);
+        else
+            m_playlistCombo->setCurrentIndex(0);  // Fall back to first entry
+    }
 }
 
 QList<PlaylistEntry> MobilePanel::scanPlaylistDir() const
@@ -1094,17 +1147,34 @@ void MobilePanel::refreshStatus()
                 this, &MobilePanel::onStatusFinished);
     }
 
-    startScriptProcess(m_statusProcess,
-                       QStringLiteral("musiclib_mobile.sh"),
-                       {QStringLiteral("status")});
+    if (!startScriptProcess(m_statusProcess,
+                            QStringLiteral("musiclib_mobile.sh"),
+                            {QStringLiteral("status")})) {
+        m_statusText->setPlainText(
+            tr("Status unavailable — musiclib_mobile.sh not found.\n"
+               "Check that scripts are installed in ~/musiclib/bin/ "
+               "or /usr/lib/musiclib/bin/."));
+    }
 }
 
 void MobilePanel::onStatusFinished(int exitCode, QProcess::ExitStatus /*exitStatus*/)
 {
-    Q_UNUSED(exitCode);  // status always exits 0
-
     QByteArray output = m_statusProcess->readAllStandardOutput();
-    m_statusText->setPlainText(QString::fromUtf8(output));
+    QByteArray errOutput = m_statusProcess->readAllStandardError();
+
+    if (!output.isEmpty()) {
+        m_statusText->setPlainText(QString::fromUtf8(output));
+    } else if (exitCode != 0) {
+        // Script ran but produced no stdout — show exit code and stderr
+        QString msg = tr("Status script exited with code %1").arg(exitCode);
+        if (!errOutput.isEmpty())
+            msg += QStringLiteral("\n") + QString::fromUtf8(errOutput);
+        m_statusText->setPlainText(msg);
+    } else {
+        m_statusText->setPlainText(
+            tr("No status output returned.\n"
+               "The status script ran successfully but produced no output."));
+    }
 
     // Update retry button based on whether recovery files are mentioned
     updateRetryButtonVisibility();
