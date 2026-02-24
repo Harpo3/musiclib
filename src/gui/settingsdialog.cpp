@@ -284,7 +284,7 @@ QWidget *SettingsDialog::createPlaybackMobilePage()
         QStringLiteral("kcfg_AudaciousPlaylistsDir"));
     m_audaciousPlaylistsDirUrl->setToolTip(
         i18n("Directory where Audacious stores its playlist files.\n"
-             "MusicLib reads these to detect the currently playing track.\n"
+             "MusicLib replicates these for playlist management.\n"
              "Default: ~/.config/audacious/playlists"));
     audForm->addRow(i18n("Playlists directory:"), m_audaciousPlaylistsDirUrl);
 

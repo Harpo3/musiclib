@@ -114,9 +114,12 @@ fi
 #############################################
 # Determine Track Filepath
 #############################################
+GUI_MODE=false
+
 if [ $# -ge 2 ]; then
     # GUI mode: filepath provided as second argument
     FILEPATH="$2"
+    GUI_MODE=true
 
     # kid3-cli is always required for tag writes
     check_required_tools kid3-cli || {
@@ -147,6 +150,47 @@ if [ ! -f "$FILEPATH" ]; then
     error_exit 2 "Track file not found" "filepath" "$FILEPATH"
     exit 2
 fi
+
+#############################################
+# Track Display Info (for notifications)
+#############################################
+# In GUI mode, derive track title and artist from the database
+# rather than audtool, because the currently playing track in
+# Audacious may differ from the file being rated.
+
+get_track_display_info() {
+    local display_title=""
+    local display_artist=""
+
+    if [ "$GUI_MODE" = true ] && [ -f "$MUSICDB" ]; then
+        local db_row
+        db_row=$(grep -F "$FILEPATH" "$MUSICDB" 2>/dev/null | head -n1)
+        if [ -n "$db_row" ]; then
+            # Column 2 = Artist, Column 6 = SongTitle (1-indexed)
+            display_artist=$(echo "$db_row" | cut -d'^' -f2)
+            display_title=$(echo "$db_row" | cut -d'^' -f6)
+        fi
+    fi
+
+    # Fallback: try audtool, then basename
+    if [ -z "$display_title" ]; then
+        display_title=$(audtool --current-song-tuple-data title 2>/dev/null) || true
+    fi
+    if [ -z "$display_title" ]; then
+        display_title=$(basename "$FILEPATH")
+    fi
+
+    if [ -z "$display_artist" ]; then
+        display_artist=$(audtool --current-song-tuple-data artist 2>/dev/null) || true
+    fi
+
+    TRACK_DISPLAY_TITLE="$display_title"
+    TRACK_DISPLAY_ARTIST="$display_artist"
+}
+
+# Resolve once — used by all notification blocks below
+get_track_display_info
+
 
 #############################################
 # Get Rating Values
@@ -267,8 +311,8 @@ while [ $attempt -le $MAX_ATTEMPTS ]; do
 
         # Show "Processing..." notification on first retry only
         if [ $attempt -eq 1 ] && command -v kdialog >/dev/null 2>&1; then
-            track_title=$(audtool --current-song-tuple-data title 2>/dev/null || basename "$FILEPATH")
-            track_artist=$(audtool --current-song-tuple-data artist 2>/dev/null || basename "$FILEPATH")
+            track_title="$TRACK_DISPLAY_TITLE"
+            track_artist="$TRACK_DISPLAY_ARTIST"
             if [ "$STAR_RATING" -gt 0 ]; then
                 star_display="⭐$(seq -s'⭐' 1 $((STAR_RATING-1)) )"
             else
@@ -313,7 +357,7 @@ if [ "$success" = false ]; then
 
     # Show user feedback - rating is queued
     if command -v kdialog >/dev/null 2>&1; then
-        track_title=$(audtool --current-song-tuple-data title 2>/dev/null || basename "$FILEPATH")
+        track_title="$TRACK_DISPLAY_TITLE"
         star_display="⭐$(seq -s'⭐' 1 $STAR_RATING | sed 's/[0-9]//g')"
         kdialog --title 'Rating Queued' --passivepopup \
             "Rating $star_display for $track_artist" - "$track_title queued (database busy)..." 5 &
@@ -333,34 +377,50 @@ fi
 #############################################
 # Update Conky Display Files
 #############################################
-echo "Updating Conky display..."
+# In GUI mode, only update Conky if the rated track is the one
+# currently playing.  Otherwise we'd overwrite the now-playing
+# display with data from a different track.
 
-# Create directory if it doesn't exist
-if [ ! -d "$MUSIC_DIR" ]; then
-    if ! mkdir -p "$MUSIC_DIR" 2>/dev/null; then
-        error_exit 2 "Failed to create Conky output directory" "directory" "$MUSIC_DIR"
-        exit 2
+UPDATE_CONKY=true
+
+if [ "$GUI_MODE" = true ]; then
+    current_playing=$(audtool --current-song-filename 2>/dev/null || echo "")
+    if [ "$current_playing" != "$FILEPATH" ]; then
+        UPDATE_CONKY=false
+        echo "  Conky update skipped (rated track is not the current track)"
     fi
 fi
 
-# Update currgpnum.txt
-if ! echo "$GROUPDESC_VALUE" > "$MUSIC_DIR/currgpnum.txt" 2>/dev/null; then
-    error_exit 2 "Failed to update currgpnum.txt" "filepath" "$MUSIC_DIR/currgpnum.txt"
-    exit 2
-fi
+if [ "$UPDATE_CONKY" = true ]; then
+    echo "Updating Conky display..."
 
-# Update star rating image
-rm -f "$MUSIC_DIR/starrating.png"
+    # Create directory if it doesn't exist
+    if [ ! -d "$MUSIC_DIR" ]; then
+        if ! mkdir -p "$MUSIC_DIR" 2>/dev/null; then
+            error_exit 2 "Failed to create Conky output directory" "directory" "$MUSIC_DIR"
+            exit 2
+        fi
+    fi
 
-if [ -n "$IMAGE_FILE" ] && [ -f "$STAR_DIR/$IMAGE_FILE" ]; then
-    if ! cp "$STAR_DIR/$IMAGE_FILE" "$MUSIC_DIR/starrating.png" 2>/dev/null; then
-        error_exit 2 "Failed to copy rating image" "source" "$STAR_DIR/$IMAGE_FILE" "dest" "$MUSIC_DIR/starrating.png"
+    # Update currgpnum.txt
+    if ! echo "$GROUPDESC_VALUE" > "$MUSIC_DIR/currgpnum.txt" 2>/dev/null; then
+        error_exit 2 "Failed to update currgpnum.txt" "filepath" "$MUSIC_DIR/currgpnum.txt"
         exit 2
     fi
-    echo "  ✓ Rating image updated: $IMAGE_FILE"
-else
-    # This is a warning - star images may not be set up yet
-    echo "  Warning: Rating image not found: $STAR_DIR/$IMAGE_FILE" >&2
+
+    # Update star rating image
+    rm -f "$MUSIC_DIR/starrating.png"
+
+    if [ -n "$IMAGE_FILE" ] && [ -f "$STAR_DIR/$IMAGE_FILE" ]; then
+        if ! cp "$STAR_DIR/$IMAGE_FILE" "$MUSIC_DIR/starrating.png" 2>/dev/null; then
+            error_exit 2 "Failed to copy rating image" "source" "$STAR_DIR/$IMAGE_FILE" "dest" "$MUSIC_DIR/starrating.png"
+            exit 2
+        fi
+        echo "  ✓ Rating image updated: $IMAGE_FILE"
+    else
+        # This is a warning - star images may not be set up yet
+        echo "  Warning: Rating image not found: $STAR_DIR/$IMAGE_FILE" >&2
+    fi
 fi
 
 #############################################
@@ -369,7 +429,7 @@ fi
 # Only show success notification if we didn't show "Processing..." notification
 # (if we showed processing, the user knows it succeeded because it disappeared)
 if [ "$SHOWED_PROCESSING" = false ] && command -v kdialog >/dev/null 2>&1; then
-    track_title=$(audtool --current-song-tuple-data title 2>/dev/null || basename "$FILEPATH")
+    track_title="$TRACK_DISPLAY_TITLE"
 
     if [ "$STAR_RATING" -eq 0 ]; then
         kdialog --title 'Rating Updated' --passivepopup "\"$track_title\" marked as needing rating" 3 &

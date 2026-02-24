@@ -32,13 +32,12 @@ fi
 MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
 MUSIC_DISPLAY_DIR="${MUSIC_DISPLAY_DIR:-$MUSICLIB_ROOT/data/conky_output}"
 STAR_DIR="${STAR_DIR:-$MUSIC_DISPLAY_DIR/stars}"
-LOG_DIR="${LOG_DIR:-$MUSICLIB_ROOT/logs/audacious}"
 
 # Ensure directories exist
-mkdir -p "$MUSIC_DISPLAY_DIR" "$LOG_DIR" 2>/dev/null || {
-    error_exit 2 "Failed to create required directories" "music_display_dir" "$MUSIC_DISPLAY_DIR" "log_dir" "$LOG_DIR"
-    exit 2
-}
+#mkdir -p "$MUSIC_DISPLAY_DIR" "$LOG_DIR" 2>/dev/null || {
+#    error_exit 2 "Failed to create required directories" "music_display_dir" "$MUSIC_DISPLAY_DIR" "log_dir" "$LOG_DIR"
+#    exit 2
+#}
 
 #############################################
 # Check if Audacious is running
@@ -258,26 +257,6 @@ update_play_time() {
 }
 
 #############################################
-# Scrobble to Local History Log
-#############################################
-scrobble_to_history() {
-    local play_time="$1"
-
-    local artist=$(audtool --current-song-tuple-data artist 2>/dev/null | tr -d '\n')
-    local album=$(audtool --current-song-tuple-data album 2>/dev/null | tr -d '\n')
-    local title=$(audtool --current-song-tuple-data title 2>/dev/null | tr -d '\n')
-
-    # Append to history
-    echo -n "${artist},${album},${title}," >> "$LOG_DIR/audacioushist.log"
-    printf "%.6f\n" "$play_time" >> "$LOG_DIR/audacioushist.log"
-
-    # Clean up log file (remove duplicates and malformed entries)
-    local tmpfile="$LOG_DIR/tmp_$$.log"
-    grep -v ",,," "$LOG_DIR/audacioushist.log" 2>/dev/null | awk '!seen[$0]++' > "$tmpfile" || true
-    mv "$tmpfile" "$LOG_DIR/audacioushist.log" 2>/dev/null || true
-}
-
-#############################################
 # Update Last Played Display After Scrobble
 #############################################
 update_lastplayed_display() {
@@ -327,8 +306,6 @@ monitor_playback() {
 
     update_play_time "$sql_time"
     local update_result=$?
-    
-    scrobble_to_history "$sql_time"
     update_lastplayed_display "$sql_time"
 
     # After successful database update, process any pending operations

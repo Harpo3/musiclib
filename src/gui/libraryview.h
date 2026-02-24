@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QTableView;
+class QCheckBox;
 class QLineEdit;
 class QLabel;
 class QSortFilterProxyModel;
@@ -33,6 +34,7 @@ private slots:
     void onRateSuccess(const QString &filePath, int stars);
     void onRateDeferred(const QString &filePath, int stars);
     void onRateError(const QString &filePath, int stars, const QString &message);
+    void onExcludeUnratedToggled(bool checked);
 
 private:
     void setupColumns();
@@ -44,4 +46,5 @@ private:
     QLabel                *m_countLabel;
     RatingDelegate        *m_ratingDelegate;
     ScriptRunner          *m_scriptRunner;
+    QCheckBox             *m_excludeUnratedCheckbox;
 };

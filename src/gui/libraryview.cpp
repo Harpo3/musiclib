@@ -10,7 +10,49 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QSortFilterProxyModel>
+#include <QCheckBox>
 #include <QMessageBox>
+
+// ---------------------------------------------------------------------------
+// Custom proxy: adds "exclude unrated" filtering on top of the standard
+// text filter provided by QSortFilterProxyModel.
+// ---------------------------------------------------------------------------
+class LibraryFilterProxyModel : public QSortFilterProxyModel
+{
+public:
+    explicit LibraryFilterProxyModel(QObject *parent = nullptr)
+        : QSortFilterProxyModel(parent) {}
+
+    void setExcludeUnrated(bool exclude) {
+        if (m_excludeUnrated != exclude) {
+            m_excludeUnrated = exclude;
+            beginFilterChange();
+            endFilterChange();
+        }
+    }
+
+protected:
+    bool filterAcceptsRow(int sourceRow,
+                          const QModelIndex &sourceParent) const override
+    {
+        // Apply the unrated filter first
+        if (m_excludeUnrated) {
+            QModelIndex idx = sourceModel()->index(
+                sourceRow,
+                static_cast<int>(TrackColumn::GroupDesc),
+                sourceParent);
+            // UserRole returns the numeric star value (int)
+            int stars = sourceModel()->data(idx, Qt::UserRole).toInt();
+            if (stars == 0)
+                return false;
+        }
+        // Then apply the normal text filter
+        return QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent);
+    }
+
+private:
+    bool m_excludeUnrated = false;
+};
 
 // Columns visible by default (hide ID, IDAlbum, SongPath, Custom2, Rating)
 static const QSet<int> HIDDEN_COLUMNS = {
@@ -24,7 +66,7 @@ static const QSet<int> HIDDEN_COLUMNS = {
 LibraryView::LibraryView(QWidget *parent)
     : QWidget(parent)
     , m_model(new LibraryModel(this))
-    , m_proxyModel(new QSortFilterProxyModel(this))
+    , m_proxyModel(new LibraryFilterProxyModel(this))
     , m_tableView(new QTableView(this))
     , m_filterEdit(new QLineEdit(this))
     , m_countLabel(new QLabel(this))
@@ -35,9 +77,13 @@ LibraryView::LibraryView(QWidget *parent)
     m_filterEdit->setPlaceholderText("Filter by artist, album, or title...");
     m_filterEdit->setClearButtonEnabled(true);
 
+    m_excludeUnratedCheckbox = new QCheckBox(tr("Exclude Unrated"), this);
+    m_excludeUnratedCheckbox->setChecked(true);
+
     QHBoxLayout *filterLayout = new QHBoxLayout();
     filterLayout->addWidget(new QLabel("Filter:", this));
     filterLayout->addWidget(m_filterEdit, 1);
+    filterLayout->addWidget(m_excludeUnratedCheckbox);
     filterLayout->addWidget(m_countLabel);
 
     // --- Proxy model for filtering and sorting ---
@@ -45,6 +91,9 @@ LibraryView::LibraryView(QWidget *parent)
     m_proxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_proxyModel->setFilterKeyColumn(-1); // search all columns
     m_proxyModel->setSortRole(Qt::UserRole);
+
+    // Match the checkbox default — exclude unrated on startup
+    static_cast<LibraryFilterProxyModel *>(m_proxyModel)->setExcludeUnrated(true);
 
     // --- Table view ---
     m_tableView->setModel(m_proxyModel);
@@ -96,6 +145,10 @@ LibraryView::LibraryView(QWidget *parent)
             this, &LibraryView::onRateDeferred);
     connect(m_scriptRunner, &ScriptRunner::rateError,
             this, &LibraryView::onRateError);
+
+    // Exclude-unrated checkbox
+    connect(m_excludeUnratedCheckbox, &QCheckBox::toggled,
+            this, &LibraryView::onExcludeUnratedToggled);
 }
 
 bool LibraryView::loadDatabase(const QString &path)
@@ -143,9 +196,22 @@ void LibraryView::onFilterChanged(const QString &text)
             static_cast<int>(TrackColumn::Artist), Qt::AscendingOrder);
     }
 
-    m_countLabel->setText(text.isEmpty()
-        ? tr("%1 tracks").arg(m_model->rowCount())
-        : tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount()));
+    // Show filtered count when any filtering is active
+    bool anyFilter = !text.isEmpty() || m_excludeUnratedCheckbox->isChecked();
+    m_countLabel->setText(anyFilter
+        ? tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount())
+        : tr("%1 tracks").arg(m_model->rowCount()));
+}
+
+void LibraryView::onExcludeUnratedToggled(bool checked)
+{
+    static_cast<LibraryFilterProxyModel *>(m_proxyModel)->setExcludeUnrated(checked);
+
+    // Refresh the displayed count to reflect the new filter state
+    bool anyFilter = !m_filterEdit->text().isEmpty() || checked;
+    m_countLabel->setText(anyFilter
+        ? tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount())
+        : tr("%1 tracks").arg(m_model->rowCount()));
 }
 
 void LibraryView::onModelLoadError(const QString &message)
