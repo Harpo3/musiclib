@@ -93,6 +93,50 @@ void ScriptRunner::onRateProcessFinished(int exitCode)
 }
 
 // ===========================================================================
+//  Record removal — v2.1 addition
+// ===========================================================================
+
+void ScriptRunner::removeRecord(const QString &filePath)
+{
+    QString script = resolveScript("musiclib_remove_record.sh");
+    if (script.isEmpty()) {
+        emit removeError(filePath,
+            "musiclib_remove_record.sh not found in ~/musiclib/bin or /usr/lib/musiclib/bin");
+        return;
+    }
+
+    m_pendingRemovePath = filePath;
+
+    QProcess *process = new QProcess(this);
+
+    connect(process,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &ScriptRunner::onRemoveProcessFinished);
+
+    // Run: bash musiclib_remove_record.sh "<filepath>"
+    process->start("bash", QStringList() << script << filePath);
+}
+
+void ScriptRunner::onRemoveProcessFinished(int exitCode)
+{
+    QProcess *process = qobject_cast<QProcess *>(sender());
+    if (process)
+        process->deleteLater();
+
+    if (exitCode == 0) {
+        emit removeSuccess(m_pendingRemovePath);
+    } else {
+        QString errMsg;
+        if (process) {
+            errMsg = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        }
+        if (errMsg.isEmpty())
+            errMsg = QString("Script exited with code %1").arg(exitCode);
+        emit removeError(m_pendingRemovePath, errMsg);
+    }
+}
+
+// ===========================================================================
 //  Generic script execution — v2 addition
 // ===========================================================================
 

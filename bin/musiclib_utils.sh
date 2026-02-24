@@ -382,6 +382,65 @@ update_lastplayed() {
         fi
     fi
 
+   return 0
+}
+
+# Remove a single track record from the database by file path
+# Usage: delete_record_by_path "$MUSICDB" "/path/to/file.mp3"
+# Behavior:
+#   - If exactly one matching row is found, it is removed and 0 is returned.
+#   - If no rows or multiple rows match, shows a kdialog explainer and returns 1.
+#   - Caller is responsible for acquiring the database lock (with_db_lock).
+
+delete_record_by_path() {
+    local db_file="$1"
+    local filepath="$2"
+
+    if [ ! -f "$db_file" ]; then
+        echo "Error: Database not found: $db_file" >&2
+        return 1
+    fi
+
+    # Find all matching rows (line numbers) for this path
+    local matches
+    matches=$(grep -nF "$filepath" "$db_file" 2>/dev/null || true)
+
+    if [ -z "$matches" ]; then
+        echo "Error: Track not found in database: $filepath" >&2
+        if command -v kdialog >/dev/null 2>&1; then
+            kdialog --title 'Delete Failed' --passivepopup \
+                "Track not found in database. It may have already been removed.\n$filepath" 5 &
+        fi
+        return 1
+    fi
+
+    # Count matches
+    local match_count
+    match_count=$(printf '%s\n' "$matches" | wc -l)
+
+    if [ "$match_count" -ne 1 ]; then
+        echo "Error: Expected exactly 1 record for path, found $match_count: $filepath" >&2
+        printf '%s\n' "$matches" >&2
+        if command -v kdialog >/dev/null 2>&1; then
+            kdialog --title 'Delete Failed' --passivepopup \
+                "Found $match_count matching records instead of 1 — cannot safely delete.\nResolve duplicates manually before retrying.\n$filepath" 5 &
+        fi
+        return 1
+    fi
+
+    # Extract row number to delete
+    local target_row
+    target_row=$(printf '%s\n' "$matches" | cut -d: -f1)
+
+    # Rewrite DB without the target row (header and all other rows preserved)
+    if ! awk -v row="$target_row" 'NR != row { print }' "$db_file" > "${db_file}.tmp" 2>/dev/null; then
+        echo "Error: Failed to write temporary database while deleting record" >&2
+        rm -f "${db_file}.tmp"
+        return 1
+    fi
+
+    mv "${db_file}.tmp" "$db_file"
+    log_message "Deleted DB record for $filepath (row $target_row)"
     return 0
 }
 

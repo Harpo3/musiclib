@@ -9,17 +9,20 @@
 ///
 /// ScriptRunner — Async script executor for the MusicLib GUI.
 ///
-/// Provides two execution modes:
+/// Provides three execution modes:
 ///
-///   1. rate()       — Dedicated method for musiclib_rate.sh (unchanged from v1).
-///                     Emits rateSuccess / rateDeferred / rateError.
+///   1. rate()           — Dedicated method for musiclib_rate.sh (unchanged from v1).
+///                         Emits rateSuccess / rateDeferred / rateError.
 ///
-///   2. runScript()  — Generic method for any backend script.
-///                     Emits scriptOutput (real-time, line-by-line stdout),
-///                     scriptFinished (exit code + stderr on completion).
-///                     Used by the Maintenance Operations Panel.
+///   2. removeRecord()   — Dedicated method for musiclib_remove_record.sh.
+///                         Emits removeSuccess / removeError.
 ///
-/// Both modes are non-blocking.  QProcess runs on the main event loop
+///   3. runScript()      — Generic method for any backend script.
+///                         Emits scriptOutput (real-time, line-by-line stdout),
+///                         scriptFinished (exit code + stderr on completion).
+///                         Used by the Maintenance Operations Panel.
+///
+/// All modes are non-blocking.  QProcess runs on the main event loop
 /// (no QThread needed — QProcess I/O is already async).
 ///
 class ScriptRunner : public QObject
@@ -33,6 +36,12 @@ public:
 
     /// Invoke musiclib_rate.sh with filepath and star rating (0-5).
     void rate(const QString &filePath, int stars);
+
+    // --- Record removal (v2.1 addition) -------------------------------------
+
+    /// Invoke musiclib_remove_record.sh to delete a single DB row.
+    /// The audio file itself is NOT deleted — only the DSV record.
+    void removeRecord(const QString &filePath);
 
     // --- Generic script execution (v2 addition) -----------------------------
 
@@ -68,6 +77,10 @@ signals:
     void rateDeferred(const QString &filePath, int stars);   // exit code 3
     void rateError(const QString &filePath, int stars, const QString &message);
 
+    // --- Record removal signals (v2.1 addition) -----------------------------
+    void removeSuccess(const QString &filePath);
+    void removeError(const QString &filePath, const QString &message);
+
     // --- Generic script signals (v2 addition) -------------------------------
 
     /// Emitted for each line of stdout while the script runs.
@@ -83,6 +96,9 @@ private slots:
     // Rating process handler (v1)
     void onRateProcessFinished(int exitCode);
 
+    // Record removal process handler (v2.1)
+    void onRemoveProcessFinished(int exitCode);
+
     // Generic process handlers (v2)
     void onScriptReadyRead();
     void onScriptProcessFinished(int exitCode, QProcess::ExitStatus status);
@@ -91,6 +107,9 @@ private:
     // --- Rating state (v1) --------------------------------------------------
     QString m_pendingFilePath;
     int     m_pendingStars = 0;
+
+    // --- Record removal state (v2.1) ----------------------------------------
+    QString m_pendingRemovePath;
 
     // --- Generic execution state (v2) ---------------------------------------
     QProcess *m_scriptProcess  = nullptr;

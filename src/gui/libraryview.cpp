@@ -12,6 +12,7 @@
 #include <QSortFilterProxyModel>
 #include <QCheckBox>
 #include <QMessageBox>
+#include <QMenu>
 
 // ---------------------------------------------------------------------------
 // Custom proxy: adds "exclude unrated" filtering on top of the standard
@@ -112,6 +113,10 @@ LibraryView::LibraryView(QWidget *parent)
     // Install star rating delegate on the GroupDesc (Stars) column
     m_tableView->setItemDelegateForColumn(
         static_cast<int>(TrackColumn::GroupDesc), m_ratingDelegate);
+    m_ratingDelegate->setView(m_tableView);
+
+    // Enable right-click context menu on table rows
+    m_tableView->setContextMenuPolicy(Qt::CustomContextMenu);
 
     // --- Main layout ---
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
@@ -138,7 +143,7 @@ LibraryView::LibraryView(QWidget *parent)
     connect(m_ratingDelegate, &RatingDelegate::ratingChanged,
             this, &LibraryView::onRatingChanged);
 
-    // Script runner results
+    // Script runner results — rating
     connect(m_scriptRunner, &ScriptRunner::rateSuccess,
             this, &LibraryView::onRateSuccess);
     connect(m_scriptRunner, &ScriptRunner::rateDeferred,
@@ -146,9 +151,19 @@ LibraryView::LibraryView(QWidget *parent)
     connect(m_scriptRunner, &ScriptRunner::rateError,
             this, &LibraryView::onRateError);
 
+    // Script runner results — record removal
+    connect(m_scriptRunner, &ScriptRunner::removeSuccess,
+            this, &LibraryView::onRemoveSuccess);
+    connect(m_scriptRunner, &ScriptRunner::removeError,
+            this, &LibraryView::onRemoveError);
+
     // Exclude-unrated checkbox
     connect(m_excludeUnratedCheckbox, &QCheckBox::toggled,
             this, &LibraryView::onExcludeUnratedToggled);
+
+    // Context menu on right-click
+    connect(m_tableView, &QTableView::customContextMenuRequested,
+            this, &LibraryView::showContextMenu);
 }
 
 bool LibraryView::loadDatabase(const QString &path)
@@ -249,4 +264,71 @@ void LibraryView::onRateError(const QString &filePath, int stars, const QString 
     Q_UNUSED(stars)
     emit statusMessage(tr("Rating error: %1").arg(message));
     QMessageBox::warning(this, tr("Rating Failed"), message);
+}
+
+// ===========================================================================
+//  Context menu — right-click on a table row
+// ===========================================================================
+
+void LibraryView::showContextMenu(const QPoint &pos)
+{
+    // Determine which row was right-clicked
+    QModelIndex proxyIdx = m_tableView->indexAt(pos);
+    if (!proxyIdx.isValid())
+        return;
+
+    // Map proxy row back to source model row
+    QModelIndex sourceIdx = m_proxyModel->mapToSource(proxyIdx);
+    int sourceRow = sourceIdx.row();
+
+    TrackRecord track = m_model->trackAt(sourceRow);
+    if (track.songPath.isEmpty())
+        return;
+
+    // Build the context menu
+    QMenu menu(this);
+
+    QAction *removeAct = menu.addAction(tr("Remove Record"));
+    removeAct->setToolTip(tr("Remove this track from the database (file is not deleted)"));
+
+    connect(removeAct, &QAction::triggered, this, [this, track]() {
+        // Confirmation dialog — show artist + title so user knows what they're removing
+        QString display = track.songTitle;
+        if (!track.artist.isEmpty())
+            display = track.artist + QStringLiteral(" — ") + track.songTitle;
+
+        int result = QMessageBox::question(
+            this,
+            tr("Remove Record"),
+            tr("Remove \"%1\" from the database?\n\n"
+               "The audio file itself will not be deleted.")
+                .arg(display),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+
+        if (result == QMessageBox::Yes) {
+            emit statusMessage(tr("Removing record: %1...").arg(track.songTitle));
+            m_scriptRunner->removeRecord(track.songPath);
+        }
+    });
+
+    menu.exec(m_tableView->viewport()->mapToGlobal(pos));
+}
+
+// ===========================================================================
+//  Record removal result handlers
+// ===========================================================================
+
+void LibraryView::onRemoveSuccess(const QString &filePath)
+{
+    Q_UNUSED(filePath)
+    emit statusMessage(tr("Record removed successfully"));
+    // DSV watcher will trigger model refresh automatically
+}
+
+void LibraryView::onRemoveError(const QString &filePath, const QString &message)
+{
+    Q_UNUSED(filePath)
+    emit statusMessage(tr("Remove error: %1").arg(message));
+    QMessageBox::warning(this, tr("Remove Failed"), message);
 }

@@ -36,6 +36,11 @@ private slots:
     void onRateError(const QString &filePath, int stars, const QString &message);
     void onExcludeUnratedToggled(bool checked);
 
+    // Context menu (v2.1)
+    void showContextMenu(const QPoint &pos);
+    void onRemoveSuccess(const QString &filePath);
+    void onRemoveError(const QString &filePath, const QString &message);
+
 private:
     void setupColumns();
 
