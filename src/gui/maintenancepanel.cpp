@@ -356,6 +356,26 @@ QGroupBox *MaintenancePanel::createBoostGroup()
     auto *group  = new QGroupBox("Boost Album — boost_album.sh");
     auto *layout = new QVBoxLayout(group);
 
+    // Check if RSGain is installed
+    QString rsgainInstalled = configValue("RSGAIN_INSTALLED");
+    bool hasRsgain = (rsgainInstalled == "true");
+
+    if (!hasRsgain) {
+        // RSGain not installed - disable the entire group
+        group->setEnabled(false);
+        group->setToolTip(
+            "RSGain is not installed. Install rsgain to enable ReplayGain loudness normalization.\n"
+            "Run musiclib_init_config.sh again after installation to update configuration.");
+        
+        auto *disabledLabel = new QLabel(
+            "<i>RSGain not installed. This feature requires the 'rsgain' package.</i>");
+        disabledLabel->setStyleSheet("color: gray;");
+        disabledLabel->setWordWrap(true);
+        layout->addWidget(disabledLabel);
+        
+        return group;
+    }
+
     auto *desc = new QLabel(
         "Apply ReplayGain loudness targeting to an album directory via rsgain.  "
         "Adds ReplayGain tags to files (does not alter audio data).");
@@ -575,8 +595,8 @@ void MaintenancePanel::launchBoost()
 
     QStringList args;
     args << path;
-    // boost_album.sh expects a positive integer (it negates internally)
-    args << QString::number(m_boostSlider->value());
+    // Slider value is absolute; pass as negative LUFS
+    args << "--target" << QString::number(-m_boostSlider->value());
 
     setButtonsEnabled(false);
     m_runner->runScript("boost", "boost_album.sh", args);

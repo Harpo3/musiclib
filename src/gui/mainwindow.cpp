@@ -359,13 +359,26 @@ void MainWindow::setupToolbar()
     toolbar->addAction(audaciousAction);
 
     // ── Kid3 button ──
+    // Check which Kid3 GUI version is installed (if any)
+    QString kid3GuiVersion = m_confWriter->value("KID3_GUI_INSTALLED");
+    bool hasKid3Gui = (kid3GuiVersion == "kid3" || kid3GuiVersion == "kid3-qt");
+    
     QAction *kid3Action = new QAction(
         QIcon::fromTheme(QStringLiteral("kid3-qt")),
         i18n("Kid3"), this);
-    kid3Action->setToolTip(
-        i18n("Open current track in Kid3, or raise Kid3 if already open"));
-    connect(kid3Action, &QAction::triggered,
-            this, &MainWindow::onOpenKid3);
+    
+    if (hasKid3Gui) {
+        kid3Action->setToolTip(
+            i18n("Open current track in Kid3, or raise Kid3 if already open"));
+        connect(kid3Action, &QAction::triggered,
+                this, &MainWindow::onOpenKid3);
+    } else {
+        kid3Action->setEnabled(false);
+        kid3Action->setToolTip(
+            i18n("Kid3 GUI not installed. Install kid3 or kid3-qt package to enable tag editor.\n"
+                 "Run musiclib_init_config.sh again after installation."));
+    }
+    
     toolbar->addAction(kid3Action);
 }
 
@@ -739,6 +752,20 @@ void MainWindow::onRaiseAudacious()
 
 void MainWindow::onOpenKid3()
 {
+    // Determine which Kid3 version to use from config
+    QString kid3GuiVersion = m_confWriter->value("KID3_GUI_INSTALLED");
+    
+    if (kid3GuiVersion != "kid3" && kid3GuiVersion != "kid3-qt") {
+        // No GUI version installed - should not reach here if button is disabled
+        return;
+    }
+    
+    // Determine the process name and executable path
+    QString processName = kid3GuiVersion;  // "kid3" or "kid3-qt"
+    QString executablePath = "/usr/bin/" + kid3GuiVersion;
+    QString windowClass = (kid3GuiVersion == "kid3") ? QStringLiteral("kid3") : QStringLiteral("kid3");
+    
+    // Get current track path from Audacious
     QString currentTrackPath;
     QProcess audtoolQuery;
     audtoolQuery.start(QStringLiteral("audtool"),
@@ -750,14 +777,15 @@ void MainWindow::onOpenKid3()
         }
     }
 
-    if (isProcessRunning(QStringLiteral("kid3-qt"))) {
-        raiseWindowByClass(QStringLiteral("kid3"));
+    // Check if Kid3 is already running
+    if (isProcessRunning(processName)) {
+        raiseWindowByClass(windowClass);
     } else {
+        // Launch Kid3 with current track if available
         if (!currentTrackPath.isEmpty() && QFile::exists(currentTrackPath)) {
-            QProcess::startDetached(
-                QStringLiteral("/usr/bin/kid3-qt"), {currentTrackPath});
+            QProcess::startDetached(executablePath, {currentTrackPath});
         } else {
-            QProcess::startDetached(QStringLiteral("/usr/bin/kid3-qt"), {});
+            QProcess::startDetached(executablePath, {});
         }
     }
 }

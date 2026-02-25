@@ -61,6 +61,8 @@ DETECTED_AUDACIOUS_PATH=""
 DETECTED_MUSIC_REPO=""
 DETECTED_DOWNLOAD_DIR="$HOME/Downloads"
 DETECTED_KDECONNECT=""
+DETECTED_RSGAIN=""
+DETECTED_KID3_GUI=""
 BUILD_INITIAL_DB=false
 
 #############################################
@@ -308,9 +310,11 @@ This wizard will:
   2. Locate your music repository
   3. Analyze library structure (directory layout, filename conventions)
   4. Configure download directories
-  5. Create XDG directory structure
-  6. Optionally build initial database
-  7. Generate/update configuration file
+  5. Detect KDE Connect for mobile sync
+  6. Check optional dependencies (RSGain, Kid3 GUI)
+  7. Create XDG directory structure
+  8. Optionally build initial database
+  9. Generate/update configuration file
 
 The wizard can be run multiple times to update configuration.
 It will read existing settings as defaults.
@@ -860,10 +864,60 @@ else
 fi
 
 #############################################
-# Step 7: Create Directory Structure
+# Step 7: Optional Dependencies (RSGain, Kid3)
 #############################################
 
-print_step "7/7" "Creating directory structure..."
+print_step "7/8" "Checking optional dependencies..."
+
+# Detect RSGain (for ReplayGain / loudness normalization)
+DETECTED_RSGAIN="false"
+if command -v rsgain &>/dev/null; then
+    DETECTED_RSGAIN="true"
+    print_success "RSGain installed (ReplayGain support enabled)"
+else
+    DETECTED_RSGAIN="false"
+    print_info "RSGain not found (optional - for loudness normalization)"
+    
+    if prompt_yn "Install RSGain for ReplayGain support?" "n"; then
+        print_info "Install RSGain using your package manager:"
+        print_info "  Debian/Ubuntu: sudo apt install rsgain"
+        print_info "  Fedora: sudo dnf install rsgain"
+        print_info "  Arch: sudo pacman -S rsgain"
+        echo ""
+        print_info "Re-run setup after installation to enable ReplayGain features."
+    fi
+fi
+
+# Detect Kid3 GUI versions (kid3 = KDE, kid3-qt = Qt standalone)
+# Note: kid3-common (CLI) is a required dependency, so we only check for GUI versions
+DETECTED_KID3_GUI="none"
+
+if command -v kid3 &>/dev/null; then
+    DETECTED_KID3_GUI="kid3"
+    print_success "Kid3 (KDE version) installed"
+elif command -v kid3-qt &>/dev/null; then
+    DETECTED_KID3_GUI="kid3-qt"
+    print_success "Kid3-Qt (standalone Qt version) installed"
+else
+    DETECTED_KID3_GUI="none"
+    print_info "Kid3 GUI not found (optional - for tag editing)"
+    print_info "Note: kid3-cli is required and should already be installed"
+    
+    if prompt_yn "Install Kid3 GUI for tag editing interface?" "n"; then
+        print_info "Install Kid3 GUI using your package manager:"
+        print_info "  Debian/Ubuntu: sudo apt install kid3-qt  (or kid3 for KDE integration)"
+        print_info "  Fedora: sudo dnf install kid3-qt  (or kid3 for KDE integration)"
+        print_info "  Arch: sudo pacman -S kid3-qt  (or kid3 for KDE integration)"
+        echo ""
+        print_info "Re-run setup after installation to enable GUI tag editor."
+    fi
+fi
+
+#############################################
+# Step 8: Create Directory Structure
+#############################################
+
+print_step "8/8" "Creating directory structure..."
 
 create_dir() {
     local dir="$1"
@@ -1027,6 +1081,10 @@ RatingGroup5="201,255"
 EXIFTOOL_CMD="exiftool"
 KID3_CMD="kid3-cli"
 KDECONNECT_CMD="kdeconnect-cli"
+
+# Optional dependency detection (set by setup wizard)
+RSGAIN_INSTALLED=$DETECTED_RSGAIN
+KID3_GUI_INSTALLED="$DETECTED_KID3_GUI"
 EOF
 
 print_success "Configuration saved to: $CONFIG_FILE"
