@@ -596,7 +596,7 @@ void MaintenancePanel::launchBoost()
     QStringList args;
     args << path;
     // Slider value is absolute; pass as negative LUFS
-    args << "--target" << QString::number(-m_boostSlider->value());
+    args << QString::number(m_boostSlider->value());
 
     setButtonsEnabled(false);
     m_runner->runScript("boost", "boost_album.sh", args);

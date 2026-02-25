@@ -63,9 +63,7 @@ sudo make install
 ```bash
 musiclib-cli setup
 ```
-The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. Run `musiclib-cli setup --force` to reconfigure later.
-
-**GUI**: Launch `musiclib-qt` and follow the setup wizard (Phase 2+).
+The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. Run `musiclib-cli setup` to reconfigure later.
 
 ---
 

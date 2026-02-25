@@ -102,12 +102,6 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/config/
                 WORLD_READ
 )
 
-# Install data files
-install(FILES 
-    ${CMAKE_SOURCE_DIR}/musiclib_example.csv
-    DESTINATION share/musiclib
-)
-
 # Man page installation
 find_program(GZIP gzip)
 if(GZIP)
