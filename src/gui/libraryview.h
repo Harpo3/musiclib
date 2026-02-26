@@ -35,6 +35,7 @@ private slots:
     void onRateDeferred(const QString &filePath, int stars);
     void onRateError(const QString &filePath, int stars, const QString &message);
     void onExcludeUnratedToggled(bool checked);
+    void onExcludeRatedToggled(bool checked);
 
     // Context menu (v2.1)
     void showContextMenu(const QPoint &pos);
@@ -52,4 +53,5 @@ private:
     RatingDelegate        *m_ratingDelegate;
     ScriptRunner          *m_scriptRunner;
     QCheckBox             *m_excludeUnratedCheckbox;
+    QCheckBox             *m_excludeRatedCheckbox;
 };

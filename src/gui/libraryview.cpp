@@ -32,19 +32,29 @@ public:
         }
     }
 
+    void setExcludeRated(bool exclude) {
+        if (m_excludeRated != exclude) {
+            m_excludeRated = exclude;
+            beginFilterChange();
+            endFilterChange();
+        }
+    }
+
 protected:
     bool filterAcceptsRow(int sourceRow,
                           const QModelIndex &sourceParent) const override
     {
-        // Apply the unrated filter first
-        if (m_excludeUnrated) {
+        // Apply star-rating filters first
+        if (m_excludeUnrated || m_excludeRated) {
             QModelIndex idx = sourceModel()->index(
                 sourceRow,
                 static_cast<int>(TrackColumn::GroupDesc),
                 sourceParent);
             // UserRole returns the numeric star value (int)
             int stars = sourceModel()->data(idx, Qt::UserRole).toInt();
-            if (stars == 0)
+            if (m_excludeUnrated && stars == 0)
+                return false;
+            if (m_excludeRated && stars > 0)
                 return false;
         }
         // Then apply the normal text filter
@@ -53,6 +63,7 @@ protected:
 
 private:
     bool m_excludeUnrated = false;
+    bool m_excludeRated   = false;
 };
 
 // Columns visible by default (hide ID, IDAlbum, SongPath, Custom2, Rating)
@@ -81,10 +92,16 @@ LibraryView::LibraryView(QWidget *parent)
     m_excludeUnratedCheckbox = new QCheckBox(tr("Exclude Unrated"), this);
     m_excludeUnratedCheckbox->setChecked(true);
 
+    m_excludeRatedCheckbox = new QCheckBox(tr("Exclude Rated"), this);
+    m_excludeRatedCheckbox->setChecked(false);
+    // Unrated starts checked, so Rated starts dimmed (mutually exclusive)
+    m_excludeRatedCheckbox->setEnabled(false);
+
     QHBoxLayout *filterLayout = new QHBoxLayout();
     filterLayout->addWidget(new QLabel("Filter:", this));
     filterLayout->addWidget(m_filterEdit, 1);
     filterLayout->addWidget(m_excludeUnratedCheckbox);
+    filterLayout->addWidget(m_excludeRatedCheckbox);
     filterLayout->addWidget(m_countLabel);
 
     // --- Proxy model for filtering and sorting ---
@@ -157,9 +174,11 @@ LibraryView::LibraryView(QWidget *parent)
     connect(m_scriptRunner, &ScriptRunner::removeError,
             this, &LibraryView::onRemoveError);
 
-    // Exclude-unrated checkbox
+    // Exclude-unrated / exclude-rated checkboxes (mutually exclusive)
     connect(m_excludeUnratedCheckbox, &QCheckBox::toggled,
             this, &LibraryView::onExcludeUnratedToggled);
+    connect(m_excludeRatedCheckbox, &QCheckBox::toggled,
+            this, &LibraryView::onExcludeRatedToggled);
 
     // Context menu on right-click
     connect(m_tableView, &QTableView::customContextMenuRequested,
@@ -212,7 +231,8 @@ void LibraryView::onFilterChanged(const QString &text)
     }
 
     // Show filtered count when any filtering is active
-    bool anyFilter = !text.isEmpty() || m_excludeUnratedCheckbox->isChecked();
+    bool anyFilter = !text.isEmpty() || m_excludeUnratedCheckbox->isChecked()
+                     || m_excludeRatedCheckbox->isChecked();
     m_countLabel->setText(anyFilter
         ? tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount())
         : tr("%1 tracks").arg(m_model->rowCount()));
@@ -222,8 +242,27 @@ void LibraryView::onExcludeUnratedToggled(bool checked)
 {
     static_cast<LibraryFilterProxyModel *>(m_proxyModel)->setExcludeUnrated(checked);
 
+    // Dim the "Exclude Rated" checkbox while this one is active (mutually exclusive)
+    m_excludeRatedCheckbox->setEnabled(!checked);
+
     // Refresh the displayed count to reflect the new filter state
-    bool anyFilter = !m_filterEdit->text().isEmpty() || checked;
+    bool anyFilter = !m_filterEdit->text().isEmpty() || checked
+                     || m_excludeRatedCheckbox->isChecked();
+    m_countLabel->setText(anyFilter
+        ? tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount())
+        : tr("%1 tracks").arg(m_model->rowCount()));
+}
+
+void LibraryView::onExcludeRatedToggled(bool checked)
+{
+    static_cast<LibraryFilterProxyModel *>(m_proxyModel)->setExcludeRated(checked);
+
+    // Dim the "Exclude Unrated" checkbox while this one is active (mutually exclusive)
+    m_excludeUnratedCheckbox->setEnabled(!checked);
+
+    // Refresh the displayed count to reflect the new filter state
+    bool anyFilter = !m_filterEdit->text().isEmpty() || checked
+                     || m_excludeUnratedCheckbox->isChecked();
     m_countLabel->setText(anyFilter
         ? tr("%1 / %2 tracks").arg(m_proxyModel->rowCount()).arg(m_model->rowCount())
         : tr("%1 tracks").arg(m_model->rowCount()));

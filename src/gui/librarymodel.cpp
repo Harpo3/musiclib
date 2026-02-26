@@ -169,12 +169,14 @@ QVariant LibraryModel::data(const QModelIndex &index, int role) const
             return QColor(255, 255, 220); // pale yellow
     }
 
-// Provide raw numeric values for correct sorting
+// Provide sort keys: numeric for special columns, display text for everything else
     if (role == Qt::UserRole) {
         if (static_cast<TrackColumn>(col) == TrackColumn::GroupDesc)
             return track.groupDesc.toInt();
         if (static_cast<TrackColumn>(col) == TrackColumn::LastTimePlayed)
             return track.lastTimePlayed.toDouble();
+        // Fall back to the display string so Album, Title, Artist, etc. sort correctly
+        return data(index, Qt::DisplayRole);
     }
 
     return QVariant();
