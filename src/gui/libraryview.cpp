@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QMessageBox>
 #include <QMenu>
+#include <QProcess>
 
 // ---------------------------------------------------------------------------
 // Custom proxy: adds "exclude unrated" filtering on top of the standard
@@ -117,7 +118,7 @@ LibraryView::LibraryView(QWidget *parent)
     m_tableView->setModel(m_proxyModel);
     m_tableView->setSortingEnabled(true);
     m_tableView->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_tableView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_tableView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_tableView->setAlternatingRowColors(true);
     m_tableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_tableView->setMouseTracking(true);
@@ -316,16 +317,92 @@ void LibraryView::showContextMenu(const QPoint &pos)
     if (!proxyIdx.isValid())
         return;
 
-    // Map proxy row back to source model row
+    // Map right-clicked row to source (used for Remove Record)
     QModelIndex sourceIdx = m_proxyModel->mapToSource(proxyIdx);
-    int sourceRow = sourceIdx.row();
-
-    TrackRecord track = m_model->trackAt(sourceRow);
+    TrackRecord track = m_model->trackAt(sourceIdx.row());
     if (track.songPath.isEmpty())
         return;
 
+    // Build the track list for Audacious actions.
+    // If the right-clicked row is part of the current selection, use all selected
+    // rows; otherwise fall back to just the right-clicked row.
+    QModelIndexList selectedProxyRows = m_tableView->selectionModel()->selectedRows();
+    bool clickInSelection = false;
+    for (const QModelIndex &idx : selectedProxyRows) {
+        if (idx.row() == proxyIdx.row()) { clickInSelection = true; break; }
+    }
+
+    QVector<TrackRecord> tracks;
+    if (clickInSelection && selectedProxyRows.size() > 1) {
+        for (const QModelIndex &idx : selectedProxyRows) {
+            TrackRecord t = m_model->trackAt(m_proxyModel->mapToSource(idx).row());
+            if (!t.songPath.isEmpty())
+                tracks.append(t);
+        }
+    } else {
+        tracks.append(track);
+    }
+
+    // Label suffix shown when multiple tracks are targeted
+    QString countLabel = tracks.size() > 1
+        ? tr(" (%1 tracks)").arg(tracks.size())
+        : QString();
+
     // Build the context menu
     QMenu menu(this);
+
+    QAction *openAct = menu.addAction(tr("Open with Audacious") + countLabel);
+    openAct->setToolTip(tr("Play the selected track(s) in Audacious"));
+
+    connect(openAct, &QAction::triggered, this, [this, tracks]() {
+        QStringList args;
+        for (const TrackRecord &t : tracks)
+            args << t.songPath;
+        if (!QProcess::startDetached("audacious", args))
+            emit statusMessage(tr("Failed to launch Audacious"));
+    });
+
+    QAction *queueAct = menu.addAction(tr("Add to Queue in Audacious") + countLabel);
+    queueAct->setToolTip(tr("Append the selected track(s) to the Audacious play queue"));
+
+    connect(queueAct, &QAction::triggered, this, [this, tracks]() {
+        int queued = 0;
+        for (const TrackRecord &t : tracks) {
+            // Step 1: append the file to the current Audacious playlist
+            if (QProcess::execute("audtool", {"playlist-addurl", t.songPath}) != 0) {
+                emit statusMessage(tr("Failed to add \"%1\" to Audacious playlist").arg(t.songTitle));
+                continue;
+            }
+
+            // Step 2: the new entry landed at the end — find its 1-based position
+            QProcess lenProc;
+            lenProc.start("audtool", {"playlist-length"});
+            if (!lenProc.waitForFinished(3000)) {
+                emit statusMessage(tr("audtool timed out querying playlist length"));
+                continue;
+            }
+            bool ok = false;
+            int pos = lenProc.readAllStandardOutput().trimmed().toInt(&ok);
+            if (!ok || pos <= 0) {
+                emit statusMessage(tr("Failed to determine playlist position for \"%1\"").arg(t.songTitle));
+                continue;
+            }
+
+            // Step 3: add that position to the play queue
+            if (QProcess::execute("audtool", {"--playqueue-add", QString::number(pos)}) != 0) {
+                emit statusMessage(tr("Failed to queue \"%1\" in Audacious").arg(t.songTitle));
+                continue;
+            }
+            ++queued;
+        }
+
+        if (queued == 1)
+            emit statusMessage(tr("Queued: %1").arg(tracks.first().songTitle));
+        else if (queued > 1)
+            emit statusMessage(tr("Queued %1 tracks").arg(queued));
+    });
+
+    menu.addSeparator();
 
     QAction *removeAct = menu.addAction(tr("Remove Record"));
     removeAct->setToolTip(tr("Remove this track from the database (file is not deleted)"));
