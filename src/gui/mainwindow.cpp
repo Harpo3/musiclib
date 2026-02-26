@@ -32,6 +32,7 @@
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include <QUrl>
 #include <QProcess>
 #include <QFileInfo>
 #include <QIcon>
@@ -613,12 +614,29 @@ void MainWindow::refreshNowPlaying()
         m_nowPlaying.playlistPosition = posStr.toInt();
         m_nowPlaying.playlistLength   = lenStr.toInt();
 
-        QString currentPlaylistFile = m_mobileDir
-            + QStringLiteral("/current_playlist");
-        QFile cpFile(currentPlaylistFile);
-        if (cpFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            m_nowPlaying.playlistName = QTextStream(&cpFile).readLine().trimmed();
-            cpFile.close();
+        // Scan ~/.config/audacious/playlists/*.audpl to find which playlist
+        // contains the current song, then decode its title= first line.
+        // This is reliable regardless of how audtool numbers its playlists.
+        m_nowPlaying.playlistName.clear();
+        QDir plDir(m_audaciousPlaylistsDir);
+        const QStringList plFiles = plDir.entryList(
+            {QStringLiteral("*.audpl")}, QDir::Files, QDir::Name);
+        for (const QString &plFile : plFiles) {
+            QFile f(plDir.filePath(plFile));
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+            const QString titleLine = QString::fromUtf8(f.readLine()).trimmed();
+            QString candidate;
+            if (titleLine.startsWith(QLatin1String("title=")))
+                candidate = QUrl::fromPercentEncoding(titleLine.mid(6).toUtf8());
+            while (!f.atEnd()) {
+                if (QString::fromUtf8(f.readLine()).contains(m_nowPlaying.songPath)) {
+                    m_nowPlaying.playlistName = candidate;
+                    break;
+                }
+            }
+            if (!m_nowPlaying.playlistName.isEmpty())
+                break;
         }
     }
 

@@ -14,6 +14,9 @@
 #include <QMessageBox>
 #include <QMenu>
 #include <QProcess>
+#include <QDir>
+#include <QFile>
+#include <QUrl>
 
 // ---------------------------------------------------------------------------
 // Custom proxy: adds "exclude unrated" filtering on top of the standard
@@ -368,7 +371,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
     connect(queueAct, &QAction::triggered, this, [this, tracks]() {
         int queued = 0;
         for (const TrackRecord &t : tracks) {
-            // Step 1: append the file to the current Audacious playlist
+            // Step 1: append the file to the active playlist
             if (QProcess::execute("audtool", {"playlist-addurl", t.songPath}) != 0) {
                 emit statusMessage(tr("Failed to add \"%1\" to Audacious playlist").arg(t.songTitle));
                 continue;
@@ -400,6 +403,14 @@ void LibraryView::showContextMenu(const QPoint &pos)
             emit statusMessage(tr("Queued: %1").arg(tracks.first().songTitle));
         else if (queued > 1)
             emit statusMessage(tr("Queued %1 tracks").arg(queued));
+    });
+
+    QAction *kid3Act = menu.addAction(tr("Open with kid3"));
+    kid3Act->setToolTip(tr("Edit tags for this track in kid3"));
+
+    connect(kid3Act, &QAction::triggered, this, [this, track]() {
+        if (!QProcess::startDetached("kid3", {track.songPath}))
+            emit statusMessage(tr("Failed to launch kid3"));
     });
 
     menu.addSeparator();
