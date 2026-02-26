@@ -10,6 +10,7 @@
 #include <KUrlRequester>
 
 #include <QCheckBox>
+#include <QUrl>
 #include <QComboBox>
 #include <QDir>
 #include <QFormLayout>
@@ -612,6 +613,16 @@ void SettingsDialog::syncConfToKConfig()
     MusicLibSettings::self()->save();
 }
 
+// Strip a "file://" (or "file:") scheme that KUrlRequester may inject when
+// its value is round-tripped through KConfig/KConfigDialog as a QUrl.
+// Shell scripts expect plain filesystem paths, not RFC 3986 file URIs.
+static QString toLocalPath(const QString &value)
+{
+    if (value.startsWith(QLatin1String("file://")))
+        return QUrl(value).toLocalFile();
+    return value;
+}
+
 void SettingsDialog::syncKConfigToConf()
 {
     // Direction: KConfig → musiclib.conf
@@ -624,21 +635,26 @@ void SettingsDialog::syncKConfigToConf()
     // file by ConfWriter (it only updates keys that are explicitly set
     // here), so the variable definitions remain available for any manual
     // editing.
+    //
+    // toLocalPath() is applied to every path value because KUrlRequester
+    // stores paths as QUrl internally; KConfigDialog can therefore write
+    // "file:///..." strings back into KConfig.  toLocalPath() converts
+    // those back to plain filesystem paths before they reach the conf file.
     auto *s = MusicLibSettings::self();
 
     // ── Paths (written as resolved absolute paths) ──
-    m_conf->setValue(QStringLiteral("MUSIC_REPO"),   s->musicRepo());
-    m_conf->setValue(QStringLiteral("MUSICDB"),      s->musicDatabase());
-    m_conf->setValue(QStringLiteral("PLAYLISTS_DIR"), s->playlistsDir());
-    m_conf->setValue(QStringLiteral("NEW_DOWNLOAD_DIR"), s->newDownloadDir());
-    m_conf->setValue(QStringLiteral("SCRIPTS_DIR"),  s->scriptsDir());
-    m_conf->setValue(QStringLiteral("MUSIC_DISPLAY_DIR"), s->conkyOutputDir());
-    m_conf->setValue(QStringLiteral("TAG_BACKUP_DIR"), s->tagBackupDir());
-    m_conf->setValue(QStringLiteral("LOGFILE"),      s->logFile());
+    m_conf->setValue(QStringLiteral("MUSIC_REPO"),       toLocalPath(s->musicRepo()));
+    m_conf->setValue(QStringLiteral("MUSICDB"),          toLocalPath(s->musicDatabase()));
+    m_conf->setValue(QStringLiteral("PLAYLISTS_DIR"),    toLocalPath(s->playlistsDir()));
+    m_conf->setValue(QStringLiteral("NEW_DOWNLOAD_DIR"), toLocalPath(s->newDownloadDir()));
+    m_conf->setValue(QStringLiteral("SCRIPTS_DIR"),      toLocalPath(s->scriptsDir()));
+    m_conf->setValue(QStringLiteral("MUSIC_DISPLAY_DIR"),toLocalPath(s->conkyOutputDir()));
+    m_conf->setValue(QStringLiteral("TAG_BACKUP_DIR"),   toLocalPath(s->tagBackupDir()));
+    m_conf->setValue(QStringLiteral("LOGFILE"),          toLocalPath(s->logFile()));
 
     // ── Audacious ──
     m_conf->setValue(QStringLiteral("AUDACIOUS_PLAYLISTS_DIR"),
-                     s->audaciousPlaylistsDir());
+                     toLocalPath(s->audaciousPlaylistsDir()));
     m_conf->setIntValue(QStringLiteral("SCROBBLE_THRESHOLD_PCT"),
                         s->scrobbleThresholdPct());
 

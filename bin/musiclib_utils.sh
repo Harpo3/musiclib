@@ -228,6 +228,10 @@ get_song_length_ms() {
         return 0
     fi
 
+    # Strip trailing units or annotations that exiftool may append
+    # (e.g. "243.19 s", "3:42 (approx)") so the value is clean for bc.
+    duration_str="${duration_str%% *}"
+
     # Check if duration contains colon (HH:MM:SS or MM:SS format)
     if [[ "$duration_str" =~ : ]]; then
         IFS=: read -r h m s <<< "$duration_str"
@@ -385,11 +389,13 @@ update_lastplayed() {
    return 0
 }
 
-# Remove a single track record from the database by file path
+# Remove a track record (or records) from the database by file path
 # Usage: delete_record_by_path "$MUSICDB" "/path/to/file.mp3"
 # Behavior:
 #   - If exactly one matching row is found, it is removed and 0 is returned.
-#   - If no rows or multiple rows match, shows a kdialog explainer and returns 1.
+#   - If no rows match, shows a kdialog notice and returns 1.
+#   - If multiple rows match, shows a kdialog yes/no confirmation asking whether
+#     to proceed.  Yes deletes all matching rows; No exits safely with return 1.
 #   - Caller is responsible for acquiring the database lock (with_db_lock).
 
 delete_record_by_path() {
@@ -419,16 +425,42 @@ delete_record_by_path() {
     match_count=$(printf '%s\n' "$matches" | wc -l)
 
     if [ "$match_count" -ne 1 ]; then
-        echo "Error: Expected exactly 1 record for path, found $match_count: $filepath" >&2
+        echo "Warning: Found $match_count matching records for path: $filepath" >&2
         printf '%s\n' "$matches" >&2
+
+        # Prompt the user whether to delete all matching rows.
+        # kdialog --yesno returns 0 for Yes, 1 for No/Cancel.
         if command -v kdialog >/dev/null 2>&1; then
-            kdialog --title 'Delete Failed' --passivepopup \
-                "Found $match_count matching records instead of 1 — cannot safely delete.\nResolve duplicates manually before retrying.\n$filepath" 5 &
+            if ! kdialog --title 'Multiple Records Found' --yesno \
+                "Found $match_count matching records for:\n$filepath\n\nAre you sure you want to delete all of them?"; then
+                echo "Deletion cancelled by user." >&2
+                return 1
+            fi
+        else
+            # No GUI available — refuse to delete ambiguous matches
+            echo "Error: Found $match_count matching records and no GUI available to confirm. Resolve manually." >&2
+            return 1
         fi
-        return 1
+
+        # User confirmed — delete every matching row.
+        # Build a space-separated list of row numbers and let awk skip them all.
+        local row_numbers
+        row_numbers=$(printf '%s\n' "$matches" | cut -d: -f1 | tr '\n' ' ')
+
+        if ! awk 'BEGIN { n=split(rows, arr); for(i=1;i<=n;i++) skip[arr[i]]=1 }
+                  !(NR in skip) { print }' \
+             rows="$row_numbers" "$db_file" > "${db_file}.tmp" 2>/dev/null; then
+            echo "Error: Failed to write temporary database while deleting records" >&2
+            rm -f "${db_file}.tmp"
+            return 1
+        fi
+
+        mv "${db_file}.tmp" "$db_file"
+        log_message "Deleted $match_count DB records for $filepath (rows: $row_numbers)"
+        return 0
     fi
 
-    # Extract row number to delete
+    # Exactly one match — extract its row number and remove it
     local target_row
     target_row=$(printf '%s\n' "$matches" | cut -d: -f1)
 
@@ -441,6 +473,57 @@ delete_record_by_path() {
 
     mv "${db_file}.tmp" "$db_file"
     log_message "Deleted DB record for $filepath (row $target_row)"
+    return 0
+}
+
+# Remove exactly one track record from the database by ID and file path.
+# Usage: delete_record_by_id_and_path "$MUSICDB" "<record_id>" "/path/to/file.mp3"
+# Behavior:
+#   - Matches on BOTH field 1 (ID) AND field 7 (SongPath) simultaneously.
+#   - If exactly one such row is found, it is removed and 0 is returned.
+#   - If no row matches, shows a kdialog notice and returns 1.
+#   - This function is safe to call when duplicates exist: only the row with
+#     the specified ID is removed, leaving all other rows intact.
+#   - Caller is responsible for acquiring the database lock (with_db_lock).
+
+delete_record_by_id_and_path() {
+    local db_file="$1"
+    local record_id="$2"
+    local filepath="$3"
+
+    if [ ! -f "$db_file" ]; then
+        echo "Error: Database not found: $db_file" >&2
+        return 1
+    fi
+
+    # Use awk to find rows where field 1 (ID) and field 7 (SongPath) both match.
+    # FS=^ matches the DSV caret delimiter.  NR==1 (header) is never a match.
+    local match_count
+    match_count=$(awk -F'^' -v id="$record_id" -v path="$filepath" \
+        'NR > 1 && $1 == id && $7 == path { count++ } END { print count+0 }' \
+        "$db_file" 2>/dev/null)
+
+    if [ "$match_count" -eq 0 ]; then
+        echo "Error: No record found with ID=$record_id and path=$filepath" >&2
+        if command -v kdialog >/dev/null 2>&1; then
+            kdialog --title 'Delete Failed' --passivepopup \
+                "Track not found in database (ID $record_id may have already been removed)." 5 &
+        fi
+        return 1
+    fi
+
+    # Rewrite the DB, keeping every row that does NOT match both ID and path.
+    # The header row (NR==1) is always kept.
+    if ! awk -F'^' -v id="$record_id" -v path="$filepath" \
+        'NR == 1 || !($1 == id && $7 == path) { print }' \
+        "$db_file" > "${db_file}.tmp" 2>/dev/null; then
+        echo "Error: Failed to write temporary database while deleting record" >&2
+        rm -f "${db_file}.tmp"
+        return 1
+    fi
+
+    mv "${db_file}.tmp" "$db_file"
+    log_message "Deleted DB record ID=$record_id for $(basename "$filepath")"
     return 0
 }
 

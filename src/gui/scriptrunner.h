@@ -41,7 +41,13 @@ public:
 
     /// Invoke musiclib_remove_record.sh to delete a single DB row.
     /// The audio file itself is NOT deleted — only the DSV record.
-    void removeRecord(const QString &filePath);
+    ///
+    /// @param recordId  The ID field value from the DSV row (field 1).
+    ///                  When non-empty the script matches on BOTH id AND
+    ///                  filepath, ensuring exactly one duplicate row is
+    ///                  removed.  Pass an empty string to use the legacy
+    ///                  path-only search (for CLI / non-GUI callers).
+    void removeRecord(const QString &recordId, const QString &filePath);
 
     // --- Generic script execution (v2 addition) -----------------------------
 
@@ -51,6 +57,10 @@ public:
     ///                     (e.g. "build", "tagclean", "tagrebuild", "boost").
     /// @param scriptName   Basename of the shell script (e.g. "musiclib_build.sh").
     /// @param args         Arguments to pass after the script path.
+    /// @param stdinData    Optional bytes written to the process stdin immediately
+    ///                     after launch; the write channel is then closed so the
+    ///                     script sees EOF after consuming the supplied data.
+    ///                     Pass "\n" to auto-confirm a single interactive read.
     ///
     /// While the script runs, scriptOutput() is emitted for every line of
     /// stdout.  When the process exits, scriptFinished() is emitted once.
@@ -58,7 +68,8 @@ public:
     /// Only one generic operation may run at a time.  Call isRunning() first.
     void runScript(const QString &operationId,
                    const QString &scriptName,
-                   const QStringList &args = {});
+                   const QStringList &args = {},
+                   const QByteArray &stdinData = {});
 
     /// Cancel a running generic operation (sends SIGTERM, then SIGKILL after 3 s).
     void cancelScript();
@@ -109,6 +120,7 @@ private:
     int     m_pendingStars = 0;
 
     // --- Record removal state (v2.1) ----------------------------------------
+    QString m_pendingRemoveId;
     QString m_pendingRemovePath;
 
     // --- Generic execution state (v2) ---------------------------------------

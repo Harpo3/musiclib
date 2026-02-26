@@ -96,7 +96,7 @@ void ScriptRunner::onRateProcessFinished(int exitCode)
 //  Record removal — v2.1 addition
 // ===========================================================================
 
-void ScriptRunner::removeRecord(const QString &filePath)
+void ScriptRunner::removeRecord(const QString &recordId, const QString &filePath)
 {
     QString script = resolveScript("musiclib_remove_record.sh");
     if (script.isEmpty()) {
@@ -105,6 +105,7 @@ void ScriptRunner::removeRecord(const QString &filePath)
         return;
     }
 
+    m_pendingRemoveId   = recordId;
     m_pendingRemovePath = filePath;
 
     QProcess *process = new QProcess(this);
@@ -113,8 +114,15 @@ void ScriptRunner::removeRecord(const QString &filePath)
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &ScriptRunner::onRemoveProcessFinished);
 
-    // Run: bash musiclib_remove_record.sh "<filepath>"
-    process->start("bash", QStringList() << script << filePath);
+    // Run: bash musiclib_remove_record.sh "<filepath>" [<recordId>]
+    // Pass the record ID as the second argument when available so the script
+    // can target the exact row (ID + path match) instead of all rows with
+    // this path.
+    QStringList args;
+    args << script << filePath;
+    if (!recordId.isEmpty())
+        args << recordId;
+    process->start("bash", args);
 }
 
 void ScriptRunner::onRemoveProcessFinished(int exitCode)
@@ -148,7 +156,8 @@ bool ScriptRunner::isRunning() const
 
 void ScriptRunner::runScript(const QString &operationId,
                              const QString &scriptName,
-                             const QStringList &args)
+                             const QStringList &args,
+                             const QByteArray &stdinData)
 {
     // Guard: only one generic operation at a time
     if (isRunning()) {
@@ -190,6 +199,14 @@ void ScriptRunner::runScript(const QString &operationId,
     fullArgs << scriptPath << args;
 
     m_scriptProcess->start("bash", fullArgs);
+
+    // If the caller supplied stdin data (e.g. "\n" to auto-confirm an
+    // interactive read prompt), write it now and close the write channel so
+    // the script sees EOF after consuming the data.
+    if (!stdinData.isEmpty()) {
+        m_scriptProcess->write(stdinData);
+        m_scriptProcess->closeWriteChannel();
+    }
 }
 
 void ScriptRunner::cancelScript()

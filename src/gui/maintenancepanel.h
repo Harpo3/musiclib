@@ -11,16 +11,18 @@ class QCheckBox;
 class QSlider;
 class QGroupBox;
 class QLabel;
+class QTimer;
 class ScriptRunner;
 
 ///
-/// MaintenancePanel — GUI panel wrapping four maintenance shell scripts.
+/// MaintenancePanel — GUI panel wrapping five maintenance shell scripts.
 ///
 /// Operations:
 ///   1. Build Library      (musiclib_build.sh)       — full DB rebuild
 ///   2. Clean Tags         (musiclib_tagclean.sh)    — ID3 merge/strip/embed-art
 ///   3. Rebuild Tags       (musiclib_tagrebuild.sh)  — repair corrupted tags from DB
 ///   4. Boost Album        (boost_album.sh)          — ReplayGain loudness targeting
+///   5. Add New Tracks     (musiclib_new_tracks.sh)  — import downloads into library
 ///
 /// Each operation has a Preview button (--dry-run where supported) and an
 /// Execute button.  Script stdout streams in real time to a shared log area
@@ -52,12 +54,14 @@ private:
     QGroupBox *createTagCleanGroup();
     QGroupBox *createTagRebuildGroup();
     QGroupBox *createBoostGroup();
+    QGroupBox *createNewTracksGroup();
 
     // --- Operation launchers -----------------------------------------------
     void launchBuild(bool dryRun);
     void launchTagClean(bool dryRun);
     void launchTagRebuild(bool dryRun);
     void launchBoost();
+    void launchNewTracks();
 
     // --- Boost LUFS auto-detection -----------------------------------------
 
@@ -89,6 +93,10 @@ private:
 
     /// Enable or disable all Preview/Execute buttons.
     void setButtonsEnabled(bool enabled);
+
+    /// Terminate kid3/kid3-qt if either process is currently running.
+    /// Returns true if at least one instance was found and signalled.
+    bool closeKid3IfRunning();
 
     /// Append a styled status line to the log (not script output — UI feedback).
     void logStatus(const QString &message);
@@ -128,6 +136,10 @@ private:
     QSlider     *m_boostSlider     = nullptr;
     QLabel      *m_boostValueLabel = nullptr;
     QPushButton *m_boostExecuteBtn = nullptr;
+
+    // Add New Tracks controls
+    QLineEdit   *m_newTracksArtist     = nullptr;
+    QPushButton *m_newTracksExecuteBtn = nullptr;
 
     // Cancel (shared — visible only while a script is running)
     QPushButton *m_cancelBtn = nullptr;

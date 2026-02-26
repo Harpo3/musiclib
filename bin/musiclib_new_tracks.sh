@@ -224,6 +224,16 @@ add_track_to_database() {
         return 1
     fi
 
+    # Guard against duplicate entries: scan the entire database for this path.
+    # grep -F (fixed-string) avoids any regex interpretation of the path.
+    # We search for the path surrounded by the DSV delimiter so a path that
+    # is a substring of a longer path cannot produce a false positive.
+    # tail -n +2 skips the header row.
+    if tail -n +2 "$MUSICDB" | grep -qF "^${filepath}^"; then
+        echo "  Skipping (already in database): $(basename "$filepath")"
+        return 0
+    fi
+
     # Extract metadata
     local metadata=$(extract_metadata "$filepath")
     local artist album albumartist title genre
@@ -622,9 +632,19 @@ added=0
 failed=0
 deferred=0
 
-for file in "$ALBUM_DIR"/*.mp3; do
+# Build the list of newly moved files using their destination paths.
+# mp3_files[] still holds the pre-move paths from $DOWNLOAD_DIR; basename
+# gives the (post-normalization) filename now sitting in $ALBUM_DIR.
+# We must NOT glob "$ALBUM_DIR"/*.mp3 here because that would also pick up
+# any tracks that already existed in the folder, causing duplicate DB entries.
+declare -a new_track_files=()
+for f in "${mp3_files[@]}"; do
+    new_track_files+=("$ALBUM_DIR/$(basename "$f")")
+done
+
+for file in "${new_track_files[@]}"; do
     [ -f "$file" ] || continue
-    
+
     add_track_to_database "$file"
     result=$?
     

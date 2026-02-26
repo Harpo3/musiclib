@@ -435,7 +435,10 @@ void LibraryView::showContextMenu(const QPoint &pos)
 
         if (result == QMessageBox::Yes) {
             emit statusMessage(tr("Removing record: %1...").arg(track.songTitle));
-            m_scriptRunner->removeRecord(track.songPath);
+            // Pass the record's ID alongside the path so the script can match
+            // on both fields — this ensures only this specific row is deleted
+            // even when duplicate path entries exist in the database.
+            m_scriptRunner->removeRecord(track.id, track.songPath);
         }
     });
 

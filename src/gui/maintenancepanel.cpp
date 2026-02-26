@@ -20,6 +20,7 @@
 #include <QDateTime>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QTimer>
 
 // ============================================================================
 //  Construction
@@ -175,6 +176,7 @@ void MaintenancePanel::buildUi()
     mainLayout->addWidget(createTagCleanGroup());
     mainLayout->addWidget(createTagRebuildGroup());
     mainLayout->addWidget(createBoostGroup());
+    mainLayout->addWidget(createNewTracksGroup());
 
     // --- Cancel button (hidden by default) ---------------------------------
     m_cancelBtn = new QPushButton("Cancel Running Operation");
@@ -602,6 +604,103 @@ void MaintenancePanel::launchBoost()
     m_runner->runScript("boost", "boost_album.sh", args);
 }
 
+// ---------------------------------------------------------------------------
+//  Add New Tracks group
+// ---------------------------------------------------------------------------
+QGroupBox *MaintenancePanel::createNewTracksGroup()
+{
+    auto *group  = new QGroupBox("Add New Tracks — musiclib_new_tracks.sh");
+    auto *layout = new QVBoxLayout(group);
+
+    auto *desc = new QLabel(
+        "Import new MP3 downloads from the configured NEW_DOWNLOAD_DIR into the library.  "
+        "Extracts any ZIP file present, normalizes filenames and volume with rsgain, "
+        "organises files into an artist/album folder under MUSIC_REPO, and adds the "
+        "tracks to the database.  "
+        "<b>Edit tags in kid3-qt before executing</b> — the tag-editing pause is "
+        "bypassed automatically in GUI mode.");
+    desc->setWordWrap(true);
+    desc->setTextFormat(Qt::RichText);
+    layout->addWidget(desc);
+
+    // Artist name row
+    auto *artistRow = new QHBoxLayout;
+    artistRow->addWidget(new QLabel("Artist name:"));
+    m_newTracksArtist = new QLineEdit;
+    m_newTracksArtist->setPlaceholderText(
+        "e.g.  Pink Floyd   (used for the artist sub-folder)");
+    artistRow->addWidget(m_newTracksArtist, 1);
+    layout->addLayout(artistRow);
+
+    // Buttons (no dry-run — script does not support --dry-run)
+    auto *btnRow = new QHBoxLayout;
+    m_newTracksExecuteBtn = new QPushButton("Execute");
+    btnRow->addStretch();
+    btnRow->addWidget(m_newTracksExecuteBtn);
+    layout->addLayout(btnRow);
+
+    connect(m_newTracksExecuteBtn, &QPushButton::clicked,
+            this, [this]() { launchNewTracks(); });
+
+    return group;
+}
+
+void MaintenancePanel::launchNewTracks()
+{
+    QString artist = m_newTracksArtist->text().trimmed();
+    if (artist.isEmpty()) {
+        logStatus("ERROR: Artist name is required for new track import.");
+        return;
+    }
+
+    logStatus("=== Add New Tracks ===");
+    setButtonsEnabled(false);
+
+    // If kid3 is open it may be holding file handles on tracks in the
+    // download directory.  Close it first so the script can rename and
+    // move files freely, then wait 800 ms for the process to exit and
+    // release its handles before we start the script.
+    if (closeKid3IfRunning()) {
+        logStatus("kid3 was open — closing it before importing...");
+        QTimer::singleShot(800, this, [this, artist]() {
+            QStringList args;
+            args << artist;
+            m_runner->runScript("newtracks", "musiclib_new_tracks.sh", args, "\n");
+        });
+    } else {
+        QStringList args;
+        args << artist;
+        m_runner->runScript("newtracks", "musiclib_new_tracks.sh", args, "\n");
+    }
+}
+
+bool MaintenancePanel::closeKid3IfRunning()
+{
+    // Check for both common kid3 binary names.
+    // pgrep -x matches the exact process name (no substring matches).
+    const QStringList kid3Names = {
+        QStringLiteral("kid3-qt"),
+        QStringLiteral("kid3")
+    };
+
+    bool found = false;
+    for (const QString &name : kid3Names) {
+        QProcess pgrep;
+        pgrep.start(QStringLiteral("pgrep"),
+                    QStringList() << QStringLiteral("-x") << name);
+        pgrep.waitForFinished(2000);
+
+        if (pgrep.exitCode() == 0) {   // exit 0 = at least one match found
+            // SIGTERM gives kid3 a chance to clean up before exiting
+            QProcess::execute(QStringLiteral("pkill"),
+                              QStringList() << QStringLiteral("-TERM")
+                                            << QStringLiteral("-x") << name);
+            found = true;
+        }
+    }
+    return found;
+}
+
 // ============================================================================
 //  Script Signal Handlers
 // ============================================================================
@@ -619,6 +718,14 @@ void MaintenancePanel::onScriptFinished(const QString &operationId,
     // Log the outcome
     if (exitCode == 0) {
         logStatus(QString("[%1] Completed successfully.").arg(operationId));
+        if (operationId == "newtracks")
+            m_newTracksArtist->clear();
+    } else if (exitCode == 3) {
+        // Deferred: some DB writes were queued because the database was locked.
+        // musiclib_process_pending.sh is triggered automatically by the script.
+        logStatus(QString("[%1] Completed — some operations queued (database was busy; "
+                          "pending operations will be retried automatically).")
+                  .arg(operationId));
     } else if (exitCode == 1 && operationId.endsWith("-preview")) {
         // Build dry-run returns exit 1 (informational, not an error)
         logStatus(QString("[%1] Preview complete.").arg(operationId));
@@ -660,7 +767,11 @@ void MaintenancePanel::setButtonsEnabled(bool enabled)
     m_tagCleanExecute->setEnabled(enabled);
     m_tagRebuildPreview->setEnabled(enabled);
     m_tagRebuildExecute->setEnabled(enabled);
-    m_boostExecuteBtn->setEnabled(enabled);
+    // m_boostExecuteBtn may be null when rsgain is not installed
+    if (m_boostExecuteBtn)
+        m_boostExecuteBtn->setEnabled(enabled);
+    if (m_newTracksExecuteBtn)
+        m_newTracksExecuteBtn->setEnabled(enabled);
 
     // Show cancel button only while a script is running
     m_cancelBtn->setVisible(!enabled);
