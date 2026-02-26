@@ -58,19 +58,79 @@ fi
 # Album Art Extraction
 #############################################
 extract_album_art() {
-    local artdir=$(dirname "$FILEPATH")
+    local artdir
+    artdir=$(dirname "$FILEPATH")
 
-    # Save art location
+    # Save art location for other scripts
     echo "$artdir" > "$MUSIC_DISPLAY_DIR/artloc.txt"
 
-    # Find and copy album art to music dir
-    find "$artdir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.png' \) 2>/dev/null | while read -r file; do
-        cp "$file" "$MUSIC_DISPLAY_DIR/" 2>/dev/null || true
-    done
-
-    # Get folder.jpg size for Conky
-    if [ -f "$artdir/folder.jpg" ]; then
+    # Helper: copy folder.jpg from album dir to display dir and record size
+    _deploy_folder_jpg() {
+        cp "$artdir/folder.jpg" "$MUSIC_DISPLAY_DIR/folder.jpg" 2>/dev/null || true
         stat -c%s "$artdir/folder.jpg" > "$MUSIC_DISPLAY_DIR/currartsize.txt" 2>/dev/null || true
+    }
+
+    # Step 1 — Fast path: folder.jpg already exists in album dir
+    if [ -f "$artdir/folder.jpg" ]; then
+        _deploy_folder_jpg
+        return 0
+    fi
+
+    # Collect all other image files in the album dir (folder.jpg excluded above)
+    local images=()
+    while IFS= read -r -d '' f; do
+        images+=("$f")
+    done < <(find "$artdir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.png' \) ! -iname 'folder.jpg' -print0 2>/dev/null)
+
+    local img_count=${#images[@]}
+
+    if [ "$img_count" -eq 1 ]; then
+        # Step 2 — Single stray image: copy it as folder.jpg
+        cp "${images[0]}" "$artdir/folder.jpg" 2>/dev/null || true
+
+    elif [ "$img_count" -gt 1 ]; then
+        # Step 3 — Multiple stray images: pick by preferred name, then fall back to largest
+        local chosen="" pattern f base
+        for pattern in folder cover front album; do
+            for f in "${images[@]}"; do
+                base=$(basename "$f")
+                if echo "$base" | grep -qi "$pattern"; then
+                    chosen="$f"
+                    break 2
+                fi
+            done
+        done
+
+        # Fallback: pick the largest file by size
+        if [ -z "$chosen" ]; then
+            local max_size=0 sz
+            for f in "${images[@]}"; do
+                sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+                if [ "$sz" -gt "$max_size" ]; then
+                    max_size=$sz
+                    chosen="$f"
+                fi
+            done
+        fi
+
+        [ -n "$chosen" ] && cp "$chosen" "$artdir/folder.jpg" 2>/dev/null || true
+
+    else
+        # Step 4 — No image files at all: try to extract embedded cover art
+        exiftool -b -Picture "$FILEPATH" > "$artdir/folder.jpg" 2>/dev/null || true
+
+        if [ ! -s "$artdir/folder.jpg" ]; then
+            # No embedded art — clean up blank file and remove stale display art
+            rm -f "$artdir/folder.jpg"
+            rm -f "$MUSIC_DISPLAY_DIR/folder.jpg"
+            rm -f "$MUSIC_DISPLAY_DIR/currartsize.txt"
+            return 0
+        fi
+    fi
+
+    # Deploy folder.jpg (created in steps 2, 3, or 4) to display dir
+    if [ -f "$artdir/folder.jpg" ]; then
+        _deploy_folder_jpg
     fi
 }
 
