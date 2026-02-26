@@ -26,26 +26,21 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component diagrams.
 
 ## Installation
 
-### AUR Packages (Recommended)
-
-```bash
-# Install backend + CLI
-yay -S musiclib
-
-# Install GUI (depends on musiclib)
-yay -S musiclib-qt
-```
+### AUR Packages (Planned)
 
 ### Manual Build
 
 **Dependencies**:
 - Qt 6.5+, KDE Frameworks 6 (KConfig, KNotifications, KIO, KGlobalAccel, KXmlGui)
-- kid3-cli, exiftool, rsgain, audacious, kdeconnect-cli, bc
+- kid3-common, exiftool, audacious, kdeconnect-cli, bc
 - CMake 3.20+, GCC 11+ or Clang 14+
+
+**Optional and recommended**:
+rsgain, kid3 (KDE) or kid3-qt
 
 **Build**:
 ```bash
-git clone https://github.com/yourusername/musiclib.git
+git clone https://github.com/Harpo3/musiclib.git
 cd musiclib
 mkdir build && cd build
 cmake .. -DCMAKE_INSTALL_PREFIX=/usr
@@ -63,7 +58,7 @@ sudo make install
 ```bash
 musiclib-cli setup
 ```
-The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. Run `musiclib-cli setup` to reconfigure later.
+The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, configures Audacious Song Change, and optionally builds the initial database. Can be re-run.
 
 ---
 
@@ -146,12 +141,7 @@ LOCK_TIMEOUT=5
 ```
 
 **Audacious Hook** (for Conky updates):
-Configured automatically during `musiclib-cli setup`. To set up manually:
-1. Open Audacious → File → Settings → Plugins
-2. Enable "Song Change" (General section)
-3. Click "Settings" next to Song Change
-4. Set command to: `/usr/lib/musiclib/bin/musiclib_audacious.sh`
-5. Click OK and close Settings
+Configured automatically during `musiclib-cli setup`. Run Audacious at least one time before running setup so its plugins are initialized.
 
 **Conky Integration**:
 - Point Conky config to `~/.local/share/musiclib/data/conky_output/`

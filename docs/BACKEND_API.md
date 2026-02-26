@@ -17,9 +17,9 @@ All MusicLib backend scripts use a standardized exit code contract:
 | Exit Code | Semantic | When to Use | Example |
 |-----------|----------|-------------|---------|
 | **0** | Success | Operation completed successfully, all side effects applied | `musiclib_rate.sh` updates rating in DSV, file tags, Conky assets, and DB |
-| **1** | User/Validation Error | Invalid input, missing preconditions, user cancellation | Invalid star rating (not 0â€“5), file not in database, user Ctrl-C |
+| **1** | User/Validation Error | Invalid input, missing preconditions, user cancellation | Invalid star rating (not 0–5), file not in database, user Ctrl-C |
 | **2** | System/Operational Error | Config missing, tool unavailable, I/O failure, lock timeout | `kid3-cli` not installed, DB file unreadable, permissions denied, `flock` timeout >5s |
-| **3** | Deferred | Operation queued for retry due to lock contention | Lock timeout` → `operation added to pending queue, success notification delayed |
+| **3** | Deferred | Operation queued for retry due to lock contention | Lock timeout → operation added to pending queue, success notification delayed |
 
 **Current Status**: Exit code 3 (deferred operations) is **proposed design, not yet implemented**. Currently, lock timeouts return exit code 2.
 
@@ -182,7 +182,7 @@ release_db_lock
 
 - Lock file: `${MUSICDB}.lock` (e.g., `~/.local/share/musiclib/data/musiclib.dsv.lock`)
 - Automatically created/removed by utility functions
-- Safe for NFS with kernel â‰¥2.6.12 (document: local filesystems recommended)
+- Safe for NFS with kernel ≥2.6.12 (document: local filesystems recommended)
 
 ---
 
@@ -211,6 +211,21 @@ LOCK_TIMEOUT         # Lock timeout (seconds)
 LOGFILE              # Main log file path
 ```
 
+**External Dependencies**:
+```bash
+EXIFTOOL_CMD         # Path/command for exiftool
+KID3_CMD             # Path/command for kid3-cli
+KDECONNECT_CMD       # Path/command for kdeconnect-cli
+```
+
+**Optional Dependency Detection** (set by setup wizard):
+```bash
+RSGAIN_INSTALLED     # true/false - RSGain loudness tool availability
+KID3_GUI_INSTALLED   # "kid3"/"kid3-qt"/"none" - Kid3 GUI variant detection
+```
+
+These optional dependency flags are detected during `musiclib-cli setup` and used by the GUI to gracefully disable features when tools are unavailable. See Section 2.10 for setup wizard behavior.
+
 **Example**:
 ```bash
 #!/bin/bash
@@ -219,6 +234,8 @@ load_config
 
 echo "Database: $MUSICDB"
 echo "Music repo: $MUSIC_REPO"
+echo "RSGain available: $RSGAIN_INSTALLED"
+echo "Kid3 GUI variant: $KID3_GUI_INSTALLED"
 ```
 
 ---
@@ -253,110 +270,80 @@ musiclib_rate.sh STAR_RATING [FILEPATH]
 **Exit Codes**:
 - 0: Success
 - 1: Invalid rating, no track playing (shortcut mode only), file not found
-- 2: `kid3-cli` unavailable, tag write failure, DB I/O error
-- 3: Deferred — operation queued due to database lock contention
+- 2: `kid3-cli` unavailable, DB lock timeout, tag write failed
 
 **Examples**:
 ```bash
-# GUI mode: rate a specific file
-musiclib-cli rate 5 "/mnt/music/Pink Floyd/Dark Side/Money.mp3"
+# GUI mode: rate specific file
+musiclib-cli rate 4 "/mnt/music/Pink Floyd/Dark Side/Money.mp3"
 
 # Keyboard shortcut mode: rate currently playing track
-musiclib_rate.sh 4
+musiclib-cli rate 5
 ```
 
-**Equivalent GUI**: Inline star click in library view, or right-click track → Rate submenu
-
+**Equivalent GUI**: Library view → select track → star rating widget
 
 ---
 
-### 2.2 `musiclib-cli mobile`
+### 2.2 `musiclib-cli mobile` → `musiclib_mobile.sh`
+
+Mobile playlist and accounting operations.
 
 #### 2.2.1 `musiclib-cli mobile upload` → `musiclib_mobile.sh upload`
 
-**Purpose**: Transfer playlist to Android device via KDE Connect, with automatic accounting for the previous playlist's synthetic last-played timestamps.
-
-**Backend API Version**: 1.1 (musiclib_mobile.sh internal)
+**Purpose**: Upload a playlist to mobile device via KDE Connect and perform last-played accounting on the previously active playlist.
 
 **Invocation**:
 ```bash
-musiclib_mobile.sh upload <playlist> [device_id] [--non-interactive] [--end-time "MM/DD/YYYY HH:MM:SS"]
+musiclib_mobile.sh upload <playlist_name> [options]
 ```
 
 **Parameters**:
-- `<playlist>`: Path to `.audpl` playlist file. Accepts absolute path or bare filename (resolved relative to `PLAYLISTS_DIR`).
-- `[device_id]`: *(Optional)* KDE Connect device identifier. Defaults to `DEVICE_ID` from `musiclib.conf`.
+- `<playlist_name>`: Playlist basename (without extension). Matched against Audacious playlists using title-extraction and sanitization logic.
 
 **Flags**:
-- `--non-interactive`: Suppress all interactive prompts. Auto-refreshes newer Audacious playlists. Required for GUI invocation via QProcess.
-- `--end-time "MM/DD/YYYY HH:MM:SS"`: Override the completion timestamp used when processing the previous playlist's synthetic last-played window. Defaults to current time (`date +%s`).
+- `--device <device_id>`: Override default KDE Connect device ID
+- `--end-time "MM/DD/YYYY HH:MM:SS"`: Override accounting window end time (defaults to current time)
+- `--non-interactive`: Auto-refresh from Audacious without prompts (for GUI use)
 
-**Workflow (Two-Phase)**:
+**Workflow**:
 
-The upload operation is split into two phases with distinct failure domains:
+**Phase A (Accounting - Previous Playlist)**:
+1. Read current active playlist from metadata
+2. If a previous playlist exists and differs from upload target:
+   a. Calculate accounting window (last upload time → end-time parameter or now)
+   b. Validate window (minimum 1 hour, warn if >40 days)
+   c. Generate synthetic `LastTimePlayed` timestamps for tracks (exponential distribution)
+   d. Update `musiclib.dsv` and file tags (`Songs-DB_Custom1`)
+   e. Write recovery files (`.pending_tracks`, `.failed`) if any tracks fail
+3. If accounting fully succeeds, clean up previous playlist metadata
 
-*Phase A — Accounting (device-independent):*
-1. Validate playlist file exists
-2. Check Audacious playlists directory for a newer version of the same playlist; if found, offer to refresh (auto-refresh in `--non-interactive` mode)
-3. If a previous playlist exists, process synthetic last-played timestamps:
-   - Read previous `.meta` (upload epoch) and `.tracks` (file list)
-   - Calculate time window: previous upload → now (or `--end-time`)
-   - Validate window (minimum `MIN_PLAY_WINDOW`, maximum `MOBILE_WINDOW_DAYS`)
-   - Acquire DB lock, distribute timestamps evenly across tracks
-   - Skip tracks with desktop timestamps already within the window (preserves desktop scrobbles)
-   - Update `LastTimePlayed` in DSV and `Songs-DB_Custom1` tag for each qualifying track
-4. On partial failure: write `.pending_tracks` and/or `.failed` recovery files, preserve previous playlist metadata
-5. On full success: clean up previous playlist `.meta`/`.tracks` files
-
-*Interactive gate (CLI only, skipped with `--non-interactive`):*
-- Prompts user to delete old files from phone before continuing
-
-*Phase B — Upload (device-required):*
-6. Hard device connectivity check via `kdeconnect-cli --ping`
-7. Write new playlist as current: update `current_playlist`, write `.meta` (epoch) and `.tracks` (file list)
-8. Generate `.m3u` with basenames only
-9. Transfer `.m3u` + all track files via `kdeconnect-cli --share`
-
-**Output Contract** (stdout):
-- Phase A lines prefixed with `ACCOUNTING:`
-- Phase B lines prefixed with `UPLOAD:`
-- Errors output as JSON to stderr per Section 1.2
+**Phase B (Upload - New Playlist)**:
+1. Search Audacious playlists directory for matching playlist
+2. If `--non-interactive`: auto-copy from Audacious to MusicLib playlists directory
+3. Sanitize playlist (URL-decode paths, validate track existence)
+4. Convert to `.m3u` format
+5. Send to device via `kdeconnect-cli --share`
+6. Record new playlist as current active playlist with upload timestamp
 
 **Side Effects**:
-- Writes `~/.local/share/musiclib/playlists/mobile/<playlist>.tracks`
-- Writes `~/.local/share/musiclib/playlists/mobile/<playlist>.meta`
-- Writes `~/.local/share/musiclib/playlists/mobile/current_playlist`
-- May write `~/.local/share/musiclib/playlists/mobile/<prev_playlist>.pending_tracks` (on partial failure)
-- May write `~/.local/share/musiclib/playlists/mobile/<prev_playlist>.failed` (on partial failure)
-- May refresh playlist file from Audacious playlists directory
-- Updates `LastTimePlayed` in DSV and `Songs-DB_Custom1` tags for previous playlist tracks
-- Logs to `logs/mobile/mobile_operations.log`
-
-**Recovery Files**:
-
-When Phase A accounting encounters tracks it cannot fully process, it writes recovery files instead of aborting:
-
-| File | Format | When Written | Resolution |
-|------|--------|--------------|------------|
-| `<playlist>.pending_tracks` | `filepath^synthetic_sql^synthetic_human` per line | Track not found in database | Import track via `musiclib_new_tracks.sh`, then `musiclib_mobile.sh retry <playlist>` |
-| `<playlist>.failed` | `filepath^synthetic_sql^synthetic_human^reason` per line | DB update or tag write failed | Run `musiclib_mobile.sh retry <playlist>` |
-
-Recovery files preserve the intended synthetic timestamps so retry can apply them without recalculating.
+- Acquires DB lock for duration of accounting processing
+- Updates `LastTimePlayed` in DSV and file tags for previous playlist tracks
+- Creates recovery files if accounting partially fails
+- Copies playlist from Audacious to MusicLib playlists directory (if `--non-interactive`)
+- Sends `.m3u` file to mobile device
+- Writes metadata files: `current_playlist`, `<playlist>.meta`, `<playlist>.tracks`
+- Logs to `mobile_operations.log`
 
 **Exit Codes**:
-- 0: Success (upload completed; Phase A partial failures are non-blocking — check `status` for details)
-- 1: Invalid playlist, file not found, no valid files in playlist
-- 2: `kdeconnect-cli` unavailable, device unreachable, DB lock timeout, system error in accounting
-
-**Note**: Phase A returning exit 1 (partial accounting failure) does **not** block Phase B. The upload proceeds, and recovery files are available for later retry. Phase A returning exit 2 (system error) aborts the entire operation.
+- 0: Full success (accounting + upload complete)
+- 1: Partial failure (recovery files written, upload may have succeeded)
+- 2: System error (DB lock timeout, device not reachable, schema error, clock skew)
 
 **Examples**:
 ```bash
-# CLI: upload with default device from config
-musiclib_mobile.sh upload workout.audpl
-
-# CLI: upload with explicit device
-musiclib_mobile.sh upload ~/music/workout.audpl abc123def456
+# Interactive upload with prompts
+musiclib_mobile.sh upload workout
 
 # GUI invocation (non-interactive, auto-refresh)
 musiclib_mobile.sh upload workout.audpl --non-interactive
@@ -508,25 +495,25 @@ musiclib_mobile.sh refresh-audacious-only
 ```
 
 **Behavior**:
-1. Reads each `.audpl` file in `AUDACIOUS_PLAYLISTS_DIR`
-2. Extracts and URL-decodes the `title=` header
-3. Sanitizes the title into a safe filename (lowercase, underscores, alphanumeric)
-4. Copies the file to `PLAYLISTS_DIR/<sanitized_title>.audpl` (overwrites if exists)
+1. Scan `AUDACIOUS_PLAYLISTS_DIR` for `.audpl` files
+2. Extract playlist titles from files
+3. Sanitize titles to filesystem-safe names
+4. Copy to `MUSICLIB_PLAYLISTS_DIR` with sanitized names
+5. Log operations
 
 **Side Effects**:
-- Overwrites existing playlist files in `PLAYLISTS_DIR` if Audacious versions are present
-- Logs sync count to `logs/mobile/mobile_operations.log`
+- Copies playlist files (overwrites if already present)
+- Logs to `mobile_operations.log`
 
 **Exit Codes**:
-- 0: Success
-- 1: Audacious playlists directory not found
+- 0: Success (including when no playlists found)
 
 **Example**:
 ```bash
 musiclib_mobile.sh refresh-audacious-only
 ```
 
-**Equivalent GUI**: Mobile panel → Playlists section → Refresh from Audacious
+**Equivalent GUI**: Mobile panel → Refresh Playlists button (without upload)
 
 ---
 
@@ -588,6 +575,56 @@ musiclib_mobile.sh cleanup
 ```bash
 musiclib_mobile.sh cleanup
 ```
+
+---
+
+#### 2.2.8 `musiclib-cli mobile check-update` → `musiclib_mobile.sh check-update`
+
+**Purpose**: Check whether the Audacious playlists directory contains a newer (or entirely new) version of the named playlist compared to the MusicLib playlists directory copy. Intended for GUI pre-flight checks before upload — enables the "halt if Audacious version is newer" workflow without requiring the GUI to replicate the script's title-matching and sanitization logic.
+
+**Invocation**:
+```bash
+musiclib_mobile.sh check-update <playlist_name>
+```
+
+**Parameters**:
+- `<playlist_name>`: Playlist basename (without extension). Matched against Audacious playlists using the same title-extraction and sanitization logic as `refresh-audacious-only` (URL-decode, sanitize to safe filename, case-insensitive comparison).
+
+**Output** (stdout, machine-readable):
+```
+STATUS:newer
+```
+
+Possible status values:
+
+| Status | Meaning | Exit Code |
+|--------|---------|-----------|
+| `newer` | Audacious version has a more recent modification time | 0 |
+| `new` | Playlist exists in Audacious but not in MusicLib playlists directory | 0 |
+| `same` | Modification times are equal or MusicLib version is newer | 1 |
+| `not_found` | Playlist not found in Audacious playlists directory | 1 |
+
+**Exit Codes**:
+- 0: Newer or new version found (action may be needed)
+- 1: Same, older, or not found (safe to proceed)
+
+**Side Effects**: None. Read-only operation.
+
+**Example**:
+```bash
+# Check if workout playlist has a newer Audacious version
+musiclib_mobile.sh check-update workout
+# Output: STATUS:newer (exit 0)
+
+# Check a playlist that hasn't changed
+musiclib_mobile.sh check-update oldmix
+# Output: STATUS:same (exit 1)
+```
+
+**Equivalent GUI**: Mobile panel → "Halt if Audacious version is newer" checkbox. When checked, the GUI calls `check-update` before invoking `upload`. If the result is `STATUS:newer` or `STATUS:new`, the GUI shows a dialog and halts the upload. When unchecked, the GUI skips `check-update` entirely and `--non-interactive` auto-refreshes as usual.
+
+**Implementation Note**: This subcommand calls the existing `check_playlist_updates()` internal function and outputs its `PLAYLIST_STATUS` variable. No new logic is introduced — it exposes an existing capability as a machine-readable subcommand.
+
 ---
 
 ### 2.3 `musiclib-cli build` → `musiclib_build.sh`
@@ -626,13 +663,13 @@ musiclib-cli build --dry-run
 musiclib-cli build
 ```
 
-**Equivalent GUI**: Maintenance panel` → `Database Operations` → `Build Library
+**Equivalent GUI**: Maintenance panel → Database Operations → Build Library
 
 ---
 
 ### 2.4 `musiclib-cli tagclean` → `musiclib_tagclean.sh`
 
-**Purpose**: Merge ID3v1` → `ID3v2, remove APE tags, embed album art, normalize tag structure.
+**Purpose**: Merge ID3v1 → ID3v2, remove APE tags, embed album art, normalize tag structure.
 
 **Invocation**:
 ```bash
@@ -644,7 +681,7 @@ musiclib_tagclean.sh PATH [--mode MODE]
 - `--mode MODE`: `merge` (default), `strip`, `embed-art`
 
 **Modes**:
-- `merge`: ID3v1` → `ID3v2.4, remove ID3v1, remove APE, embed art if missing
+- `merge`: ID3v1 → ID3v2.4, remove ID3v1, remove APE, embed art if missing
 - `strip`: Remove ID3v1 and APE only
 - `embed-art`: Embed `folder.jpg` from directory if no art present
 
@@ -663,7 +700,7 @@ musiclib_tagclean.sh PATH [--mode MODE]
 musiclib-cli tagclean "/mnt/music/Pink Floyd" --mode merge
 ```
 
-**Equivalent GUI**: Maintenance panel` → `Tag Operations` → `Clean Tags` → `Select directory` → `Mode: Merge
+**Equivalent GUI**: Maintenance panel → Tag Operations → Clean Tags → Select directory → Mode: Merge
 
 ---
 
@@ -701,7 +738,7 @@ musiclib_tagrebuild.sh FILEPATH
 musiclib-cli tagrebuild "/mnt/music/corrupted/song.mp3"
 ```
 
-**Equivalent GUI**: Maintenance panel` → `Tag Operations` → `Rebuild Tags` → `Select file
+**Equivalent GUI**: Maintenance panel → Tag Operations → Rebuild Tags → Select file
 
 ---
 
@@ -737,7 +774,9 @@ boost_album.sh ALBUM_DIR [--target TARGET_LUFS]
 musiclib-cli boost "/mnt/music/Pink Floyd/The Wall" --target -16
 ```
 
-**Equivalent GUI**: Maintenance panel` → `Loudness Operations` → `Boost Album` → `Select directory
+**Equivalent GUI**: Maintenance panel → Loudness Operations → Boost Album → Select directory
+
+**Optional Dependency**: This command requires `rsgain` to be installed. If `RSGAIN_INSTALLED=false` in `musiclib.conf`, the GUI will disable the Boost Album feature with an informative tooltip. See Section 1.5 and Section 2.10 for dependency detection.
 
 ---
 
@@ -773,7 +812,7 @@ chill.audpl,/mnt/music/Pink Floyd/Dark Side/Time.mp3,Pink Floyd,The Dark Side of
 musiclib-cli scan > playlist_cross_reference.csv
 ```
 
-**Equivalent GUI**: Maintenance panel` → `Playlist Operations` → `Scan Playlists
+**Equivalent GUI**: Maintenance panel → Playlist Operations → Scan Playlists
 
 ---
 
@@ -798,53 +837,52 @@ musiclib_new_tracks.sh [artist_name] [options]
 **Workflow**:
 1. If no artist_name, prompt for artist folder
 2. Scan source directory (default: `~/Downloads` or override with `--source`)
-3. Normalize tags (via `tagclean` logic)
-4. Optionally apply ReplayGain loudness normalization (unless `--no-loudness`)
-5. Optionally extract album art to Conky display (unless `--no-art`)
-6. Add each track to `musiclib.dsv`
-7. Move files to `MUSIC_REPO/artist_name/album/`
-8. Log to `musiclib.log`
+3. Group files by album (auto-detect or prompt)
+4. Normalize tags (ID3v2.4, strip APE/ID3v1)
+5. Optionally apply rsgain loudness normalization
+6. Rename files to lowercase with underscores
+7. Move to `MUSIC_REPO/artist/album/`
+8. Extract album art to `folder.jpg`
+9. Add to `musiclib.dsv`
 
 **Side Effects**:
+- Moves files from source to `MUSIC_REPO`
+- Modifies tags
 - Adds rows to `musiclib.dsv`
-- Modifies file tags
-- Moves/renames files to `MUSIC_REPO`
-- Extracts album art (unless `--no-art`)
-- Optionally applies loudness normalization
+- Creates `folder.jpg` for each album
 - Logs to `musiclib.log`
 
 **Exit Codes**:
 - 0: Success
-- 1: Invalid artist name, file already in DB, invalid file format
-- 2: DB lock timeout, I/O error, ReplayGain/exiftool unavailable
+- 1: No files found, user cancelled, dry-run complete
+- 2: Tool unavailable, DB lock timeout, I/O error
 
-**Examples**:
+**Example**:
 ```bash
-musiclib-cli new-tracks "radiohead"
-musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music
-musiclib-cli new-tracks "pink_floyd" --dry-run
+# Interactive mode
+musiclib-cli new-tracks
+
+# Non-interactive mode
+musiclib-cli new-tracks "Pink Floyd" --source ~/Downloads/new_album
+
+# Preview only
+musiclib-cli new-tracks --dry-run
 ```
 
-**Equivalent GUI**: Maintenance panel` → `Import New Tracks` → `Select artist` → `Import
+**Equivalent GUI**: Maintenance panel → Import Operations → Import New Tracks
 
 ---
 
-### 2.9 `musiclib-cli audacious-hook` → `musiclib_audacious.sh` (Song-Change Hook)
+### 2.9 `musiclib-cli audacious` → `musiclib_audacious.sh`
 
-**Purpose**: Update Conky display assets and last-played timestamp when Audacious plays a new track.
+**Purpose**: Audacious Song Change hook for Conky display and scrobble tracking.
 
-**Design Pattern**: Event-driven hook (not a manual CLI command). Called **automatically** by Audacious via the "Song Change" plugin. Users configure this once during `musiclib-cli setup` and never invoke it manually.
-
-**Invocation** (by Audacious hook):
+**Invocation**:
 ```bash
 musiclib_audacious.sh
-# No parameters - reads current track state from audtool
 ```
 
-**Environment Requirements**:
-- Audacious must be running
-- `audtool` must be available (from audacious-plugins package)
-- Current track must be playing
+**Called By**: Audacious Song Change plugin (automatic on track change)
 
 **Workflow**:
 1. Query current track from Audacious via `audtool --current-song-filename`
@@ -852,13 +890,13 @@ musiclib_audacious.sh
 3. Extract album art to Conky display directory
 4. Write track metadata to Conky text files (artist, album, title, rating, last played)
 5. Select appropriate star-rating PNG for display
-6. Monitor playback to scrobble threshold (50% of track, bounded 30sâ€“4min)
+6. Monitor playback to scrobble threshold (50% of track, bounded 30s–4min)
 7. Once threshold met, update `LastTimePlayed` in DSV and file tag
 8. Append to `audacioushist.log`
 9. Optionally send KNotification
 
 **Side Effects** (all atomic via lock):
-- **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies â€“ all written to `$MUSIC_DISPLAY_DIR/`
+- **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies – all written to `$MUSIC_DISPLAY_DIR/`
 - **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` (only after scrobble threshold met)
 - **File tags**: Updates `Songs-DB_Custom1` tag with last-played timestamp
 - **Logs**: Appends to `audacioushist.log` and `musiclib.log`
@@ -912,7 +950,7 @@ SCROBBLE_THRESHOLD_PCT=50
 STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
 ```
 
-**Setup**: Configured during `musiclib-cli setup`, which detects Audacious, provides Song Change plugin instructions, and optionally verifies the integration. See section 2.11.
+**Setup**: Configured during `musiclib-cli setup`, which detects Audacious, provides Song Change plugin instructions, and optionally verifies the integration. See section 2.10.
 
 **Behavioral Notes**:
 1. **Idempotent**: Can be called multiple times for same track without side effects
@@ -922,11 +960,11 @@ STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
 
 **Troubleshooting**:
 
-If the hook is not firing: check that the Song Change plugin is enabled in Audacious (Settings` → `Plugins), verify the command path is correct, confirm the hook script is executable (`chmod +x`), and ensure `audtool` is installed.
+If the hook is not firing: check that the Song Change plugin is enabled in Audacious (Settings → Plugins), verify the command path is correct, confirm the hook script is executable (`chmod +x`), and ensure `audtool` is installed.
 
 If Conky files are not updating: check the output directory exists and has correct permissions, and check for database lock timeouts in `musiclib.log`.
 
-**Performance**: Typical execution 50â€“200ms. CPU negligible, memory <5MB, disk I/O ~50KB per song change.
+**Performance**: Typical execution 50–200ms. CPU negligible, memory <5MB, disk I/O ~50KB per song change.
 
 ---
 
@@ -949,12 +987,17 @@ musiclib_init_config.sh [--force]
 4. Prompt for music repository path
 5. Prompt for download directory (default: `~/Downloads`)
 6. Create XDG directory structure (`~/.config/musiclib/`, `~/.local/share/musiclib/`)
-7. Generate `musiclib.conf` with detected values
-8. If Audacious detected:
+7. **Detect optional dependencies**:
+   a. Check for RSGain installation (`rsgain` command availability)
+   b. Detect Kid3 GUI variants (`kid3` for KDE version, `kid3-qt` for standalone Qt version)
+   c. Prompt user with installation instructions if optional dependencies are missing
+   d. Set configuration flags: `RSGAIN_INSTALLED` (true/false), `KID3_GUI_INSTALLED` ("kid3"/"kid3-qt"/"none")
+8. Generate `musiclib.conf` with detected values
+9. If Audacious detected:
    a. Display step-by-step Song Change plugin setup instructions
    b. Optionally verify integration (check Audacious running, test hook, validate Conky output)
-9. Offer to build initial database via `musiclib_build.sh`
-10. Display next-steps summary
+10. Offer to build initial database via `musiclib_build.sh`
+11. Display next-steps summary
 
 **Side Effects**:
 - Creates `~/.config/musiclib/musiclib.conf`
@@ -979,95 +1022,209 @@ musiclib-cli setup --force
 
 **Equivalent GUI**: First-run wizard dialog in `musiclib-qt` (Phase 2+)
 
----
+**Configuration File Generated**:
+```bash
+# Core paths
+MUSICDB="${MUSICLIB_DATA_DIR}/data/musiclib.dsv"
+MUSIC_REPO="/mnt/music"
+DOWNLOAD_DIR="$HOME/Downloads"
 
-## 3. Database Schema (`musiclib.dsv`)
+# External dependencies (detected)
+EXIFTOOL_CMD="exiftool"
+KID3_CMD="kid3-cli"
+KDECONNECT_CMD="kdeconnect-cli"
 
-**Format**: `^` -delimited (caret), no quoting.
+# Optional dependency detection (new in Phase 2)
+RSGAIN_INSTALLED=true
+KID3_GUI_INSTALLED="kid3-qt"
 
-**Header Row** (column names):
+# Audacious integration
+AUDACIOUS_INSTALLED=true
+AUDACIOUS_PATH="/usr/bin/audacious"
 ```
-ID^Artist^IDAlbum^Album^AlbumArtist^SongTitle^SongPath^Genre^SongLength^Rating^Custom2^GroupDesc^LastTimePlayed
-```
 
-**Column Definitions**:
+**GUI Impact**: The GUI reads `RSGAIN_INSTALLED` and `KID3_GUI_INSTALLED` from the configuration to gracefully disable features when optional tools are unavailable:
+- If `RSGAIN_INSTALLED=false`: Boost Album section in Maintenance panel is grayed out with tooltip explaining RSGain is required
+- If `KID3_GUI_INSTALLED="none"`: Kid3 toolbar button is disabled with tooltip explaining which package to install
 
-| Column | Type | Description | Example |
-|--------|------|-------------|---------|
-| `ID` | Integer | Unique track ID | `1042` |
-| `Artist` | String | Track artist | `Pink Floyd` |
-| `IDAlbum` | Integer | Album ID (internal) | `523` |
-| `Album` | String | Album title | `The Dark Side of the Moon` |
-| `AlbumArtist` | String | Album artist | `Pink Floyd` |
-| `SongTitle` | String | Track title | `Time` |
-| `SongPath` | String | Absolute file path | `/mnt/music/Pink Floyd/Dark Side/Time.mp3` |
-| `Genre` | String | Genre | `Progressive Rock` |
-| `SongLength` | Integer | Duration (milliseconds) | `415320` |
-| `Rating` | Integer | Star rating (0â€“5) | `5` |
-| `Custom2` | String | Reserved (future use) | `` |
-| `GroupDesc` | String | Star symbols for Conky | `â˜…â˜…â˜…â˜…â˜…` |
-| `LastTimePlayed` | Float | Excel serial time | `45678.543210` |
-
-**Notes**:
-- `LastTimePlayed` format: Excel serial date (days since 1899-12-30 + fraction for time)
-- Convert from Unix epoch: `epoch_to_sql_time()` in `musiclib_utils.sh`
-- Rows are appended (never deleted in normal operation; use `rebuild` to prune)
+**Dependency Detection Details**:
+- **RSGain**: Checks for `rsgain` command in PATH. Used for album loudness normalization (Boost Album feature).
+- **Kid3 GUI**: Checks for `kid3` (KDE-integrated) and `kid3-qt` (standalone Qt) executables. Note that `kid3-common` (CLI) is a required dependency and always checked separately.
+- Missing dependencies trigger user-friendly installation prompts with package names for major distributions (Arch, Debian/Ubuntu, Fedora).
 
 ---
 
-## 4. Integration Patterns
+### 2.11 `musiclib-cli remove-record` → `musiclib_remove_record.sh`
 
-### 4.1 Calling Scripts from GUI (Qt)
+**Purpose**: Remove a single track record from the database by file path. The audio file itself is **not** deleted — only the DSV row is removed.
 
-**Recommended Pattern**:
+**Invocation**:
+```bash
+musiclib_remove_record.sh FILEPATH
+```
+
+**Parameters**:
+- `FILEPATH`: Absolute path to the audio file whose database record should be removed. The file does not need to exist on disk (allows removal of orphaned records).
+
+**Workflow**:
+1. Source `musiclib_utils.sh`, load config
+2. Validate argument (non-empty filepath)
+3. Acquire database lock via `with_db_lock` (up to 3 attempts, 2 s timeout each)
+4. Call `delete_record_by_path()` which:
+   - Searches `musiclib.dsv` for exactly one row matching the path
+   - If zero matches: returns 1 (track not found)
+   - If multiple matches: returns 1 (duplicate safety guard)
+   - If exactly one match: rewrites DSV without the target row
+5. On lock timeout after all retries: exit 2
+6. Log removal and show KDE notification on success
+
+**Side Effects**:
+- Removes one row from `musiclib.dsv`
+- Logs to `musiclib.log`
+- Shows `kdialog` passive popup notification (success or failure)
+
+**Exit Codes**:
+- 0: Success (record removed)
+- 1: User/validation error — empty argument, track not found in DB, multiple matches (duplicate records)
+- 2: System error — config load failure, DB file not found, lock timeout, I/O error during rewrite
+
+**Examples**:
+```bash
+# Remove a specific track's database record
+musiclib-cli remove-record "/mnt/music/Pink Floyd/Dark Side/Money.mp3"
+
+# Remove an orphaned record (file was already deleted from disk)
+musiclib_remove_record.sh "/mnt/music/deleted/old_track.mp3"
+```
+
+**Equivalent GUI**: Library view → right-click track row → "Remove Record" → confirm dialog
+
+**Safety Notes**:
+- `delete_record_by_path()` refuses to act if the path matches more than one row (prevents accidental mass deletion from substring matches). The user must resolve duplicates manually before retrying.
+- The audio file is never touched. To also delete the file, the user must do so separately via their file manager.
+- The `QFileSystemWatcher` on `musiclib.dsv` will automatically trigger a model refresh in the GUI after the DSV is rewritten, so the removed row disappears from the table view without a manual reload.
+
+**Dependencies**:
+- `musiclib_utils.sh` (provides `load_config`, `with_db_lock`, `delete_record_by_path`, `error_exit`, `log_message`)
+- `kdialog` (optional, for desktop notifications)
+
+---
+
+## 3. GUI Integration Points
+
+### 3.1 Script Invocation from C++
+
+**Pattern**: Use `QProcess` for async execution, capture stdout/stderr separately.
+
+**Example**:
 ```cpp
-struct ScriptResult {
-    int exitCode;
-    QByteArray stdout;
-    QByteArray stderr;
-};
+QProcess* process = new QProcess(this);
+process->setProgram("/usr/lib/musiclib/bin/musiclib_rate.sh");
+process->setArguments({"4", filepath});
 
-ScriptResult runScript(const QString& scriptPath, const QStringList& args) {
-    QProcess process;
-    process.start(scriptPath, args);
-    process.waitForFinished(-1);  // Or timeout
+connect(process, &QProcess::finished, this, [=](int exitCode, QProcess::ExitStatus status) {
+    if (exitCode == 0) {
+        // Success - update UI
+        reloadCurrentView();
+    } else {
+        // Error - parse JSON from stderr
+        QByteArray errorJson = process->readAllStandardError();
+        handleScriptError(errorJson);
+    }
+    process->deleteLater();
+});
 
-    return {
-        .exitCode = process.exitCode(),
-        .stdout = process.readAllStandardOutput(),
-        .stderr = process.readAllStandardError()
-    };
-}
+process->start();
+```
 
-// Usage
-auto result = runScript("/usr/lib/musiclib/bin/musiclib_rate.sh", 
-                        {"4", filePath});
-if (result.exitCode != 0) {
-    auto errorDoc = QJsonDocument::fromJson(result.stderr);
-    auto errorObj = errorDoc.object();
-    showNotification(errorObj["error"].toString());
-    logError(errorObj);
+### 3.2 JSON Error Parsing
+
+```cpp
+void MainWindow::handleScriptError(const QByteArray& errorJson) {
+    QJsonDocument doc = QJsonDocument::fromJson(errorJson);
+    QJsonObject obj = doc.object();
+    
+    QString errorMsg = obj["error"].toString();
+    int errorCode = obj["code"].toInt();
+    QJsonObject context = obj["context"].toObject();
+    
+    if (errorCode == 2) {
+        // System error - show detailed technical message
+        QMessageBox::critical(this, "System Error", errorMsg);
+    } else {
+        // User error - show friendly message
+        QMessageBox::warning(this, "Invalid Input", errorMsg);
+    }
 }
 ```
 
-### 4.2 Database Refresh Strategy (Qt)
+### 3.3 DSV File Monitoring
 
-**File Watcher with Debounce**:
+The GUI watches `musiclib.dsv` for external changes (scripts, concurrent instances):
+
 ```cpp
-QFileSystemWatcher watcher;
-watcher.addPath(dbPath);
+QFileSystemWatcher* watcher = new QFileSystemWatcher(this);
+watcher->addPath(configPath("MUSICDB"));
 
-QTimer debounceTimer;
-debounceTimer.setSingleShot(true);
-debounceTimer.setInterval(500);  // 500ms debounce
-
-connect(&watcher, &QFileSystemWatcher::fileChanged,
-        &debounceTimer, qOverload<>(&QTimer::start));
-connect(&debounceTimer, &QTimer::timeout,
-        this, &MainWindow::reloadDatabase);
+connect(watcher, &QFileSystemWatcher::fileChanged, this, [=]() {
+    // File externally modified - reload model
+    libraryModel->reload();
+});
 ```
 
-### 4.3 Calling Scripts from CLI Dispatcher (C++)
+**Caveat**: Watcher fires on lock file changes too. Use debounce timer (500ms) to avoid redundant reloads.
+
+---
+
+## 4. CLI Dispatcher Implementation
+
+### 4.1 Subcommand Routing
+
+The `musiclib-cli` dispatcher maps subcommands to scripts:
+
+```cpp
+// musiclib-cli.cpp
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        showUsage();
+        return 1;
+    }
+    
+    std::string subcommand = argv[1];
+    
+    if (subcommand == "rate") {
+        return execScript("/usr/lib/musiclib/bin/musiclib_rate.sh", argc - 2, argv + 2);
+    } else if (subcommand == "mobile") {
+        return execScript("/usr/lib/musiclib/bin/musiclib_mobile.sh", argc - 2, argv + 2);
+    } else if (subcommand == "setup") {
+        return execScript("/usr/lib/musiclib/bin/musiclib_init_config.sh", argc - 2, argv + 2);
+    } else if (subcommand == "remove-record") {
+        return execScript("/usr/lib/musiclib/bin/musiclib_remove_record.sh", argc - 2, argv + 2);
+    } else {
+        std::cerr << "Unknown subcommand: " << subcommand << "\n";
+        return 1;
+    }
+}
+```
+
+### 4.2 Script Execution Wrapper
+
+```cpp
+int execScript(const std::string& scriptPath, int argc, char* argv[]) {
+    std::vector<const char*> args;
+    args.push_back(scriptPath.c_str());
+    for (int i = 0; i < argc; ++i) {
+        args.push_back(argv[i]);
+    }
+    args.push_back(nullptr);
+    
+    execv(scriptPath.c_str(), const_cast<char* const*>(args.data()));
+    
+    // execv only returns on error
+    std::cerr << "Failed to execute script: " << scriptPath << "\n";
+    return 2;
+}
+```
 
 **Example** (`musiclib-cli rate`):
 ```cpp
@@ -1102,10 +1259,10 @@ Test files should live in `tests/fixtures/`:
 
 ### 5.2 Expected Behaviors (Idempotency)
 
-- Running `musiclib_new_tracks.sh` twice on same file` → `exit 1 (already in DB), no DB change
-- Running `musiclib_rate.sh` with same rating` → `exit 0 (no-op update, DSV unchanged)
-- Running `musiclib_rebuild.sh --dry-run`` → `exit 1 (informational, not an error), no DB change
-- Running `musiclib_tagclean.sh` twice on same file` → `exit 0 (idempotent, tags already clean)
+- Running `musiclib_new_tracks.sh` twice on same file → exit 1 (already in DB), no DB change
+- Running `musiclib_rate.sh` with same rating → exit 0 (no-op update, DSV unchanged)
+- Running `musiclib_rebuild.sh --dry-run` → exit 1 (informational, not an error), no DB change
+- Running `musiclib_tagclean.sh` twice on same file → exit 0 (idempotent, tags already clean)
 
 ### 5.3 Integration Test Examples
 
@@ -1148,7 +1305,7 @@ if (apiVersion != "1.0") {
 When adding columns to `musiclib.dsv`:
 1. **Append** new columns to end (preserve column indices)
 2. Provide **default values** for existing rows in `musiclib_rebuild.sh`
-3. Update `BACKEND_API_VERSION` minor number (1.0` → `1.1)
+3. Update `BACKEND_API_VERSION` minor number (1.0 → 1.1)
 4. Document in `docs/MIGRATION.md`
 
 **Example**:
@@ -1242,6 +1399,7 @@ mv musiclib.dsv.new musiclib.dsv
 /usr/lib/musiclib/bin/audpl_scanner.sh
 /usr/lib/musiclib/bin/musiclib_new_tracks.sh
 /usr/lib/musiclib/bin/musiclib_audacious.sh
+/usr/lib/musiclib/bin/musiclib_remove_record.sh
 /usr/lib/musiclib/bin/musiclib_utils.sh
 /usr/lib/musiclib/bin/musiclib_utils_tag_functions.sh
 ```
@@ -1303,7 +1461,7 @@ They exist for specific pre-setup or maintenance scenarios where the user runs t
 **Naming Rules Applied**:
 - Lowercase only (`Track_01.mp3` → `track_01.mp3`)
 - Spaces become underscores (`My Song.mp3` → `my_song.mp3`)
-- Non-ASCII transliterated (`CafÃ©.mp3` → `cafe.mp3`)
+- Non-ASCII transliterated (`Café.mp3` → `cafe.mp3`)
 - Multiple underscores collapsed (`a__b.mp3` → `a_b.mp3`)
 - Safe characters only: `a-z`, `0-9`, `_`, `-`, `.`
 
@@ -1321,5 +1479,5 @@ They exist for specific pre-setup or maintenance scenarios where the user runs t
 **Warning**: This script modifies your files. Make backups first. Use solely at your own risk.
 
 **Document Version**: 1.0  
-**Last Updated**: 2026-02-14  
+**Last Updated**: 2026-02-25  
 **Status**: Implementation-Ready
