@@ -149,7 +149,7 @@ private:
     /// Query audtool for a value (synchronous, with short timeout)
     QString queryAudtool(const QStringList &args) const;
 
-    /// Populate the playlist dropdown from the playlists directory
+    /// Populate the playlist dropdown from the Audacious playlists directory
     void populatePlaylistDropdown();
 
     /// Raise an external window by WM_CLASS (X11) or caption (Wayland).

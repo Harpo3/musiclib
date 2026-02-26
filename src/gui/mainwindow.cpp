@@ -342,7 +342,7 @@ void MainWindow::setupToolbar()
 
     m_playlistDropdown = new QComboBox(this);
     m_playlistDropdown->setMinimumWidth(120);
-    m_playlistDropdown->setToolTip(i18n("Select a playlist — switches to Mobile panel"));
+    m_playlistDropdown->setToolTip(i18n("Select a playlist — switches active playlist in Audacious"));
     populatePlaylistDropdown();
     connect(m_playlistDropdown, QOverload<int>::of(&QComboBox::activated),
             this, &MainWindow::onPlaylistSelected);
@@ -534,33 +534,86 @@ void MainWindow::onPlaylistSelected(int index)
         return;
     }
 
-    QString playlistPath = m_playlistDropdown->itemData(index).toString();
-    if (!playlistPath.isEmpty()) {
-        switchToMobileWithPlaylist(playlistPath);
+    bool ok = false;
+    int playlistIndex = m_playlistDropdown->itemData(index).toInt(&ok);
+    if (!ok || playlistIndex < 1) {
+        return; // "Select playlist..." placeholder or invalid entry
     }
+
+    // If Audacious is not running, launch it and let it open its last state.
+    // The user can then see the playlist has been switched next time.
+    if (!isProcessRunning(QStringLiteral("audacious"))) {
+        QProcess::startDetached(QStringLiteral("/usr/bin/audacious"), {});
+        return;
+    }
+
+    // Switch the active playlist in Audacious via audtool
+    QProcess switchCmd;
+    switchCmd.start(QStringLiteral("audtool"),
+                    {QStringLiteral("--set-current-playlist"),
+                     QString::number(playlistIndex)});
+    switchCmd.waitForFinished(2000);
+
+    // Bring Audacious to the foreground so the user can see the change
+    QProcess showCmd;
+    showCmd.start(QStringLiteral("audtool"),
+                  {QStringLiteral("--mainwin-show"), QStringLiteral("on")});
+    showCmd.waitForFinished(2000);
+
+    QThread::msleep(100);
+    raiseWindowByClass(QStringLiteral("audacious"));
 }
 
 void MainWindow::populatePlaylistDropdown()
 {
     m_playlistDropdown->clear();
-    m_playlistDropdown->addItem(i18n("Select playlist..."), QString());
+    m_playlistDropdown->addItem(i18n("Select playlist..."), QVariant(-1));
 
-    QDir playlistDir(m_playlistsDir);
-    if (!playlistDir.exists()) {
+    QDir audDir(m_audaciousPlaylistsDir);
+    if (!audDir.exists()) {
         return;
     }
 
-    QStringList filters;
-    filters << QStringLiteral("*.audpl")
-            << QStringLiteral("*.m3u")
-            << QStringLiteral("*.m3u8")
-            << QStringLiteral("*.pls");
+    // Read the 'order' file to get playlist IDs in display order.
+    // Each ID in the order file corresponds to a <ID>.audpl file.
+    // The 1-based position in this list is what audtool's
+    // --set-current-playlist command expects.
+    QString orderPath = m_audaciousPlaylistsDir + QStringLiteral("/order");
+    QFile orderFile(orderPath);
+    if (!orderFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+    QString orderLine = QString::fromUtf8(orderFile.readAll()).trimmed();
+    orderFile.close();
 
-    QFileInfoList playlists = playlistDir.entryInfoList(
-        filters, QDir::Files | QDir::Readable, QDir::Name);
+    QStringList ids = orderLine.split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
-    for (const QFileInfo &fi : playlists) {
-        m_playlistDropdown->addItem(fi.fileName(), fi.absoluteFilePath());
+    for (int i = 0; i < ids.size(); ++i) {
+        const QString &id = ids.at(i);
+        QString audplPath = m_audaciousPlaylistsDir
+                            + QStringLiteral("/") + id
+                            + QStringLiteral(".audpl");
+        QFile audplFile(audplPath);
+        if (!audplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            continue;
+        }
+
+        // First line of .audpl is "title=<URL-encoded name>"
+        QString firstLine = QString::fromUtf8(
+            audplFile.readLine()).trimmed();
+        audplFile.close();
+
+        QString title;
+        if (firstLine.startsWith(QLatin1String("title="))) {
+            QString encoded = firstLine.mid(6); // strip "title="
+            title = QUrl::fromPercentEncoding(encoded.toUtf8());
+        }
+        if (title.isEmpty()) {
+            title = id; // fallback to numeric ID
+        }
+
+        // Store 1-based index so audtool --set-current-playlist <N> works
+        m_playlistDropdown->addItem(title, QVariant(i + 1));
     }
 }
 
@@ -614,29 +667,38 @@ void MainWindow::refreshNowPlaying()
         m_nowPlaying.playlistPosition = posStr.toInt();
         m_nowPlaying.playlistLength   = lenStr.toInt();
 
-        // Scan ~/.config/audacious/playlists/*.audpl to find which playlist
-        // contains the current song, then decode its title= first line.
-        // This is reliable regardless of how audtool numbers its playlists.
+        // Ask audtool which playlist is currently active (1-based index),
+        // then resolve that to a name via the 'order' file.
+        // This is unambiguous even when the same song appears in multiple
+        // playlists (e.g. a big "Library" playlist and a curated one).
         m_nowPlaying.playlistName.clear();
-        QDir plDir(m_audaciousPlaylistsDir);
-        const QStringList plFiles = plDir.entryList(
-            {QStringLiteral("*.audpl")}, QDir::Files, QDir::Name);
-        for (const QString &plFile : plFiles) {
-            QFile f(plDir.filePath(plFile));
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-                continue;
-            const QString titleLine = QString::fromUtf8(f.readLine()).trimmed();
-            QString candidate;
-            if (titleLine.startsWith(QLatin1String("title=")))
-                candidate = QUrl::fromPercentEncoding(titleLine.mid(6).toUtf8());
-            while (!f.atEnd()) {
-                if (QString::fromUtf8(f.readLine()).contains(m_nowPlaying.songPath)) {
-                    m_nowPlaying.playlistName = candidate;
-                    break;
+        QString curPlStr = queryAudtool({QStringLiteral("--current-playlist")});
+        bool plOk = false;
+        int curPlIndex = curPlStr.toInt(&plOk); // 1-based
+        if (plOk && curPlIndex >= 1) {
+            QString orderPath = m_audaciousPlaylistsDir + QStringLiteral("/order");
+            QFile orderFile(orderPath);
+            if (orderFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QStringList ids = QString::fromUtf8(orderFile.readAll())
+                                      .trimmed()
+                                      .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                orderFile.close();
+                if (curPlIndex - 1 < ids.size()) {
+                    const QString &id = ids.at(curPlIndex - 1);
+                    QString audplPath = m_audaciousPlaylistsDir
+                                        + QStringLiteral("/") + id
+                                        + QStringLiteral(".audpl");
+                    QFile audplFile(audplPath);
+                    if (audplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                        QString firstLine = QString::fromUtf8(
+                            audplFile.readLine()).trimmed();
+                        audplFile.close();
+                        if (firstLine.startsWith(QLatin1String("title=")))
+                            m_nowPlaying.playlistName = QUrl::fromPercentEncoding(
+                                firstLine.mid(6).toUtf8());
+                    }
                 }
             }
-            if (!m_nowPlaying.playlistName.isEmpty())
-                break;
         }
     }
 
