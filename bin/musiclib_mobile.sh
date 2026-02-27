@@ -2,14 +2,14 @@
 #
 # musiclib_mobile.sh - Mobile playlist management and last-played tracking
 #
-# Usage: musiclib_mobile.sh upload <playlist.audpl> [device_id] [--non-interactive] [--end-time "MM/DD/YYYY HH:MM:SS"]
-#        musiclib_mobile.sh update-lastplayed <playlist_name> [--end-time "MM/DD/YYYY HH:MM:SS"]
-#        musiclib_mobile.sh retry <playlist_name>
-#        musiclib_mobile.sh refresh-audacious-only
-#        musiclib_mobile.sh status
-#        musiclib_mobile.sh logs [filter]
-#        musiclib_mobile.sh cleanup
-#        musiclib_mobile.sh check-update <playlist_name>
+# Usage: musiclib-cli mobile upload <playlist.audpl> [device_id] [--non-interactive] [--end-time "MM/DD/YYYY HH:MM:SS"]
+#        musiclib-cli mobile update-lastplayed <playlist_name> [--end-time "MM/DD/YYYY HH:MM:SS"]
+#        musiclib-cli mobile retry <playlist_name>
+#        musiclib-cli mobile refresh-audacious-only
+#        musiclib-cli mobile status
+#        musiclib-cli mobile logs [filter]
+#        musiclib-cli mobile cleanup
+#        musiclib-cli mobile check-update <playlist_name>
 #
 # Backend API Version: 1.0
 # Exit Codes: 0 (success), 1 (user/validation error), 2 (system error)

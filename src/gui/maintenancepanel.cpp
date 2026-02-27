@@ -613,12 +613,11 @@ QGroupBox *MaintenancePanel::createNewTracksGroup()
     auto *layout = new QVBoxLayout(group);
 
     auto *desc = new QLabel(
-        "Import new MP3 downloads from the configured NEW_DOWNLOAD_DIR into the library.  "
+        "Import new MP3 downloads from the configured download directory into the library.  "
         "Extracts any ZIP file present, normalizes filenames and volume with rsgain, "
         "organises files into an artist/album folder under MUSIC_REPO, and adds the "
-        "tracks to the database.  "
-        "<b>Edit tags in kid3-qt before executing</b> — the tag-editing pause is "
-        "bypassed automatically in GUI mode.");
+        "tracks to the database.  Place tracks for no more than one artist and album at a time.  "
+        "<b>Do any needed tag editing to conform artist or album in kid3 before executing</b>.  ");
     desc->setWordWrap(true);
     desc->setTextFormat(Qt::RichText);
     layout->addWidget(desc);

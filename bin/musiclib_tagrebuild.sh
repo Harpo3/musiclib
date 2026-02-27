@@ -62,7 +62,7 @@ ERRORS=0
 #############################################
 show_usage() {
     cat << 'EOF'
-Usage: musiclib_tagrebuild.sh [TARGET] [options]
+Usage: musiclib-cli tagrebuild [TARGET] [options]
 
 Repair corrupted or malformed ID3 tags on MP3 files in the MusicLib database.
 
@@ -76,29 +76,29 @@ Options:
   -r, --recursive   Process directories recursively
   -n, --dry-run     Preview changes without modifying files
   -v, --verbose     Show detailed processing information
-  -b, --backup-dir DIR  Custom backup directory (default: $BACKUP_DIR)
+  -b, --backup-dir DIR  Custom backup directory
   -h, --help        Show this help message
 
 Examples:
   # Repair a single file
-  musiclib_tagrebuild.sh ~/Music/song.mp3
+  musiclib-cli tagrebuild ~/Music/song.mp3
 
   # Repair all files in a directory (not recursive)
-  musiclib_tagrebuild.sh ~/Music/
+  musiclib-cli tagrebuild ~/Music/
 
   # Repair all files recursively
-  musiclib_tagrebuild.sh ~/Music -r
+  musiclib-cli tagrebuild ~/Music -r
 
   # Preview with verbose output
-  musiclib_tagrebuild.sh ~/Music -r -n -v
+  musiclib-cli tagrebuild ~/Music -r -n -v
 
   # Actual rebuild after preview
-  musiclib_tagrebuild.sh ~/Music -r
+  musiclib-cli tagrebuild ~/Music -r
 
 Workflow:
-  1. Preview changes first: musiclib_tagrebuild.sh ~/Music -r -n -v
+  1. Preview changes first: musiclib-cli tagrebuild ~/Music -r -n -v
   2. Review the output
-  3. Run without -n to apply: musiclib_tagrebuild.sh ~/Music -r
+  3. Run without -n to apply: musiclib-cli tagrebuild ~/Music -r
 
 Notes:
   - Only rebuilds files that are found in the database

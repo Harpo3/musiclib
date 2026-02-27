@@ -49,7 +49,7 @@ DEFAULT_FORMAT="%{artist}^%{album}^%{albumartist}^%{title}^%{filepath}^%{genre}^
 #############################################
 show_usage() {
     cat << EOF
-Usage: $0 [MUSIC_DIR] [options]
+Usage: musiclib-cli build [MUSIC_DIR] [options]
 
 Rebuild the entire music library database from audio file tags.
 
@@ -70,19 +70,19 @@ Options:
 
 Examples:
   # Preview what would be rebuilt
-  $0 /mnt/music --dry-run
+  musiclib-cli build /mnt/music --dry-run
 
   # Rebuild entire database
-  $0 /mnt/music
+  musiclib-cli build /mnt/music
 
   # Rebuild with backup
-  $0 /mnt/music -b
+  musiclib-cli build /mnt/music -b
 
   # Test on subdirectory
-  $0 /mnt/music/Rock -t
+  musiclib-cli build /mnt/music/Rock -t
 
   # Custom output location
-  $0 /mnt/music -o ~/music_backup.dsv
+  musiclib-cli build /mnt/music -o ~/music_backup.dsv
 
 Exit Codes:
   0 - Success

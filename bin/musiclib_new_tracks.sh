@@ -68,8 +68,8 @@ fi
 
 show_help() {
     cat << 'EOF'
-Usage: musiclib_new_tracks.sh [artist name]
-       musiclib_new_tracks.sh --help|-h|help
+Usage: musiclib-cli new-tracks [artist name]
+       musiclib-cli new-tracks --help|-h|help
 
 Import new music downloads into the music library database.
 
@@ -81,8 +81,8 @@ ARGUMENTS:
   --help, -h, help   Display this help message and exit
 
 DESCRIPTION:
-  This script processes files newly downloaded to $NEW_DOWNLOAD_DIR and imports
-  them to the music repository ($MUSIC_REPO) by:
+  This script processes files newly downloaded to the configured download
+  directory and imports them to the music repository by:
 
     1. Extracting ZIP files automatically (if present)
     2. Normalizing MP3 filenames from ID3 tags
@@ -97,9 +97,9 @@ IMPORTANT:
   the repository.
 
 EXAMPLES:
-  musiclib_new_tracks.sh "Pink Floyd"
-  musiclib_new_tracks.sh "the_beatles"
-  musiclib_new_tracks.sh --help
+  musiclib-cli new-tracks "Pink Floyd"
+  musiclib-cli new-tracks "the_beatles"
+  musiclib-cli new-tracks --help
 
 CONFIGURATION:
   Define variable values in: musiclib/config/musiclib.conf

@@ -131,7 +131,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help|help)
             cat << 'EOF'
-Usage: musiclib_init_config.sh [options]
+Usage: musiclib-cli setup [options]
 
 Simplified setup wizard for MusicLib configuration.
 

@@ -76,7 +76,7 @@ declare -A STAR_TO_IMAGE=(
 # Validate Input
 #############################################
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <star_rating> [filepath]"
+    echo "Usage: musiclib-cli rate <star_rating> [filepath]"
     echo ""
     echo "Rate a track in the MusicLib database"
     echo ""

@@ -90,7 +90,7 @@ remove_replaygain() {
 #############################################
 show_usage() {
     cat << EOF
-Usage: $0 [COMMAND] [TARGET] [options]
+Usage: musiclib-cli tagclean [COMMAND] [TARGET] [options]
 
 Clean and normalize MP3 ID3 tags for musiclib compatibility.
 
@@ -125,28 +125,28 @@ Modes:
 
 Examples:
   # Full cleanup with merge mode (default)
-  $0 /mnt/music/album -r
+  musiclib-cli tagclean /mnt/music/album -r
 
   # Strip mode - remove tags only
-  $0 /mnt/music/album -r --mode strip
+  musiclib-cli tagclean /mnt/music/album -r --mode strip
 
   # Only embed album art
-  $0 /mnt/music/album -r --mode embed-art
+  musiclib-cli tagclean /mnt/music/album -r --mode embed-art
 
   # Merge mode with APE and ReplayGain removal
-  $0 /mnt/music -r -a -g
+  musiclib-cli tagclean /mnt/music -r -a -g
 
   # Dry run to see what would happen
-  $0 /mnt/music -r -n
+  musiclib-cli tagclean /mnt/music -r -n
 
   # Show more examples
-  $0 examples
+  musiclib-cli tagclean examples
 
   # Understand operation modes
-  $0 modes
+  musiclib-cli tagclean modes
 
   # Get help troubleshooting issues
-  $0 troubleshoot
+  musiclib-cli tagclean troubleshoot
 
 EOF
 }
@@ -155,79 +155,79 @@ EOF
 # Show Extended Examples
 #############################################
 show_examples() {
-    cat << EOF
+    cat << 'EOF'
 === MusicLib Tag Cleanup - Usage Examples ===
 
 BASIC OPERATIONS:
   # Clean a single file (merge mode)
-  $0 ~/Music/song.mp3
+  musiclib-cli tagclean ~/Music/song.mp3
 
   # Clean all MP3s in a directory (non-recursive)
-  $0 ~/Music/
+  musiclib-cli tagclean ~/Music/
 
   # Clean all MP3s recursively
-  $0 ~/Music -r
+  musiclib-cli tagclean ~/Music -r
 
 DRY RUN (preview changes without modifying):
   # See what would be changed
-  $0 ~/Music -r -n
+  musiclib-cli tagclean ~/Music -r -n
 
   # See details of what would happen
-  $0 ~/Music -r -n -v
+  musiclib-cli tagclean ~/Music -r -n -v
 
 MODE-SPECIFIC OPERATIONS:
   # Merge mode (default): merge ID3v1->v2, remove v1, embed art
-  $0 ~/Music -r --mode merge
+  musiclib-cli tagclean ~/Music -r --mode merge
 
   # Strip mode: remove ID3v1 and APE only
-  $0 ~/Music -r --mode strip
+  musiclib-cli tagclean ~/Music -r --mode strip
 
   # Embed-art mode: only embed missing album art
-  $0 ~/Music -r --mode embed-art
+  musiclib-cli tagclean ~/Music -r --mode embed-art
 
 LEGACY FLAG OPERATIONS (backward compatible):
   # Only embed missing album art (if .jpg exists in same directory)
-  $0 ~/Music -r --art-only
+  musiclib-cli tagclean ~/Music -r --art-only
 
   # Only remove APE tags (keep ID3 intact)
-  $0 ~/Music -r --ape-only
+  musiclib-cli tagclean ~/Music -r --ape-only
 
   # Only remove ReplayGain metadata
-  $0 ~/Music -r --rg-only
+  musiclib-cli tagclean ~/Music -r --rg-only
 
 COMBINATION OPERATIONS:
   # Remove both APE and ReplayGain in merge mode
-  $0 ~/Music -r -a -g
+  musiclib-cli tagclean ~/Music -r -a -g
 
   # Strip mode with APE removal
-  $0 ~/Music -r --mode strip -a
+  musiclib-cli tagclean ~/Music -r --mode strip -a
 
 CUSTOM BACKUP LOCATION:
   # Use a custom backup directory
-  $0 ~/Music -r -b /backup/music_tags
+  musiclib-cli tagclean ~/Music -r -b /backup/music_tags
 
 VERBOSE OUTPUT:
   # See detailed processing information
-  $0 ~/Music -r -v
+  musiclib-cli tagclean ~/Music -r -v
 
   # Combine verbose with dry-run for maximum visibility
-  $0 ~/Music -r -n -v
+  musiclib-cli tagclean ~/Music -r -n -v
 
 WORKFLOW EXAMPLES:
   1. Preview before committing:
-     $0 ~/Music -r -n -v
+     musiclib-cli tagclean ~/Music -r -n -v
      [review output]
-     $0 ~/Music -r    # commit changes
+     musiclib-cli tagclean ~/Music -r    # commit changes
 
   2. Fix a specific album:
-     $0 ~/Music/Artists/Beatles/Abbey_Road -r -a -g
+     musiclib-cli tagclean ~/Music/Artists/Beatles/Abbey_Road -r -a -g
 
   3. Just fix art and ReplayGain on everything:
-     $0 ~/Music -r --mode embed-art
-     $0 ~/Music -r --rg-only
+     musiclib-cli tagclean ~/Music -r --mode embed-art
+     musiclib-cli tagclean ~/Music -r --rg-only
 
 For more information on operation modes, run:
-  $0 modes
+  musiclib-cli tagclean modes
 
 EOF
 }
@@ -236,7 +236,7 @@ EOF
 # Show Operation Modes
 #############################################
 show_modes() {
-    cat << EOF
+    cat << 'EOF'
 === MusicLib Tag Cleanup - Operation Modes ===
 
 MERGE MODE (default):
@@ -249,10 +249,10 @@ MERGE MODE (default):
     6. Embed album art if missing (finds .jpg in same directory)
 
   Usage:
-    $0 /path/to/music -r                  # Basic merge mode
-    $0 /path/to/music -r --mode merge     # Explicit merge mode
-    $0 /path/to/music -r -a               # Merge + remove APE
-    $0 /path/to/music -r -a -g            # Merge + remove APE + remove ReplayGain
+    musiclib-cli tagclean /path/to/music -r                  # Basic merge mode
+    musiclib-cli tagclean /path/to/music -r --mode merge     # Explicit merge mode
+    musiclib-cli tagclean /path/to/music -r -a               # Merge + remove APE
+    musiclib-cli tagclean /path/to/music -r -a -g            # Merge + remove APE + remove ReplayGain
 
 STRIP MODE:
   Removes ID3v1 and APE tags only, without embedding art:
@@ -268,7 +268,7 @@ STRIP MODE:
     - You want minimal changes to file structure
 
   Usage:
-    $0 /path/to/music -r --mode strip
+    musiclib-cli tagclean /path/to/music -r --mode strip
 
 EMBED-ART MODE:
   Only processes album art embedding, no tag manipulation:
@@ -282,8 +282,8 @@ EMBED-ART MODE:
     - You found album art files and want to embed them
 
   Usage:
-    $0 /path/to/music -r --mode embed-art
-    $0 /path/to/music -r --art-only       # Legacy alias
+    musiclib-cli tagclean /path/to/music -r --mode embed-art
+    musiclib-cli tagclean /path/to/music -r --art-only       # Legacy alias
 
   Requirements:
     - .jpg files in same directory as MP3s (cover.jpg, album.jpg, etc.)
@@ -329,7 +329,7 @@ ISSUE: Files are not changing (but no errors shown)
   Solution:
     Check if -n or --dry-run is in your command
     Remove that flag to actually make changes
-    Example: $0 /path/to/music -r  (without -n)
+    Example: musiclib-cli tagclean /path/to/music -r  (without -n)
 
 ISSUE: Album art not being embedded
   Cause: No .jpg file found in the directory, or wrong mode
@@ -337,13 +337,13 @@ ISSUE: Album art not being embedded
     1. Place a cover.jpg, album.jpg, or similar in the directory
     2. Ensure it's a JPEG file (.jpg or .jpeg extension)
     3. Make sure you're using merge or embed-art mode
-    4. Try again with: $0 /path/to/music -r --mode embed-art
+    4. Try again with: musiclib-cli tagclean /path/to/music -r --mode embed-art
 
 ISSUE: "Invalid mode" error
   Cause: Unsupported mode value provided
   Solution:
     Valid modes are: merge, strip, embed-art
-    Example: $0 /path/to/music -r --mode merge
+    Example: musiclib-cli tagclean /path/to/music -r --mode merge
 
 ISSUE: "Backup failed" or "restore from backup"
   Cause: Disk space issue or file permission problem
@@ -351,7 +351,7 @@ ISSUE: "Backup failed" or "restore from backup"
     1. Check available disk space: df -h
     2. Check directory permissions: ls -ld /path/to/music
     3. Specify a backup directory on a different drive:
-       $0 /path/to/music -r -b /alternative/backup/path
+       musiclib-cli tagclean /path/to/music -r -b /alternative/backup/path
     4. Try with a single file first to isolate the problem
 
 ISSUE: Tags not merging from ID3v1 to ID3v2
@@ -367,9 +367,9 @@ ISSUE: ReplayGain tags not being removed
   Cause: Tags stored in different format (APE instead of ID3)
   Solution:
     Try removing APE tags first:
-    $0 /path/to/music -r --ape-only
+    musiclib-cli tagclean /path/to/music -r --ape-only
     Then remove ReplayGain:
-    $0 /path/to/music -r --rg-only
+    musiclib-cli tagclean /path/to/music -r --rg-only
 
 ISSUE: Script is slow on large libraries
   Cause: Processing thousands of files with verbose output
@@ -380,16 +380,16 @@ ISSUE: Script is slow on large libraries
 
 GENERAL DEBUGGING:
   Use the --dry-run and --verbose flags together to see what would happen:
-    $0 /path/to/music -r -n -v
+    musiclib-cli tagclean /path/to/music -r -n -v
 
   Review backups if something goes wrong:
     ls -lh $BACKUP_DIR
 
   Always start with a dry run on unfamiliar music directories:
-    $0 /path/to/music -r -n -v
+    musiclib-cli tagclean /path/to/music -r -n -v
 
 Need more help? Check the main help:
-  $0 help
+  musiclib-cli tagclean help
 
 EOF
 }

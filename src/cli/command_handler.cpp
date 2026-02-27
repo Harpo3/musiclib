@@ -37,25 +37,25 @@ void CommandHandler::registerCommands() {
     commands_["build"] = {
         "build",
         "Full database build/rebuild from filesystem scan",
-        "[--dry-run]",
+        "[MUSIC_DIR] [options]",
         "musiclib_build.sh",
         handleBuild
     };
-    
+
     // Register: tagclean
     commands_["tagclean"] = {
         "tagclean",
         "Clean and normalize audio file tags",
-        "process|preview <target> [options...]",
+        "[COMMAND] [TARGET] [options]",
         "musiclib_tagclean.sh",
         handleTagclean
     };
-    
+
     // Register: tagrebuild
     commands_["tagrebuild"] = {
         "tagrebuild",
         "Repair track tags from database values",
-        "<filepath>",
+        "[TARGET] [options]",
         "musiclib_tagrebuild.sh",
         handleTagrebuild
     };
@@ -82,7 +82,7 @@ void CommandHandler::registerCommands() {
     commands_["setup"] = {
         "setup",
         "Interactive first-run configuration wizard",
-        "[--force]",
+        "[--build-db]",
         "musiclib_init_config.sh",
         handleSetup
     };
@@ -103,7 +103,8 @@ int CommandHandler::executeCommand(const QString& cmd, const QStringList& args) 
     const CommandInfo& cmdInfo = commands_[cmd];
     
     // Check for subcommand help request
-    if (args.contains("-h") || args.contains("--help")) {
+    // Note: "build" passes --help through to the script (musiclib_build.sh has its own show_usage)
+    if ((args.contains("-h") || args.contains("--help")) && cmd != "build") {
         showHelp(cmd);
         return 0;
     }
@@ -234,7 +235,7 @@ void CommandHandler::showHelp(const QString& cmd) {
     }
     else if (cmd == "setup") {
         cout << "Options:" << Qt::endl;
-        cout << "  --force    Overwrite existing configuration" << Qt::endl;
+        cout << "  --build-db    Build initial database after setup completes" << Qt::endl;
         cout << Qt::endl;
         cout << "Description:" << Qt::endl;
         cout << "  Interactive wizard for first-run configuration. This wizard will:" << Qt::endl;
@@ -249,8 +250,8 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "  It will read existing settings as defaults." << Qt::endl;
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
-        cout << "  musiclib-cli setup                # First-time setup" << Qt::endl;
-        cout << "  musiclib-cli setup --force        # Reconfigure existing installation" << Qt::endl;
+        cout << "  musiclib-cli setup              # First-time setup" << Qt::endl;
+        cout << "  musiclib-cli setup --build-db   # Setup and immediately build database" << Qt::endl;
     }
 }
 
@@ -322,7 +323,7 @@ int CommandHandler::handleMobile(const QStringList& args) {
     
     // Validate known subcommands for better error messages
     QString subcommand = args[0];
-    QStringList validSubcommands = {"upload", "refresh-audacious-only", "update-lastplayed", "status", "logs", "cleanup"};
+    QStringList validSubcommands = {"upload", "refresh-audacious-only", "update-lastplayed", "status", "logs", "cleanup", "check-update", "retry"};
     
     if (!validSubcommands.contains(subcommand)) {
         cerr << "Error: Unknown mobile subcommand '" << subcommand << "'" << Qt::endl;
@@ -335,71 +336,35 @@ int CommandHandler::handleMobile(const QStringList& args) {
 }
 
 int CommandHandler::handleBuild(const QStringList& args) {
-    // Build accepts optional --dry-run flag
-    QStringList validArgs;
-    
-    for (const QString& arg : args) {
-        if (arg == "--dry-run") {
-            validArgs << arg;
-        } else {
-            cerr << "Error: Unknown option '" << arg << "'" << Qt::endl;
-            showHelp("build");
-            return 1;
-        }
-    }
-    
-    int exitCode = CLIUtils::executeScript("musiclib_build.sh", validArgs);
-    
-    // Special handling: exit code 1 from build --dry-run is informational, not an error
-    if (exitCode == 1 && args.contains("--dry-run")) {
-        // Dry-run completed successfully
+    // Pass all arguments directly to musiclib_build.sh - the script handles its own
+    // argument parsing and validation, so no whitelist is needed here.
+    // Supported flags (see musiclib_build.sh show_usage):
+    //   [MUSIC_DIR]  -h/--help  -d/--dry-run  -o FILE  -m DEPTH  --no-header
+    //   -q/--quiet   -s COLUMN  -b/--backup   -t/--test  --no-progress
+    int exitCode = CLIUtils::executeScript("musiclib_build.sh", args);
+
+    // Exit code 1 from --dry-run / -d is informational (preview complete), not an error
+    if (exitCode == 1 && (args.contains("--dry-run") || args.contains("-d"))) {
         return 0;
     }
-    
+
     return exitCode;
 }
 
 int CommandHandler::handleTagclean(const QStringList& args) {
-    if (args.isEmpty()) {
-        cerr << "Error: 'tagclean' requires a subcommand (preview|process) and target" << Qt::endl;
-        showHelp("tagclean");
-        return 1;
-    }
-    
-    // First arg should be preview or process
-    QString subcommand = args[0];
-    if (subcommand != "preview" && subcommand != "process") {
-        cerr << "Error: Invalid tagclean subcommand '" << subcommand << "'" << Qt::endl;
-        cerr << "Expected: preview or process" << Qt::endl;
-        return 1;
-    }
-    
-    if (args.size() < 2) {
-        cerr << "Error: 'tagclean' requires a target (file or directory)" << Qt::endl;
-        showHelp("tagclean");
-        return 1;
-    }
-    
-    // Pass all arguments to script
+    // Pass all arguments directly to musiclib_tagclean.sh - the script handles its own
+    // argument parsing and validation.
+    // Supported: [COMMAND] [TARGET] [-r] [-a] [-g] [-n] [-v] [-b DIR] [--mode MODE]
+    //            [--art-only] [--ape-only] [--rg-only]
+    //            Commands: help, examples, modes, troubleshoot, preview, process
     return CLIUtils::executeScript("musiclib_tagclean.sh", args);
 }
 
 int CommandHandler::handleTagrebuild(const QStringList& args) {
-    if (args.size() != 1) {
-        cerr << "Error: 'tagrebuild' requires exactly 1 argument (filepath)" << Qt::endl;
-        showHelp("tagrebuild");
-        return 1;
-    }
-    
-    QString filepath = args[0];
-    
-    // Validate file exists
-    if (!QFileInfo::exists(filepath)) {
-        cerr << "Error: File not found: " << filepath << Qt::endl;
-        return 1;
-    }
-    
-    return CLIUtils::executeScript("musiclib_tagrebuild.sh", {filepath});
+    // Pass all arguments directly to musiclib_tagrebuild.sh - the script handles its own
+    // argument parsing and validation.
+    // Supported: [TARGET] [-r] [-n] [-v] [-b DIR] [-h/--help]
+    return CLIUtils::executeScript("musiclib_tagrebuild.sh", args);
 }
 
 int CommandHandler::handleNewTracks(const QStringList& args) {
@@ -427,18 +392,8 @@ int CommandHandler::handleProcessPending(const QStringList& args) {
 }
 
 int CommandHandler::handleSetup(const QStringList& args) {
-    // Setup accepts optional --force flag
-    QStringList validArgs;
-    
-    for (const QString& arg : args) {
-        if (arg == "--force") {
-            validArgs << arg;
-        } else {
-            cerr << "Error: Unknown option '" << arg << "'" << Qt::endl;
-            showHelp("setup");
-            return 1;
-        }
-    }
-    
-    return CLIUtils::executeScript("musiclib_init_config.sh", validArgs);
+    // Pass all arguments directly to musiclib_init_config.sh - the script handles its own
+    // argument parsing and validation.
+    // Supported: [--build-db] [-h/--help]
+    return CLIUtils::executeScript("musiclib_init_config.sh", args);
 }

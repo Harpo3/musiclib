@@ -95,12 +95,12 @@ Before installing MusicLib, ensure you have:
 
 ```bash
 # Install just the backend and CLI
-yay -S musiclib
+yay -S musiclib-cli
 
 # or
 
 # Install the GUI
-yay -S musiclib-qt
+yay -S musiclib
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
 yay -S kid3
@@ -221,7 +221,7 @@ This table shows how to find the same packages on different distros:
 | Package | Purpose | Arch | Fedora | Ubuntu/Neon | openSUSE | Debian |
 |---------|---------|------|--------|------------|----------|--------|
 | audacious | Audio player | audacious | audacious | audacious | audacious | audacious |
-| kid3-common | Tag editor | kid3-common | kid3-common | kid3-core | kid3 | kid3-core |
+| kid3-common | Tag editor | kid3-common | kid3-common | kid3-core | kid3? | kid3-core |
 | exiftool | Metadata tool | perl-image-exiftool | perl-Image-ExifTool | libimage-exiftool-perl | perl-Image-ExifTool | libimage-exiftool-perl |
 | kdeconnect | Mobile sync | kdeconnect | kdeconnect | kdeconnect | kdeconnect | kdeconnect |
 | rsgain | ReplayGain analysis | rsgain | rsgain | rsgain (universe) | rsgain | rsgain |
@@ -283,24 +283,19 @@ If these tools are missing, the wizard displays package names for your distribut
 
 MusicLib creates the standard Linux XDG directory structure for you:
 - `~/.config/musiclib/` — Configuration files
-- `~/.local/share/musiclib/data/` — Database and backups
-- `~/.local/share/musiclib/playlists/` — Playlist files
-- `~/.local/share/musiclib/logs/` — Operation logs
+- `~/.local/share/musiclib/data/` — Database and subdirs
+- `~/.local/share/musiclib/playlists/` — Playlist files and subdirs
+- `~/.local/share/musiclib/logs/` — Operation logs and subdirs
 
 No manual folder creation needed—the script handles it all.
 
 ### Step 6: Configure Audacious Integration
 
-If Audacious is detected, the wizard displays step-by-step instructions for enabling the Song Change plugin:
-1. Open Audacious → Settings → Plugins
-2. Enable "Song Change" plugin
-3. Set the command path to `/usr/lib/musiclib/bin/musiclib_audacious.sh`
-
-The wizard can optionally verify this integration by checking if Audacious is running, testing the hook script, and validating Conky output files are generated.
+If Audacious is detected, the the Song Change plugin and script is configured automatically. 
 
 ### Step 7: Build Initial Database
 
-The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a few minutes for large collections.
+The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. 
 
 ### Migration from Legacy Layout
 
@@ -311,7 +306,7 @@ If you have an existing MusicLib installation in `~/musiclib/`, the setup wizard
 
 Once installed and setup step completed, you can launch MusicLib from:
 - **Application menu** → Search "MusicLib"
-- **Command line**: `musiclib-qt`
+- **Command line**: `musiclib`
 - **System tray** (appears after first launch)
 
 ---
@@ -339,7 +334,7 @@ When you rate a song, MusicLib:
 1. Updates the `musiclib.dsv` database
 2. Writes the rating to the audio file's ID3 tags (POPM tag)
 3. Updates the Grouping/Work tag with star symbols
-4. Generates a star rating image for Conky display
+4. Generates a star rating image for Conky or other display use
 5. Logs the change
 
 This means your ratings are preserved in the files themselves, not just in the database.
@@ -348,7 +343,7 @@ This means your ratings are preserved in the files themselves, not just in the d
 
 Mobile sync is a two-phase operation:
 
-**Phase A (Accounting)**: When you upload a new playlist, MusicLib first processes the *previous* playlist. It calculates how long that playlist was on your phone (time between uploads) and distributes synthetic "last played" timestamps across the tracks using an exponential distribution. This gives you playback history even though your phone can't report what you actually listened to.
+**Phase A (Accounting)**: When you upload a new playlist, MusicLib first processes the *previous* playlist. It calculates how long that playlist was on your phone (time between uploads) and distributes synthetic "last played" timestamps across the tracks using an exponential distribution. This gives you playback history even though your phone can't report what you actually listened to. It uses actual timestamps for the tracks played from your desktop in Audacious.
 
 **Phase B (Upload)**: MusicLib converts the playlist to `.m3u` format and sends it along with all the music files to your device via KDE Connect.
 
@@ -368,43 +363,47 @@ MusicLib tracks when you listen to music in two ways:
 
 The MusicLib GUI has three main areas:
 
-1. **Library View** (left) — Browse and filter your music collection
-2. **Now Playing Strip** (top) — See what's currently playing in Audacious
-3. **Side Panels** (right) — Access different features via tabs
+1. **Library View** (default main panel) — Browse and filter your music collection
+2. **Toolbar with Now Playing Strip** (top) — See what's currently playing in Audacious, rate the current track, access Audacious and Kid3
+3. **Side Panel** (left) — Access different features via tabs
 
 ### Library View
 
 The library view shows all your tracks in a sortable table. You can:
-- **Search** — Filter by artist, album, or title
+- **Search** — Filter by artist, album, or title 
+- **Filter** - Library-level filter rated only, unrated only, or no filter
 - **Sort** — Click column headers to sort
-- **Rate** — Click the stars to rate any track
-- **Play** — Double-click to add to Audacious queue
 
-**Filtering**: Use the search box at the top. It searches across artist, album, and title fields simultaneously.
+You can select individual entries and:
+- **Rate** — Click the stars to directly rate any track, playing or not
+- **Play** — Context menu: play or add selected track to Audacious play queue
+- **Edit** — Context menu: open the selected track in Kid3 to edit tag
+- **Remove** — Remove selected record from the database (does not remove the file)
 
-### Side Panels
 
-Click the tabs on the right to access different features:
+### Panels
 
-**Album View**: Browse your collection organized by album with cover art.
+Select from the Side Panel on the left to access the other panels:
 
-**Mobile Panel**: Upload playlists to your phone, view sync status, and manage mobile operations.
+**Mobile Panel** — Upload playlists to your phone, view sync status, and manage mobile operations.
 
-**Maintenance Panel**: Perform database and tag maintenance operations like rebuilding the database, cleaning tags, or importing new music.
+**Maintenance Panel** — Perform database and tag maintenance operations like rebuilding the database, cleaning tags, or importing new music.
 
-**Conky Panel**: Configure Conky output files and preview what's being displayed.
+**Settings** — (Opens new Window) Configure MusicLib paths, device IDs, and behavior options.
 
-**Settings**: Configure MusicLib paths, device IDs, and behavior options.
+### Toolbar Elements (Top)
 
-### Now Playing Strip
-
-The now-playing strip at the top shows:
-- Album artwork
+**Now Playing** - Shows for the currently playing track:
 - Artist and track name
 - Star rating (click to change)
-- Last played timestamp
 
-This updates automatically when tracks change in Audacious.
+**Album View** — (Opens new Window) Show album details for currently playing track
+
+**Playlist** — Select and activate a playlist in Audacious
+
+**Audacious** — Launches/activates Audacious
+
+**Kid3** — Launches/activates Kid3 for currently playing track
 
 ### Rating Songs
 
@@ -412,7 +411,7 @@ Three ways to rate:
 
 1. **In the library view**: Click the stars in the Rating column
 2. **In the now-playing strip**: Click the stars at the top
-3. **Keyboard shortcuts**: Set up global shortcuts in System Settings (Ctrl+1 through Ctrl+5)
+3. **Keyboard shortcuts**: Set up global shortcuts in System Settings (Ctrl+0 through Ctrl+5)
 
 Ratings appear instantly and are saved to both the database and the audio file tags.
 
@@ -425,22 +424,21 @@ Ratings appear instantly and are saved to both the database and the audio file t
 When you download new music:
 
 1. Open the **Maintenance Panel**
-2. Click **Import New Tracks**
-3. Select the artist name (or let MusicLib prompt you)
-4. Choose the download directory (defaults to `~/Downloads`)
-5. Review the tracks to import
-6. Click **Import**
+2. Find the **Add New Tracks** frame
+3. Enter the artist name 
+4. Set/change download directory for staging new tracks by using the Settings window.
+5. Review/edit the new track info in kid3 to ensure artist/album name consistency
+6. Click **Execute**
 
 MusicLib will:
 - Normalize the file tags
-- Rename files to lowercase with underscores
+- Rename files, artist directory, album directory to lowercase with underscores
 - Move files to your music repository under `artist/album/`
-- Extract album art
-- Add tracks to the database
+- Add new tracks to the database
 
-### Building/Rebuilding the Database
+### Rebuilding the Database
 
-If you've added music files manually or need to refresh the database:
+If you need to rebuild the database, it is better to run `musiclib-cli build --help` in the console. Optionally you can:
 
 1. Open the **Maintenance Panel**
 2. Click **Build Library**
@@ -707,7 +705,7 @@ musiclib-cli build --dry-run
 musiclib-cli build
 ```
 
-**Note**: This can take several minutes for large libraries (10,000+ tracks).
+**Note**: This can take a long time for large libraries (10,000+ tracks).
 
 ---
 
