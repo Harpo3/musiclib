@@ -21,6 +21,7 @@
 #include <QList>
 
 class ConfWriter;
+class QCheckBox;
 class QSpinBox;
 class QLineEdit;
 class QPushButton;
@@ -96,6 +97,11 @@ private:
     QSpinBox      *m_backupAgeDaysSpin;
     QLabel        *m_apiVersionLabel;
     QSpinBox      *m_pollIntervalSpin;
+
+    // System tray behaviour checkboxes (GUI Behavior group)
+    QCheckBox *m_closeToTrayCheck    = nullptr;
+    QCheckBox *m_minimizeToTrayCheck = nullptr;
+    QCheckBox *m_startMinimizedCheck = nullptr;
 
     // ── Snapshot of conf values at dialog open (for hasChanged) ──
     QMap<QString, QString> m_savedSnapshot;

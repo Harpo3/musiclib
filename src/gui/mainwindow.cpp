@@ -12,6 +12,8 @@
 #include "scriptrunner.h"
 #include "settingsdialog.h"
 #include "mobile_panel.h"
+#include "systemtrayicon.h"
+#include "musiclib.h"   // KConfigXT-generated MusicLibSettings singleton
 
 #include <KXmlGuiWindow>
 #include <KActionCollection>
@@ -40,6 +42,9 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QDBusInterface>
+#include <QRegularExpression>
+#include <QSystemTrayIcon>
+#include <QCloseEvent>
 
 // ═════════════════════════════════════════════════════════════
 // Construction / Destruction
@@ -105,6 +110,9 @@ MainWindow::MainWindow(QWidget *parent)
     setupFileWatcher();
     setupNowPlayingTimer();
 
+    // ── System tray ──
+    setupSystemTray();
+
     // Default to Library panel
     m_sidebar->setCurrentRow(PanelLibrary);
 
@@ -124,6 +132,43 @@ MainWindow::~MainWindow()
         delete m_albumWindow;
     }
     // m_confWriter is parented to this, so Qt deletes it automatically.
+}
+
+// ═════════════════════════════════════════════════════════════
+// Window events — close-to-tray / minimize-to-tray
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // If the system tray is active and the user has opted to hide rather
+    // than quit on close, swallow the event and hide the window.
+    // The app keeps running; the tray icon and right-click Quit are the
+    // definitive exit path.
+    if (m_trayIcon && m_trayIcon->isVisible()
+            && MusicLibSettings::self()->closeToTray()) {
+        hide();
+        event->ignore();
+        return;
+    }
+
+    // Otherwise fall through to the default KXmlGuiWindow behaviour,
+    // which saves window state and accepts the event (triggering deletion
+    // because WA_DeleteOnClose is set).
+    KXmlGuiWindow::closeEvent(event);
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    // Intercept minimize when minimize-to-tray is enabled.
+    if (event->type() == QEvent::WindowStateChange) {
+        if (isMinimized() && m_trayIcon && m_trayIcon->isVisible()
+                && MusicLibSettings::self()->minimizeToTray()) {
+            // Hide immediately after the minimize animation completes.
+            // Using a zero-delay timer avoids fighting the window manager.
+            QTimer::singleShot(0, this, &QWidget::hide);
+        }
+    }
+    KXmlGuiWindow::changeEvent(event);
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -421,6 +466,45 @@ void MainWindow::setupFileWatcher()
 
     connect(m_fileWatcher, &QFileSystemWatcher::fileChanged,
             this, &MainWindow::onDatabaseChanged);
+}
+
+// ═════════════════════════════════════════════════════════════
+// System tray
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::setupSystemTray()
+{
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        // Desktop has no tray support — silently skip.
+        return;
+    }
+
+    // Prevent Qt from quitting when the main window is hidden to the tray.
+    // The definitive exit path is Tray → Quit (or File → Quit).
+    QApplication::setQuitOnLastWindowClosed(false);
+
+    m_trayIcon = new SystemTrayIcon(this, this);
+    m_trayIcon->show();
+
+    // Forward background-task progress from ScriptRunner → tray tooltip.
+    // The scriptOutput signal fires once per stdout line; we scan for
+    // lines that look like "Scanning: N/M" so other log lines are ignored.
+    connect(m_scriptRunner, &ScriptRunner::scriptOutput,
+            this, [this](const QString & /*opId*/, const QString &line) {
+        static const QRegularExpression re(
+            QStringLiteral(R"(^(?:Scanning|Processing|Rebuilding)[^:]*:\s*\S+)"),
+            QRegularExpression::CaseInsensitiveOption);
+        if (m_trayIcon && re.match(line).hasMatch())
+            m_trayIcon->setBackgroundTaskStatus(line.trimmed());
+    });
+
+    // Clear background-task status when any script finishes.
+    connect(m_scriptRunner, &ScriptRunner::scriptFinished,
+            this, [this](const QString & /*opId*/, int /*exitCode*/,
+                          const QString & /*stderr*/) {
+        if (m_trayIcon)
+            m_trayIcon->setBackgroundTaskStatus(QString());
+    });
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -724,6 +808,17 @@ void MainWindow::refreshNowPlaying()
 
     // ── Update status bar ──
     m_statusLabel->setText(buildStatusBarText());
+
+    // ── Push current state to system tray ──
+    if (m_trayIcon) {
+        SystemTrayIcon::TrackInfo info;
+        info.artist    = m_nowPlaying.artist;
+        info.title     = m_nowPlaying.title;
+        info.filePath  = m_nowPlaying.songPath;
+        info.rating    = m_nowPlaying.ratingGroup.toInt();
+        info.isPlaying = m_nowPlaying.isPlaying;
+        m_trayIcon->updateTrackInfo(info);
+    }
 }
 
 // ═════════════════════════════════════════════════════════════

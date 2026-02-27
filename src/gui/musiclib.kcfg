@@ -154,6 +154,16 @@
       <default>false</default>
     </entry>
 
+    <entry name="CloseToTray" type="Bool">
+      <label>Closing the window hides it to the system tray</label>
+      <default>true</default>
+    </entry>
+
+    <entry name="StartMinimized" type="Bool">
+      <label>Start with window hidden (system tray only)</label>
+      <default>false</default>
+    </entry>
+
     <entry name="NowPlayingPollInterval" type="Int">
       <label>Now-playing poll interval in milliseconds</label>
       <default>3000</default>

@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
     // This reads ~/.config/musiclibrc (or creates it with defaults).
     // MainWindow::setupConfWriter() then syncs musiclib.conf → KConfig
     // so the shell backend's values take precedence.
-    MusicLibSettings::self();
+    MusicLibSettings *settings = MusicLibSettings::self();
 
     // KXmlGuiWindow sets the WA_DeleteOnClose attribute, which means Qt
     // will call 'delete' on the window when it is closed.  The window
@@ -41,7 +41,12 @@ int main(int argc, char *argv[])
     // free() on a stack address at shutdown.
     auto *window = new MainWindow();
     window->setWindowIcon(QIcon(":/icons/musiclib.png"));
-    window->show();
+
+    // Honour "start minimized": if set, the window starts hidden and only
+    // the system tray icon is visible.  The user can restore it via the
+    // tray popup or right-click menu.
+    if (!settings->startMinimized())
+        window->show();
 
     return app.exec();
 }

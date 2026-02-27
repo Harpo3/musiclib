@@ -26,13 +26,14 @@
 #include <QProcess>
 #include <QFileSystemWatcher>
 #include <QToolButton>
+#include <QCloseEvent>
 
 // Forward declarations - existing panels
 class LibraryView;
 class LibraryModel;
 class MaintenancePanel;
 class ScriptRunner;
-class MobilePanel;  
+class MobilePanel;
 
 // Forward declaration - new album window
 class AlbumWindow;
@@ -40,6 +41,9 @@ class AlbumWindow;
 // Forward declarations - settings
 class ConfWriter;
 class SettingsDialog;
+
+// Forward declaration - system tray
+class SystemTrayIcon;
 
 /**
  * @brief Main application window with Dolphin-style sidebar navigation.
@@ -128,6 +132,10 @@ private Q_SLOTS:
     /// Settings dialog reported a poll interval change
     void onPollIntervalChanged(int newIntervalMs);
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
+
 private:
     // ── Setup methods ──
     void setupSidebar();
@@ -138,6 +146,7 @@ private:
     void setupFileWatcher();
     void setupActions();
     void setupConfWriter();
+    void setupSystemTray();
 
     // ── Data reading helpers ──
     /// Read a single-line text file, trimmed. Returns empty string on failure.
@@ -210,6 +219,9 @@ private:
     ConfWriter *m_confWriter;          ///< Shell config file reader/writer
     int m_lastSidebarIndex = 0;        ///< Tracks previous sidebar selection
                                        ///  (used to restore after Settings dialog)
+
+    // ── System tray ──
+    SystemTrayIcon *m_trayIcon = nullptr;
 
     // ── Config cache ──
     QString m_musicDisplayDir;   // conky output directory

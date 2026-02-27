@@ -10,6 +10,7 @@ set(GUI_SOURCES
     settingsdialog.cpp
     confwriter.cpp
     mobile_panel.cpp
+    systemtrayicon.cpp
 )
 
 qt_add_executable(musiclib-qt ${GUI_SOURCES})

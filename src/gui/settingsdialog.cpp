@@ -460,6 +460,40 @@ QWidget *SettingsDialog::createAdvancedPage()
              "Range: 1000 ms (1 sec) to 30000 ms (30 sec)."));
     guiForm->addRow(i18n("Now-playing poll:"), m_pollIntervalSpin);
 
+    // ── System tray behaviour ────────────────────────────────────────────
+    // These three checkboxes are KConfigXT-managed (kcfg_ prefix) and are
+    // GUI-only — they are not mirrored to musiclib.conf.
+
+    m_closeToTrayCheck = new QCheckBox(
+        i18n("Close to tray (hide window when closed)"), guiGroup);
+    m_closeToTrayCheck->setObjectName(QStringLiteral("kcfg_CloseToTray"));
+    m_closeToTrayCheck->setToolTip(
+        i18n("When you click the window's close button, MusicLib hides\n"
+             "to the system tray instead of quitting. Use Tray → Quit\n"
+             "or File → Quit to exit the application completely.\n"
+             "Has no effect if the system tray is unavailable."));
+    guiForm->addRow(m_closeToTrayCheck);
+
+    m_minimizeToTrayCheck = new QCheckBox(
+        i18n("Minimize to tray (hide window when minimized)"), guiGroup);
+    m_minimizeToTrayCheck->setObjectName(QStringLiteral("kcfg_MinimizeToTray"));
+    m_minimizeToTrayCheck->setToolTip(
+        i18n("When you minimize the window, MusicLib hides it\n"
+             "completely (no taskbar entry). Restore it via the\n"
+             "tray icon left-click or right-click menu.\n"
+             "Has no effect if the system tray is unavailable."));
+    guiForm->addRow(m_minimizeToTrayCheck);
+
+    m_startMinimizedCheck = new QCheckBox(
+        i18n("Start minimized (tray only on launch)"), guiGroup);
+    m_startMinimizedCheck->setObjectName(QStringLiteral("kcfg_StartMinimized"));
+    m_startMinimizedCheck->setToolTip(
+        i18n("MusicLib launches with the window hidden — only the\n"
+             "system tray icon appears. Useful if you start MusicLib\n"
+             "at login and don't want it to steal focus.\n"
+             "Takes effect on the next launch."));
+    guiForm->addRow(m_startMinimizedCheck);
+
     layout->addWidget(guiGroup);
 
     // ── Info row ──
