@@ -103,8 +103,8 @@ int CommandHandler::executeCommand(const QString& cmd, const QStringList& args) 
     const CommandInfo& cmdInfo = commands_[cmd];
     
     // Check for subcommand help request
-    // Note: "build" passes --help through to the script (musiclib_build.sh has its own show_usage)
-    if ((args.contains("-h") || args.contains("--help")) && cmd != "build") {
+    // Note: "build" and "tagclean" pass --help through to the script (they have their own show_usage)
+    if ((args.contains("-h") || args.contains("--help")) && cmd != "build" && cmd != "tagclean") {
         showHelp(cmd);
         return 0;
     }

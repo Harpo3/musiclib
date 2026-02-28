@@ -42,6 +42,11 @@ private slots:
     void onRemoveSuccess(const QString &filePath);
     void onRemoveError(const QString &filePath, const QString &message);
 
+    // Tag rebuild (v2.2)
+    void onTagRebuildOutput(const QString &operationId, const QString &line);
+    void onTagRebuildFinished(const QString &operationId, int exitCode,
+                              const QString &stderrContent);
+
 private:
     void setupColumns();
 
@@ -54,4 +59,5 @@ private:
     ScriptRunner          *m_scriptRunner;
     QCheckBox             *m_excludeUnratedCheckbox;
     QCheckBox             *m_excludeRatedCheckbox;
+    int                    m_pendingRebuildCount = 0;
 };

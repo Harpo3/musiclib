@@ -62,7 +62,7 @@ ERRORS=0
 #############################################
 show_usage() {
     cat << 'EOF'
-Usage: musiclib-cli tagrebuild [TARGET] [options]
+Usage: musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 
 Repair corrupted or malformed ID3 tags on MP3 files in the MusicLib database.
 
@@ -70,7 +70,8 @@ This script identifies tracks that are in your musiclib.dsv database and repairs
 their corrupted tags by extracting database-authoritative values (artist, album,
 title, rating, etc.) and preserved non-database fields (ReplayGain, album art).
 
-TARGET              MP3 file or directory to process
+TARGET              One or more MP3 files or directories to process.
+                    Multiple targets can be specified in a single call.
 
 Options:
   -r, --recursive   Process directories recursively
@@ -81,24 +82,24 @@ Options:
 
 Examples:
   # Repair a single file
-  musiclib-cli tagrebuild ~/Music/song.mp3
+  musiclib-cli tagrebuild /mnt/music/corrupted/song.mp3
 
-  # Repair all files in a directory (not recursive)
-  musiclib-cli tagrebuild ~/Music/
+  # Repair multiple specific files in one call
+  musiclib-cli tagrebuild /mnt/music/track1.mp3 /mnt/music/track2.mp3
 
-  # Repair all files recursively
-  musiclib-cli tagrebuild ~/Music -r
+  # Preview what would be repaired (no changes made)
+  musiclib-cli tagrebuild /mnt/music/pink_floyd -r -n -v
 
-  # Preview with verbose output
-  musiclib-cli tagrebuild ~/Music -r -n -v
+  # Repair all files in a directory (non-recursive)
+  musiclib-cli tagrebuild /mnt/music/pink_floyd/the_wall/
 
-  # Actual rebuild after preview
-  musiclib-cli tagrebuild ~/Music -r
+  # Repair recursively after previewing
+  musiclib-cli tagrebuild /mnt/music/pink_floyd -r
 
 Workflow:
-  1. Preview changes first: musiclib-cli tagrebuild ~/Music -r -n -v
+  1. Preview changes first: musiclib-cli tagrebuild /path/to/music -r -n -v
   2. Review the output
-  3. Run without -n to apply: musiclib-cli tagrebuild ~/Music -r
+  3. Run without -n to apply: musiclib-cli tagrebuild /path/to/music -r
 
 Notes:
   - Only rebuilds files that are found in the database
@@ -265,22 +266,7 @@ process_directory() {
 #############################################
 # Parse Arguments
 #############################################
-TARGET="${1:-}"
-
-# Handle help early
-if [ "$TARGET" = "-h" ] || [ "$TARGET" = "--help" ] || [ "$TARGET" = "help" ]; then
-    show_usage
-    exit 0
-fi
-
-# If no target, show usage
-if [ -z "$TARGET" ]; then
-    show_usage
-    exit 1
-fi
-
-# Shift past TARGET and parse options
-shift
+TARGETS=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -304,24 +290,36 @@ while [ $# -gt 0 ]; do
             BACKUP_DIR="$2"
             shift 2
             ;;
-        -h|--help)
+        -h|--help|help)
             show_usage
             exit 0
             ;;
-        *)
+        -*)
             error_exit 1 "Unknown option" "option" "$1"
             exit 1
+            ;;
+        *)
+            TARGETS+=("$1")
+            shift
             ;;
     esac
 done
 
-#############################################
-# Validate Target
-#############################################
-if [ ! -e "$TARGET" ]; then
-    error_exit 1 "Target not found" "target" "$TARGET"
+# If no targets, show usage
+if [ ${#TARGETS[@]} -eq 0 ]; then
+    show_usage
     exit 1
 fi
+
+#############################################
+# Validate Targets
+#############################################
+for TARGET in "${TARGETS[@]}"; do
+    if [ ! -e "$TARGET" ]; then
+        error_exit 1 "Target not found" "target" "$TARGET"
+        exit 1
+    fi
+done
 
 #############################################
 # Validate Dependencies
@@ -362,22 +360,24 @@ if [ "$VERBOSE" = true ]; then
 fi
 cleanup_old_files "$BACKUP_DIR" "*.mp3.backup.*" "$MAX_BACKUP_AGE"
 
-# Process target
-if [ -f "$TARGET" ]; then
-    # Single file
-    if [[ "$TARGET" =~ \.mp3$ ]] || [[ "$TARGET" =~ \.MP3$ ]]; then
-        process_file "$TARGET"
+# Process all targets
+for TARGET in "${TARGETS[@]}"; do
+    if [ -f "$TARGET" ]; then
+        # Single file
+        if [[ "$TARGET" =~ \.mp3$ ]] || [[ "$TARGET" =~ \.MP3$ ]]; then
+            process_file "$TARGET"
+        else
+            error_exit 1 "Not an MP3 file" "target" "$TARGET"
+            exit 1
+        fi
+    elif [ -d "$TARGET" ]; then
+        # Directory
+        process_directory "$TARGET"
     else
-        error_exit 1 "Not an MP3 file" "target" "$TARGET"
+        error_exit 1 "Invalid target" "target" "$TARGET"
         exit 1
     fi
-elif [ -d "$TARGET" ]; then
-    # Directory
-    process_directory "$TARGET"
-else
-    error_exit 1 "Invalid target" "target" "$TARGET"
-    exit 1
-fi
+done
 
 #############################################
 # Summary

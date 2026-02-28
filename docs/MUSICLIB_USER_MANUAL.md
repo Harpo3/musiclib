@@ -426,19 +426,19 @@ When you download new music:
 1. Open the **Maintenance Panel**
 2. Find the **Add New Tracks** frame
 3. Enter the artist name 
-4. Set/change download directory for staging new tracks by using the Settings window.
-5. Review/edit the new track info in kid3 to ensure artist/album name consistency
+4. Setting/changing the directory used for placing new tracks with this task is done via the Settings menu.
+5. Always review/edit the new track info in kid3 to ensure artist/album name consistency before proceeding
 6. Click **Execute**
 
 MusicLib will:
 - Normalize the file tags
 - Rename files, artist directory, album directory to lowercase with underscores
 - Move files to your music repository under `artist/album/`
-- Add new tracks to the database
+- Add the new tracks to the database
 
 ### Rebuilding the Database
 
-If you need to rebuild the database, it is better to run `musiclib-cli build --help` in the console. Optionally you can:
+If you need to rebuild the database, it is preferred to run `musiclib-cli build` in the console. See the Command-Line Reference Section in this manual for detaled information, or run `musiclib-cli build --help` in the console. Optionally, you can:
 
 1. Open the **Maintenance Panel**
 2. Click **Build Library**
@@ -457,18 +457,18 @@ To normalize ID3 tags across your collection:
 4. Choose a mode:
    - **Merge** — Merge ID3v1 into ID3v2, remove APE tags, embed album art
    - **Strip** — Remove ID3v1 and APE tags only
-   - **Embed Art** — Embed `folder.jpg` as album art if missing
+   - **Embed Art** — Embeds `folder.jpg`, if in the album directory, into the tag as album art, if missing
 5. Click **Execute**
 
 ### Repairing Corrupted Tags
 
-If a file's tags are corrupted, you can rebuild them from the database:
+If a file's tags are corrupted, you can easily rebuild it using data from the file's associated database record:
 
 1. Right-click the track in the library view
-2. Select **Rebuild Tags**
+2. Select **Rebuild Tag**
 3. Confirm the operation
 
-MusicLib will look up the track in the database and rewrite all tags from stored values.
+MusicLib will look up the track in the database and rewrite tag from stored values.
 
 ### Boosting Album Loudness
 
@@ -603,11 +603,10 @@ MusicLib provides a full command-line interface via `musiclib-cli`. All GUI oper
 
 ### Global Options
 
-Most commands support these options:
-- `-h, --help` — Show command-specific help
-- `--config FILE` — Use alternate config file
-- `--no-notify` — Suppress notifications
-- `--timeout SECONDS` — Custom lock timeout (overrides config)
+These options are handled by the `musiclib-cli` wrapper before any subcommand:
+- `-h, --help` — Show help message and available commands
+- `-v, --version` — Show version information
+- `--config <path>` — Use alternate config file (default: `~/.config/musiclib/musiclib.conf`)
 
 ### Available Commands
 
@@ -679,80 +678,105 @@ musiclib-cli rate 5
 
 #### `musiclib-cli build`
 
-**Purpose**: Build or rebuild the music library database from filesystem scan.
+**Purpose**: Build or rebuild the music library database from a full filesystem scan.
 
 **Usage**:
 ```bash
-musiclib-cli build [--dry-run]
+musiclib-cli build [MUSIC_DIR] [options]
 ```
+
+**Arguments**:
+- `MUSIC_DIR` — Root directory of music library (defaults to configured `MUSIC_ROOT_DIR`)
 
 **Options**:
-- `--dry-run` — Preview changes without modifying database
+- `-h, --help` — Display this help
+- `-d, --dry-run` — Preview mode — show what would be processed without making changes
+- `-o FILE` — Output file path (default: configured `MUSICDB`)
+- `-m DEPTH` — Minimum subdirectory depth from root (default: 1)
+- `--no-header` — Suppress database header in output
+- `-q, --quiet` — Quiet mode — minimal output
+- `-s COLUMN` — Sort output by column number
+- `-b, --backup` — Create a timestamped backup of the existing database before writing
+- `-t, --test` — Test mode — write output to a temporary file instead of the real database
+- `--no-progress` — Disable progress indicators
 
 **What it does**:
-- Scans music repository for audio files
-- Extracts metadata from tags
-- Creates backup of current database
-- Generates new database with all discovered tracks
-- Preserves ratings where paths match
+- Scans the music directory recursively for audio files
+- Extracts metadata (artist, album, title, duration, etc.) from file tags via `exiftool`
+- Generates a fresh database (`musiclib.dsv`) with all discovered tracks
+- Resets `LastTimePlayed` to `0` for all tracks (use `-b` to back up existing data first)
+- Assigns new sequential track IDs and regenerates album IDs
 
-**Example**:
+**Examples**:
 ```bash
-# Preview what would change
+# Preview what would be rebuilt (safe to run anytime)
 musiclib-cli build --dry-run
 
-# Actually rebuild the database
-musiclib-cli build
+# Rebuild the database, creating a backup first
+musiclib-cli build -b
+
+# Write to a temp file to inspect output without touching the live database
+musiclib-cli build -t
+
+# Custom output file
+musiclib-cli build /mnt/music -o ~/music_backup.dsv
+
+# Rebuild a subdirectory for testing
+musiclib-cli build /mnt/music/Rock -t
 ```
 
-**Note**: This can take a long time for large libraries (10,000+ tracks).
+**Exit codes**:
+- `0` — Success
+- `1` — Dry-run complete (informational) or user error (invalid arguments)
+- `2` — System failure (missing directory, tools unavailable, lock timeout, scan failure)
+
+**Note**: This replaces the entire database. It takes 10+ minutes for large libraries (10,000+ tracks). Always use `--dry-run` first, and `-b` to back up before rebuilding.
 
 ---
 
 #### `musiclib-cli new-tracks`
 
-**Purpose**: Import new music downloads into library.
+**Purpose**: Import new music downloads from the configured download directory into the library.
 
 **Usage**:
 ```bash
-musiclib-cli new-tracks [artist_name] [options]
+musiclib-cli new-tracks [artist_name]
+musiclib-cli new-tracks --help|-h|help
 ```
 
-**Parameters**:
-- `artist_name` — Artist folder name (prompts if omitted)
+**Arguments**:
+- `artist_name` — Artist name for folder organization (optional — prompts interactively if omitted). Normalized to lowercase with underscores.
 
 **Options**:
-- `--source DIR` — Override download directory
-- `--source-dialog` — Show interactive directory picker
-- `--no-loudness` — Skip RSGain loudness normalization
-- `--no-art` — Skip album art extraction
-- `--dry-run` — Preview mode only
-- `-v, --verbose` — Detailed output
+- `--help, -h, help` — Display help message and exit
 
 **What it does**:
-1. Scans source directory for audio files
-2. Groups files by album
-3. Normalizes tags to ID3v2.4
-4. Optionally applies RSGain loudness normalization
-5. Renames files to lowercase with underscores
-6. Moves files to `MUSIC_REPO/artist/album/`
-7. Extracts album art to `folder.jpg`
-8. Adds tracks to database
+1. Extracts any ZIP archives found in the download directory (automatic)
+2. Pauses to let you edit tags in kid3-qt — **check the Album tag**, since it determines the destination folder name
+3. Normalizes MP3 filenames from their ID3 tags (lowercase, underscores)
+4. Standardizes volume levels with `rsgain` (if installed)
+5. Organizes files into `MUSIC_REPO/artist/album/` folder structure
+6. Adds all imported tracks to the `musiclib.dsv` database
+
+**Required tools**: `kid3-cli`, `exiftool`, `unzip`. `rsgain` is optional (used for volume normalization).
 
 **Examples**:
 ```bash
-# Interactive mode (prompts for artist)
+# Interactive mode — prompts for artist name
 musiclib-cli new-tracks
 
-# Specify artist and source directory
-musiclib-cli new-tracks "Pink Floyd" --source ~/Downloads/new_album
-
-# Preview without importing
-musiclib-cli new-tracks --dry-run
-
-# Skip loudness normalization
-musiclib-cli new-tracks "Radiohead" --no-loudness
+# Provide artist name upfront
+musiclib-cli new-tracks "Pink Floyd"
+musiclib-cli new-tracks "the_beatles"
 ```
+
+**Exit codes**:
+- `0` — Success (all tracks imported)
+- `1` — User error (invalid input, user cancelled)
+- `2` — System error (missing tools, I/O failure, config error)
+- `3` — Deferred (database operations queued due to lock contention)
+
+**Note**: New downloads must be placed in the configured `NEW_DOWNLOAD_DIR` before running. The source directory is set in `musiclib.conf` and cannot be overridden from the command line.
 
 ---
 
@@ -766,25 +790,28 @@ Mobile playlist operations. Has several subcommands:
 
 **Usage**:
 ```bash
-musiclib-cli mobile upload <playlist_name> [options]
+musiclib-cli mobile upload <playlist.audpl> [device_id] [options]
 ```
 
-**Parameters**:
-- `<playlist_name>` — Playlist basename (without extension)
+**Arguments**:
+- `<playlist.audpl>` — Playlist filename or basename (with or without `.audpl` extension)
+- `[device_id]` — KDE Connect device ID (optional — uses configured default if omitted)
 
 **Options**:
-- `--device <device_id>` — Override default device ID
-- `--end-time "MM/DD/YYYY HH:MM:SS"` — Override accounting window end time
-- `--non-interactive` — Auto-refresh from Audacious without prompts
+- `--end-time "MM/DD/YYYY HH:MM:SS"` — Override the accounting window end time (default: now)
+- `--non-interactive` — Skip interactive prompts; auto-refreshes newer Audacious playlists without asking (used by the GUI)
 
 **What it does**:
-1. **Accounting**: Processes previous playlist's last-played data
-2. **Upload**: Converts playlist to `.m3u` and sends files to device
+1. **Accounting**: Processes the previous playlist's last-played data before replacing it
+2. **Upload**: Converts the playlist to `.m3u` format and transfers it plus all track files to the device via `kdeconnect-cli --share`
 
 **Example**:
 ```bash
 # Upload with interactive prompts
 musiclib-cli mobile upload workout
+
+# Upload using a specific KDE Connect device
+musiclib-cli mobile upload workout abc123def456
 
 # Non-interactive upload (for GUI)
 musiclib-cli mobile upload workout --non-interactive
@@ -850,20 +877,29 @@ musiclib-cli mobile refresh-audacious-only
 
 ##### `musiclib-cli mobile logs`
 
-**Purpose**: Display mobile operations log.
+**Purpose**: Display the mobile operations log.
 
 **Usage**:
 ```bash
 musiclib-cli mobile logs [filter]
 ```
 
+**Arguments**:
+- `[filter]` — Optional keyword to narrow output. Recognized values: `errors`, `warnings`, `stats`, `today`
+
 **Example**:
 ```bash
-# Show all logs
+# Show all log entries
 musiclib-cli mobile logs
 
-# Filter by keyword
-musiclib-cli mobile logs "workout"
+# Show only errors
+musiclib-cli mobile logs errors
+
+# Show only today's entries
+musiclib-cli mobile logs today
+
+# Show only stats/summary lines
+musiclib-cli mobile logs stats
 ```
 
 ##### `musiclib-cli mobile cleanup`
@@ -894,59 +930,124 @@ musiclib-cli mobile check-update <playlist_name>
 
 #### `musiclib-cli tagclean`
 
-**Purpose**: Clean and normalize ID3 tags.
+**Purpose**: Clean and normalize MP3 ID3 tags for MusicLib compatibility.
 
 **Usage**:
 ```bash
-musiclib-cli tagclean PATH [--mode MODE]
+musiclib-cli tagclean [COMMAND] [TARGET] [options]
 ```
 
-**Parameters**:
-- `PATH` — File or directory path
+**Subcommands** (optional — pass instead of a path to get help/info):
+- `help` — Show help message (same as `-h`)
+- `examples` — Show common usage examples
+- `modes` — Explain the three operation modes in detail
+- `troubleshoot` — Show troubleshooting tips
+- `process TARGET` — Explicitly process a file or directory (default behavior when TARGET looks like a path)
+
+**Arguments**:
+- `TARGET` — MP3 file or directory to process
 
 **Options**:
-- `--mode MODE` — Operation mode: `merge` (default), `strip`, `embed-art`
+- `-h, --help` — Show help
+- `-r, --recursive` — Process directories recursively
+- `-a, --remove-ape` — Remove APE tags (default: keep them)
+- `-g, --remove-rg` — Remove ReplayGain tags
+- `-n, --dry-run` — Show what would be done without making any changes
+- `-v, --verbose` — Show detailed processing information per file
+- `-b, --backup-dir DIR` — Custom backup directory (default: configured `BACKUP_DIR`)
+- `--mode MODE` — Operation mode: `merge` (default), `strip`, or `embed-art`
+- `--art-only` — Alias for `--mode embed-art`
+- `--ape-only` — Remove APE tags only (legacy mode)
+- `--rg-only` — Remove ReplayGain tags only (can be combined with any mode)
 
 **Modes**:
-- `merge` — Merge ID3v1 → ID3v2.4, remove ID3v1/APE tags, embed art
-- `strip` — Remove ID3v1 and APE tags only
-- `embed-art` — Embed `folder.jpg` as album art if missing
+- `merge` — Merge ID3v1 → ID3v2.4, remove ID3v1 tags, optionally remove APE/ReplayGain tags, and embed album art from `folder.jpg`
+- `strip` — Remove ID3v1 and APE tags only (no art embedding)
+- `embed-art` — Only embed album art from a `folder.jpg` file if art is missing from the tag
 
 **Examples**:
 ```bash
-# Merge tags for an entire artist directory
-musiclib-cli tagclean "/mnt/music/pink_floyd" --mode merge
+# Full cleanup with merge mode (the default)
+musiclib-cli tagclean /mnt/music/pink_floyd -r
 
-# Just strip old tag formats
-musiclib-cli tagclean "/mnt/music/radiohead" --mode strip
+# Merge mode, explicitly stated
+musiclib-cli tagclean /mnt/music/pink_floyd -r --mode merge
 
-# Embed album art
-musiclib-cli tagclean "/mnt/music/the_beatles/abbey_road" --mode embed-art
+# Strip mode — remove old tag formats only
+musiclib-cli tagclean /mnt/music/radiohead -r --mode strip
+
+# Embed album art only
+musiclib-cli tagclean /mnt/music/the_beatles/abbey_road -r --mode embed-art
+musiclib-cli tagclean /mnt/music/the_beatles/abbey_road -r --art-only
+
+# Merge mode + remove APE tags + remove ReplayGain tags
+musiclib-cli tagclean /mnt/music -r -a -g
+
+# Dry run first to see what would happen
+musiclib-cli tagclean /mnt/music -r -n
+
+# Dry run with verbose detail
+musiclib-cli tagclean /mnt/music -r -n -v
+
+# Show mode explanations
+musiclib-cli tagclean modes
+
+# Get troubleshooting tips
+musiclib-cli tagclean troubleshoot
 ```
 
 ---
 
 #### `musiclib-cli tagrebuild`
 
-**Purpose**: Rebuild corrupted tags from database values.
+**Purpose**: Repair corrupted or malformed ID3 tags on MP3 files by restoring values from the MusicLib database.
 
 **Usage**:
 ```bash
-musiclib-cli tagrebuild FILEPATH
+musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 ```
 
-**Parameters**:
-- `FILEPATH` — Absolute path to file with corrupted tags
+**Arguments**:
+- `TARGET` — One or more MP3 files or directories to process. Multiple targets can be given in a single call.
+
+**Options**:
+- `-r, --recursive` — Process directories recursively
+- `-n, --dry-run` — Preview changes without modifying any files
+- `-v, --verbose` — Show detailed processing information per file
+- `-b, --backup-dir DIR` — Custom backup directory for pre-repair copies
+- `-h, --help` — Show help message
 
 **What it does**:
-1. Looks up track in database by path
-2. Strips all existing tags
-3. Rewrites tags from database values
-4. Restores rating as POPM + Grouping
+1. Looks up each track in the `musiclib.dsv` database by file path
+2. Strips all existing (corrupted) tags from the file
+3. Rewrites tags using database-authoritative values: artist, album, title, track number, rating, etc.
+4. Restores non-database fields that are preserved during the process: ReplayGain tags and embedded album art
 
-**Example**:
+**Examples**:
 ```bash
-musiclib-cli tagrebuild "/mnt/music/corrupted/song.mp3"
+# Repair a single file
+musiclib-cli tagrebuild /mnt/music/corrupted/song.mp3
+
+# Repair multiple specific files in one call
+musiclib-cli tagrebuild /mnt/music/track1.mp3 /mnt/music/track2.mp3
+
+# Preview what would be repaired (no changes made)
+musiclib-cli tagrebuild /mnt/music/pink_floyd -r -n -v
+
+# Repair all files in a directory (non-recursive)
+musiclib-cli tagrebuild /mnt/music/pink_floyd/the_wall/
+
+# Repair recursively after previewing
+musiclib-cli tagrebuild /mnt/music/pink_floyd -r
+```
+
+**Recommended workflow**:
+```bash
+# Step 1: Preview with verbose output
+musiclib-cli tagrebuild /path/to/music -r -n -v
+
+# Step 2: Review the output, then apply
+musiclib-cli tagrebuild /path/to/music -r
 ```
 
 ---
@@ -957,28 +1058,29 @@ musiclib-cli tagrebuild "/mnt/music/corrupted/song.mp3"
 
 **Usage**:
 ```bash
-musiclib-cli boost ALBUM_DIR [--target TARGET_LUFS]
+musiclib-cli boost ALBUM_DIR LOUDNESS
 ```
 
-**Parameters**:
-- `ALBUM_DIR` — Directory containing album tracks
+**Arguments**:
+- `ALBUM_DIR` — Path to the directory containing the album's MP3 files (required)
+- `LOUDNESS` — Target loudness level as a positive integer (required). This is the absolute value of the target in LUFS — e.g., `12` means −12 LUFS, `13` means −13 LUFS. Higher numbers = quieter result; lower numbers = louder result. Values of `12` or `13` are typical.
 
-**Options**:
-- `--target TARGET_LUFS` — Target loudness in LUFS (default: -18)
+Both arguments are required. The script exits immediately with a usage error if either is missing.
 
 **What it does**:
-Uses `rsgain` to scan all tracks and apply album-level ReplayGain tags for loudness normalization.
+1. Removes any existing ReplayGain tags from all `.mp3` files in the directory (via `kid3-cli`)
+2. Rescans the album with `rsgain` at the specified target loudness, applying album-level ReplayGain tags
 
-**Example**:
+**Examples**:
 ```bash
-# Use default -18 LUFS target
-musiclib-cli boost "/mnt/music/pink_floyd/the_wall"
+# Target -12 LUFS (louder)
+musiclib-cli boost /mnt/music/pink_floyd/the_wall 12
 
-# Custom target loudness
-musiclib-cli boost "/mnt/music/radiohead/ok_computer" --target -16
+# Target -13 LUFS (slightly quieter)
+musiclib-cli boost /mnt/music/radiohead/ok_computer 13
 ```
 
-**Note**: Requires `rsgain` to be installed.
+**Note**: Requires both `rsgain` and `kid3-cli` to be installed. Only processes `.mp3` files directly inside `ALBUM_DIR` (not recursive).
 
 ---
 

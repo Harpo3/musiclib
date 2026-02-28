@@ -222,14 +222,10 @@ rebuild_tag() {
 
     log_message "  Stage 3: Removing corrupted tags..."
 
-    # Remove ID3v1
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 1" -c "remove" 2>/dev/null || true
-
-    # Remove ID3v2
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 2" -c "remove" 2>/dev/null || true
-
-    # Remove APE
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 3" -c "remove" 2>/dev/null || true
+    # Remove ID3v1, ID3v2, APE
+    $KID3_CMD -c "remove 1" "$filepath" 2>/dev/null || true
+    $KID3_CMD -c "remove 2" "$filepath" 2>/dev/null || true
+    $KID3_CMD -c "remove 3" "$filepath" 2>/dev/null || true
 
     # Verify removal
     local tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^\[ID3" | wc -l)
@@ -239,16 +235,18 @@ rebuild_tag() {
         if command -v id3v2 >/dev/null 2>&1; then
             log_message "  âš  Some tags remain, trying id3v2 tool..."
             id3v2 --delete-all "$filepath" 2>/dev/null || true
+            tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^\[ID3" | wc -l)
+        fi
 
-            # Check again
-            tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^ID3" | wc -l)
+        # Last resort: exiftool can strip metadata even from corrupted files
+        if [ "$tags_remaining" -gt 0 ]; then
+            log_message "  âš  Tags still remain, trying exiftool strip..."
+            exiftool -all= -overwrite_original "$filepath" 2>/dev/null || true
+            tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^\[ID3" | wc -l)
+        fi
 
-            if [ "$tags_remaining" -gt 0 ]; then
-                log_message "  ERROR: Cannot remove all tags ($tags_remaining remain)"
-                return 2
-            fi
-        else
-            log_message "  ERROR: Cannot remove all tags ($tags_remaining remain) and id3v2 not available"
+        if [ "$tags_remaining" -gt 0 ]; then
+            log_message "  ERROR: Cannot remove all tags ($tags_remaining remain)"
             return 2
         fi
     fi
@@ -261,8 +259,6 @@ rebuild_tag() {
 
     log_message "  Stage 4: Rebuilding tags with frame filtering..."
 
-    # Select ID3v2.3 format (most compatible)
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 2" 2>/dev/null
 
     # Helper function to get value from extracted metadata
     get_extracted_value() {
@@ -298,31 +294,31 @@ rebuild_tag() {
     local genre="${db_genre:-$(get_extracted_value "Genre")}"
 
     # Always write core tags (these are never excluded)
-    [ -n "$artist" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Artist '$artist'" 2>/dev/null
-    [ -n "$album" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Album '$album'" 2>/dev/null
-    [ -n "$albumartist" ] && $KID3_CMD -c "select \"$filepath\"" -c "set AlbumArtist '$albumartist'" 2>/dev/null
-    [ -n "$title" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Title '$title'" 2>/dev/null
-    [ -n "$genre" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Genre '$genre'" 2>/dev/null
+    [ -n "$artist" ] && $KID3_CMD -c "set Artist '$artist'" "$filepath" 2>/dev/null
+    [ -n "$album" ] && $KID3_CMD -c "set Album '$album'" "$filepath" 2>/dev/null
+    [ -n "$albumartist" ] && $KID3_CMD -c "set AlbumArtist '$albumartist'" "$filepath" 2>/dev/null
+    [ -n "$title" ] && $KID3_CMD -c "set Title '$title'" "$filepath" 2>/dev/null
+    [ -n "$genre" ] && $KID3_CMD -c "set Genre '$genre'" "$filepath" 2>/dev/null
 
     # Rating Tags (DB authoritative)
     if [ -n "$db_rating" ]; then
-        $KID3_CMD -c "select \"$filepath\"" -c "set POPM $db_rating" 2>/dev/null
+        $KID3_CMD -c "set POPM $db_rating" "$filepath" 2>/dev/null
     fi
     if [ -n "$db_groupdesc" ]; then
-        $KID3_CMD -c "select \"$filepath\"" -c "set Grouping $db_groupdesc" 2>/dev/null
+        $KID3_CMD -c "set Grouping $db_groupdesc" "$filepath" 2>/dev/null
     fi
 
     # Play Tracking Tags (DB authoritative - always allowed)
     # IMPORTANT: Written after Comment to prevent kid3-cli frame confusion
     if [ -n "$db_lastplayed" ]; then
-        $KID3_CMD -c "select \"$filepath\"" -c "set Songs-DB_Custom1 '$db_lastplayed'" 2>/dev/null
+        $KID3_CMD -c "set Songs-DB_Custom1 '$db_lastplayed'" "$filepath" 2>/dev/null
     fi
     if [ -n "$db_custom2" ]; then
-        $KID3_CMD -c "select \"$filepath\"" -c "set Songs-DB_Custom2 '$db_custom2'" 2>/dev/null
+        $KID3_CMD -c "set Songs-DB_Custom2 '$db_custom2'" "$filepath" 2>/dev/null
     fi
     if is_frame_allowed "COMM"; then
         if [ -n "$comment" ]; then
-            $KID3_CMD -c "select \"$filepath\"" -c "set Comment '$comment'" 2>/dev/null
+            $KID3_CMD -c "set Comment '$comment'" "$filepath" 2>/dev/null
         fi
     fi
 
@@ -333,36 +329,39 @@ rebuild_tag() {
     local rg_album_gain=$(get_extracted_value "REPLAYGAIN_ALBUM_GAIN")
     local rg_album_peak=$(get_extracted_value "REPLAYGAIN_ALBUM_PEAK")
 
-    [ -n "$rg_track_gain" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_TRACK_GAIN '$rg_track_gain'" 2>/dev/null
-    [ -n "$rg_track_peak" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_TRACK_PEAK '$rg_track_peak'" 2>/dev/null
-    [ -n "$rg_album_gain" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_ALBUM_GAIN '$rg_album_gain'" 2>/dev/null
-    [ -n "$rg_album_peak" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_ALBUM_PEAK '$rg_album_peak'" 2>/dev/null
+    [ -n "$rg_track_gain" ] && $KID3_CMD -c "set REPLAYGAIN_TRACK_GAIN '$rg_track_gain'" "$filepath" 2>/dev/null
+    [ -n "$rg_track_peak" ] && $KID3_CMD -c "set REPLAYGAIN_TRACK_PEAK '$rg_track_peak'" "$filepath" 2>/dev/null
+    [ -n "$rg_album_gain" ] && $KID3_CMD -c "set REPLAYGAIN_ALBUM_GAIN '$rg_album_gain'" "$filepath" 2>/dev/null
+    [ -n "$rg_album_peak" ] && $KID3_CMD -c "set REPLAYGAIN_ALBUM_PEAK '$rg_album_peak'" "$filepath" 2>/dev/null
 
     # Other Extended Metadata (preserve from extracted, check if allowed)
     if is_frame_allowed "TYER"; then
-        [ -n "$year" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Year '$year'" 2>/dev/null
+        [ -n "$year" ] && $KID3_CMD -c "set Year '$year'" "$filepath" 2>/dev/null
     fi
 
     if is_frame_allowed "TRCK"; then
-        [ -n "$track_num" ] && $KID3_CMD -c "select \"$filepath\"" -c "set 'Track Number' '$track_num'" 2>/dev/null
+        [ -n "$track_num" ] && $KID3_CMD -c "set 'Track Number' '$track_num'" "$filepath" 2>/dev/null
     fi
 
     if is_frame_allowed "TPOS"; then
-        [ -n "$disc_num" ] && $KID3_CMD -c "select \"$filepath\"" -c "set 'Disc Number' '$disc_num'" 2>/dev/null
+        [ -n "$disc_num" ] && $KID3_CMD -c "set 'Disc Number' '$disc_num'" "$filepath" 2>/dev/null
     fi
 
     if is_frame_allowed "TBPM"; then
-        [ -n "$bpm" ] && $KID3_CMD -c "select \"$filepath\"" -c "set BPM '$bpm'" 2>/dev/null
+        [ -n "$bpm" ] && $KID3_CMD -c "set BPM '$bpm'" "$filepath" 2>/dev/null
     fi
 
     # Album Art (restore from extracted binary - APIC always allowed)
     if [ "$has_album_art" = true ]; then
-        if $KID3_CMD -c "select \"$filepath\"" -c "set picture:'$album_art' ''" 2>/dev/null; then
+        if $KID3_CMD -c "set picture:'$album_art' ''" "$filepath" 2>/dev/null; then
             log_message "  âœ“ Album art restored"
         else
             log_message "  âš  Album art restoration failed (non-critical)"
         fi
     fi
+
+    # Convert to ID3v2.3 (most compatible)
+    $KID3_CMD -c "to23" "$filepath" 2>/dev/null || true
 
     #########################################
     # STAGE 5: Verify Rebuild
@@ -447,14 +446,10 @@ normalize_new_track_tags() {
     # STAGE 2: Remove All Existing Tags
     #########################################
 
-    # Remove ID3v1
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 1" -c "remove" 2>/dev/null || true
-
-    # Remove ID3v2
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 2" -c "remove" 2>/dev/null || true
-
-    # Remove APE
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 3" -c "remove" 2>/dev/null || true
+    # Remove ID3v1, ID3v2, APE
+    $KID3_CMD -c "remove 1" "$filepath" 2>/dev/null || true
+    $KID3_CMD -c "remove 2" "$filepath" 2>/dev/null || true
+    $KID3_CMD -c "remove 3" "$filepath" 2>/dev/null || true
 
     # Verify removal
     local tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^\[ID3" | wc -l)
@@ -475,8 +470,6 @@ normalize_new_track_tags() {
     # STAGE 3: Rebuild with Filtered Frames
     #########################################
 
-    # Select ID3v2.3 format
-    $KID3_CMD -c "select \"$filepath\"" -c "tag 2" 2>/dev/null
 
     # Helper to get extracted value
     get_value() {
@@ -499,11 +492,11 @@ normalize_new_track_tags() {
     local title=$(get_value "Title")
     local genre=$(get_value "Genre")
 
-    [ -n "$artist" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Artist '$artist'" 2>/dev/null
-    [ -n "$album" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Album '$album'" 2>/dev/null
-    [ -n "$albumartist" ] && $KID3_CMD -c "select \"$filepath\"" -c "set AlbumArtist '$albumartist'" 2>/dev/null
-    [ -n "$title" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Title '$title'" 2>/dev/null
-    [ -n "$genre" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Genre '$genre'" 2>/dev/null
+    [ -n "$artist" ] && $KID3_CMD -c "set Artist '$artist'" "$filepath" 2>/dev/null
+    [ -n "$album" ] && $KID3_CMD -c "set Album '$album'" "$filepath" 2>/dev/null
+    [ -n "$albumartist" ] && $KID3_CMD -c "set AlbumArtist '$albumartist'" "$filepath" 2>/dev/null
+    [ -n "$title" ] && $KID3_CMD -c "set Title '$title'" "$filepath" 2>/dev/null
+    [ -n "$genre" ] && $KID3_CMD -c "set Genre '$genre'" "$filepath" 2>/dev/null
 
     # ReplayGain (always allowed - just added by rsgain)
     local rg_track_gain=$(get_value "REPLAYGAIN_TRACK_GAIN")
@@ -511,10 +504,10 @@ normalize_new_track_tags() {
     local rg_album_gain=$(get_value "REPLAYGAIN_ALBUM_GAIN")
     local rg_album_peak=$(get_value "REPLAYGAIN_ALBUM_PEAK")
 
-    [ -n "$rg_track_gain" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_TRACK_GAIN '$rg_track_gain'" 2>/dev/null
-    [ -n "$rg_track_peak" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_TRACK_PEAK '$rg_track_peak'" 2>/dev/null
-    [ -n "$rg_album_gain" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_ALBUM_GAIN '$rg_album_gain'" 2>/dev/null
-    [ -n "$rg_album_peak" ] && $KID3_CMD -c "select \"$filepath\"" -c "set REPLAYGAIN_ALBUM_PEAK '$rg_album_peak'" 2>/dev/null
+    [ -n "$rg_track_gain" ] && $KID3_CMD -c "set REPLAYGAIN_TRACK_GAIN '$rg_track_gain'" "$filepath" 2>/dev/null
+    [ -n "$rg_track_peak" ] && $KID3_CMD -c "set REPLAYGAIN_TRACK_PEAK '$rg_track_peak'" "$filepath" 2>/dev/null
+    [ -n "$rg_album_gain" ] && $KID3_CMD -c "set REPLAYGAIN_ALBUM_GAIN '$rg_album_gain'" "$filepath" 2>/dev/null
+    [ -n "$rg_album_peak" ] && $KID3_CMD -c "set REPLAYGAIN_ALBUM_PEAK '$rg_album_peak'" "$filepath" 2>/dev/null
 
     # Extended metadata (check if allowed)
     local year=$(get_value "Year")
@@ -523,16 +516,19 @@ normalize_new_track_tags() {
     local disc_num=$(get_value "DiscNumber")
     local bpm=$(get_value "BPM")
 
-    is_frame_allowed "TYER" && [ -n "$year" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Year '$year'" 2>/dev/null
-    is_frame_allowed "COMM" && [ -n "$comment" ] && $KID3_CMD -c "select \"$filepath\"" -c "set Comment '$comment'" 2>/dev/null
-    is_frame_allowed "TRCK" && [ -n "$track_num" ] && $KID3_CMD -c "select \"$filepath\"" -c "set 'Track Number' '$track_num'" 2>/dev/null
-    is_frame_allowed "TPOS" && [ -n "$disc_num" ] && $KID3_CMD -c "select \"$filepath\"" -c "set 'Disc Number' '$disc_num'" 2>/dev/null
-    is_frame_allowed "TBPM" && [ -n "$bpm" ] && $KID3_CMD -c "select \"$filepath\"" -c "set BPM '$bpm'" 2>/dev/null
+    is_frame_allowed "TYER" && [ -n "$year" ] && $KID3_CMD -c "set Year '$year'" "$filepath" 2>/dev/null
+    is_frame_allowed "COMM" && [ -n "$comment" ] && $KID3_CMD -c "set Comment '$comment'" "$filepath" 2>/dev/null
+    is_frame_allowed "TRCK" && [ -n "$track_num" ] && $KID3_CMD -c "set 'Track Number' '$track_num'" "$filepath" 2>/dev/null
+    is_frame_allowed "TPOS" && [ -n "$disc_num" ] && $KID3_CMD -c "set 'Disc Number' '$disc_num'" "$filepath" 2>/dev/null
+    is_frame_allowed "TBPM" && [ -n "$bpm" ] && $KID3_CMD -c "set BPM '$bpm'" "$filepath" 2>/dev/null
 
     # Album art
     if [ "$has_album_art" = true ]; then
-        $KID3_CMD -c "select \"$filepath\"" -c "set picture:'$album_art' ''" 2>/dev/null || true
+        $KID3_CMD -c "set picture:'$album_art' ''" "$filepath" 2>/dev/null || true
     fi
+
+    # Convert to ID3v2.3 (most compatible)
+    $KID3_CMD -c "to23" "$filepath" 2>/dev/null || true
 
     #########################################
     # STAGE 4: Verify

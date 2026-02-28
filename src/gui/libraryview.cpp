@@ -178,6 +178,12 @@ LibraryView::LibraryView(QWidget *parent)
     connect(m_scriptRunner, &ScriptRunner::removeError,
             this, &LibraryView::onRemoveError);
 
+    // Script runner results — tag rebuild (v2.2)
+    connect(m_scriptRunner, &ScriptRunner::scriptOutput,
+            this, &LibraryView::onTagRebuildOutput);
+    connect(m_scriptRunner, &ScriptRunner::scriptFinished,
+            this, &LibraryView::onTagRebuildFinished);
+
     // Exclude-unrated / exclude-rated checkboxes (mutually exclusive)
     connect(m_excludeUnratedCheckbox, &QCheckBox::toggled,
             this, &LibraryView::onExcludeUnratedToggled);
@@ -413,6 +419,57 @@ void LibraryView::showContextMenu(const QPoint &pos)
             emit statusMessage(tr("Failed to launch kid3"));
     });
 
+    QString rebuildLabel = tracks.size() == 1 ? tr("Rebuild Tag") : tr("Rebuild Tags") + countLabel;
+    QAction *rebuildAct = menu.addAction(rebuildLabel);
+    rebuildAct->setToolTip(tr("Rewrite tag(s) from database values"));
+
+    connect(rebuildAct, &QAction::triggered, this, [this, tracks]() {
+        // Build confirmation message — name the track for single, show count for multi
+        QString confirmMsg;
+        if (tracks.size() == 1) {
+            const TrackRecord &t = tracks.first();
+            QString display = t.songTitle;
+            if (!t.artist.isEmpty())
+                display = t.artist + QStringLiteral(" \u2014 ") + t.songTitle;
+            confirmMsg = tr("Rebuild tags for \"%1\" from database values?\n\n"
+                            "All existing tags will be overwritten with stored values.")
+                             .arg(display);
+        } else {
+            confirmMsg = tr("Rebuild tags for %1 tracks from database values?\n\n"
+                            "All existing tags will be overwritten with stored values.")
+                             .arg(tracks.size());
+        }
+
+        int result = QMessageBox::question(
+            this,
+            tr("Rebuild Tag"),
+            confirmMsg,
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+
+        if (result != QMessageBox::Yes)
+            return;
+
+        if (m_scriptRunner->isRunning()) {
+            QMessageBox::warning(this, tr("Rebuild Tag"),
+                tr("Another operation is already in progress. Please wait and try again."));
+            return;
+        }
+
+        QStringList args;
+        for (const TrackRecord &t : tracks)
+            args << t.songPath;
+
+        m_pendingRebuildCount = tracks.size();
+
+        if (tracks.size() == 1)
+            emit statusMessage(tr("Rebuilding tags: %1...").arg(tracks.first().songTitle));
+        else
+            emit statusMessage(tr("Rebuilding tags for %1 tracks...").arg(tracks.size()));
+
+        m_scriptRunner->runScript("tagrebuild", "musiclib_tagrebuild.sh", args);
+    });
+
     menu.addSeparator();
 
     QAction *removeAct = menu.addAction(tr("Remove Record"));
@@ -461,4 +518,38 @@ void LibraryView::onRemoveError(const QString &filePath, const QString &message)
     Q_UNUSED(filePath)
     emit statusMessage(tr("Remove error: %1").arg(message));
     QMessageBox::warning(this, tr("Remove Failed"), message);
+}
+
+// ===========================================================================
+//  Tag rebuild result handlers (v2.2)
+// ===========================================================================
+
+void LibraryView::onTagRebuildOutput(const QString &operationId, const QString &line)
+{
+    if (operationId != QLatin1String("tagrebuild"))
+        return;
+    emit statusMessage(line);
+}
+
+void LibraryView::onTagRebuildFinished(const QString &operationId, int exitCode,
+                                       const QString &stderrContent)
+{
+    if (operationId != QLatin1String("tagrebuild"))
+        return;
+
+    if (exitCode == 0) {
+        QString successMsg = m_pendingRebuildCount == 1
+            ? tr("Tags rebuilt successfully.")
+            : tr("Tags rebuilt successfully for %1 tracks.").arg(m_pendingRebuildCount);
+        emit statusMessage(successMsg);
+        QMessageBox::information(this, tr("Rebuild Tag"), successMsg);
+        // DSV watcher will trigger model refresh automatically
+    } else {
+        QString detail = stderrContent.trimmed();
+        QString msg = detail.isEmpty()
+            ? tr("Tag rebuild failed (exit code %1)").arg(exitCode)
+            : tr("Tag rebuild failed: %1").arg(detail);
+        emit statusMessage(msg);
+        QMessageBox::warning(this, tr("Rebuild Tags"), msg);
+    }
 }
