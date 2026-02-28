@@ -426,6 +426,15 @@ void MainWindow::setupToolbar()
     }
     
     toolbar->addAction(kid3Action);
+
+    // ── Dolphin button ──
+    QAction *dolphinAction = new QAction(
+        QIcon::fromTheme(QStringLiteral("system-file-manager")),
+        i18n("Dolphin"), this);
+    dolphinAction->setToolTip(i18n("Open the folder containing the current track in Dolphin"));
+    connect(dolphinAction, &QAction::triggered,
+            this, &MainWindow::onOpenDolphin);
+    toolbar->addAction(dolphinAction);
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -963,6 +972,22 @@ void MainWindow::onOpenKid3()
             QProcess::startDetached(executablePath, {});
         }
     }
+}
+
+// ═════════════════════════════════════════════════════════════
+// External app: Dolphin — open folder of current track
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::onOpenDolphin()
+{
+    if (m_nowPlaying.songPath.isEmpty()) {
+        statusBar()->showMessage(i18n("No track currently playing"), 3000);
+        return;
+    }
+
+    QString folder = QFileInfo(m_nowPlaying.songPath).absolutePath();
+    if (!QProcess::startDetached(QStringLiteral("dolphin"), {folder}))
+        statusBar()->showMessage(i18n("Failed to launch Dolphin"), 3000);
 }
 
 // ═════════════════════════════════════════════════════════════

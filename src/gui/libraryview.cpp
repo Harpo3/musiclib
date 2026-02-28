@@ -16,6 +16,7 @@
 #include <QProcess>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QUrl>
 
 // ---------------------------------------------------------------------------
@@ -417,6 +418,15 @@ void LibraryView::showContextMenu(const QPoint &pos)
     connect(kid3Act, &QAction::triggered, this, [this, track]() {
         if (!QProcess::startDetached("kid3", {track.songPath}))
             emit statusMessage(tr("Failed to launch kid3"));
+    });
+
+    QAction *dolphinAct = menu.addAction(tr("Show in Dolphin"));
+    dolphinAct->setToolTip(tr("Open the folder containing this file in Dolphin"));
+
+    connect(dolphinAct, &QAction::triggered, this, [this, track]() {
+        QString folder = QFileInfo(track.songPath).absolutePath();
+        if (!QProcess::startDetached("dolphin", {folder}))
+            emit statusMessage(tr("Failed to launch Dolphin"));
     });
 
     QString rebuildLabel = tracks.size() == 1 ? tr("Rebuild Tag") : tr("Rebuild Tags") + countLabel;

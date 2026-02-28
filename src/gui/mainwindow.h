@@ -107,6 +107,9 @@ public Q_SLOTS:
     /// Open the currently playing track in Kid3, or raise Kid3 if already running.
     void onOpenKid3();
 
+    /// Open the folder containing the currently playing track in Dolphin.
+    void onOpenDolphin();
+
     /// Open the Settings dialog (KConfigDialog).
     void showSettingsDialog();
 
