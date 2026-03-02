@@ -9,18 +9,20 @@
 ## Table of Contents
 
 1. [Introduction](#introduction)
-2. [Installation](#installation)
-3. [First-Time Setup](#first-time-setup)
-4. [Core Concepts](#core-concepts)
-5. [Using the GUI](#using-the-gui)
-6. [Common Tasks](#common-tasks)
-7. [Mobile Sync with Android](#mobile-sync-with-android)
-8. [Desktop Integration](#desktop-integration)
-9. [Command-Line Reference](#command-line-reference)
-10. [Standalone Utilities](#standalone-utilities)
-11. [FAQ](#frequently-asked-questions)
-12. [Troubleshooting](#troubleshooting)
-13. [Tips & Tricks](#tips--tricks)
+2. [Compatibility](#compatibility)
+3. [Installation](#installation)
+4. [First-Time Setup](#first-time-setup)
+5. [Quick Start](#quick-start)
+6. [Core Concepts](#core-concepts)
+7. [Using the GUI](#using-the-gui)
+8. [Library Management Tasks](#library-management-tasks)
+9. [Mobile Sync](#mobile-sync)
+10. [Desktop Integration](#desktop-integration)
+11. [Command-Line Reference](#command-line-reference)
+12. [Standalone Utilities](#standalone-utilities)
+13. [FAQ](#frequently-asked-questions)
+14. [Troubleshooting](#troubleshooting)
+15. [Tips & Tricks](#tips--tricks)
 
 ---
 
@@ -29,6 +31,7 @@
 MusicLib is a personal music library **management hub** designed for KDE Plasma users who want to organize, track, and manage their local music collections. It works on **any Linux distribution with KDE Plasma 6** — whether you use Arch, Fedora, Ubuntu, openSUSE, or anything in between.
 
 Rather than juggling multiple applications, MusicLib brings everything together in one integrated experience:
+
 - **Rate and organize** your music collection
 - **Edit tags** directly (integrated with Kid3)
 - **Track playback** across devices
@@ -64,6 +67,7 @@ It sits between you and Audacious (your audio player) and handles all the behind
 MusicLib is **distro-agnostic**. The shell scripts and GUI work on any Linux distribution with KDE Plasma 6. You don't need Arch Linux — just KDE Plasma 6 and the required dependencies.
 
 **Supported Distributions**:
+
 - Arch Linux (AUR packages available)
 - Fedora KDE (dnf packages)
 - Ubuntu/Kubuntu (apt packages)
@@ -87,6 +91,7 @@ Before installing MusicLib, ensure you have:
    - **iOS/iPhone** (iOS 14 or later with KDE Connect app)
 
 **Optional but Recommended**:
+
 - **kid3 (KDE) or kid3-qt (QT)** (GUI-based tag editor) — Opens directly from MusicLib for detailed metadata editing. Provides a full-featured interface for ID3 tags, album art, and more, and includes kid3-common.
 - **rsgain** (ReplayGain analyzer) — Required for the Boost Album feature. May need to be compiled from source on some distros.
 
@@ -209,6 +214,7 @@ sudo make install
 ```
 
 **Build dependencies** (install these if the cmake step fails):
+
 - `cmake` ≥ 3.16
 - `qt6-base-dev` (or `qt6-base-devel` on Fedora/openSUSE)
 - `kf6-kconfig-dev` (or `kf6-kconfig-devel`)
@@ -219,19 +225,20 @@ sudo make install
 
 This table shows how to find the same packages on different distros:
 
-| Package | Purpose | Arch | Fedora | Ubuntu/Neon | openSUSE | Debian |
-|---------|---------|------|--------|------------|----------|--------|
-| audacious | Audio player | audacious | audacious | audacious | audacious | audacious |
-| kid3-common | Tag editor | kid3-common | kid3-common | kid3-core | kid3-cli | kid3-core |
-| exiftool | Metadata tool | perl-image-exiftool | perl-Image-ExifTool | libimage-exiftool-perl | perl-Image-ExifTool | libimage-exiftool-perl |
-| kdeconnect | Mobile sync | kdeconnect | kdeconnect | kdeconnect | kdeconnect | kdeconnect |
-| rsgain | ReplayGain analysis | rsgain | rsgain | rsgain (universe) | rsgain | rsgain |
-| bc | Math library | bc | bc | bc | bc | bc |
-| CMake (build) | Build system | cmake | cmake | cmake | cmake | cmake |
-| Qt6 (build) | GUI framework | qt6-base | qt6-base-devel | qt6-base-dev | libqt6-devel | qt6-base-dev |
-| KF6 (build) | KDE libraries | kf6-kconfig | kf6-kconfig-devel | kf6-kconfig-dev | kf6-kconfig-devel | kf6-kconfig-dev |
+| Package       | Purpose             | Arch                | Fedora              | Ubuntu/Neon            | openSUSE            | Debian                 |
+| ------------- | ------------------- | ------------------- | ------------------- | ---------------------- | ------------------- | ---------------------- |
+| audacious     | Audio player        | audacious           | audacious           | audacious              | audacious           | audacious              |
+| kid3-common   | Tag editor          | kid3-common         | kid3-common         | kid3-core              | kid3-cli            | kid3-core              |
+| exiftool      | Metadata tool       | perl-image-exiftool | perl-Image-ExifTool | libimage-exiftool-perl | perl-Image-ExifTool | libimage-exiftool-perl |
+| kdeconnect    | Mobile sync         | kdeconnect          | kdeconnect          | kdeconnect             | kdeconnect          | kdeconnect             |
+| rsgain        | ReplayGain analysis | rsgain              | rsgain              | rsgain (universe)      | rsgain              | rsgain                 |
+| bc            | Math library        | bc                  | bc                  | bc                     | bc                  | bc                     |
+| CMake (build) | Build system        | cmake               | cmake               | cmake                  | cmake               | cmake                  |
+| Qt6 (build)   | GUI framework       | qt6-base            | qt6-base-devel      | qt6-base-dev           | libqt6-devel        | qt6-base-dev           |
+| KF6 (build)   | KDE libraries       | kf6-kconfig         | kf6-kconfig-devel   | kf6-kconfig-dev        | kf6-kconfig-devel   | kf6-kconfig-dev        |
 
 **Note**: Package names can vary slightly. If a package isn't found, try searching your distro's package manager:
+
 ```bash
 # Fedora
 dnf search rsgain
@@ -250,6 +257,7 @@ The easiest way to set up MusicLib is to run the setup command in your terminal:
 ```bash
 musiclib-cli setup
 ```
+
 Alternatively, you can make a copy of /usr/lib/musiclib/config/musiclib.conf, place it in ~/.config/musiclib/, and edit all settings directly. 
 
 This interactive script guides you through initial MusicLib configuration. Here's what it does:
@@ -261,6 +269,7 @@ The setup script checks for an existing Audacious installation on your system. T
 ### Step 2: Locate Music Repository Directories
 
 The script scans for common music directories:
+
 - `~/Music`
 - `/mnt/music`
 - `~/Downloads/Music`
@@ -275,6 +284,7 @@ Configure where new music downloads should be placed. This is used when you impo
 ### Step 4: Detect Optional Dependencies
 
 The setup wizard detects which optional tools are installed on your system:
+
 - **RSGain** (`rsgain` command) — Required for the Boost Album feature
 - **Kid3 GUI** (`kid3` or `kid3-qt` executable) — For integrated tag editing
 
@@ -283,6 +293,7 @@ If these tools are missing, the wizard displays package names for your distribut
 ### Step 5: Create XDG Directory Structure
 
 MusicLib creates the standard Linux XDG directory structure for you:
+
 - `~/.config/musiclib/` — Configuration files
 - `~/.local/share/musiclib/data/` — Database and subdirs
 - `~/.local/share/musiclib/playlists/` — Playlist files and subdirs
@@ -299,15 +310,63 @@ If Audacious is detected, the Song Change plugin and script is configured automa
 The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. 
 
 ---
+
 ### After Installation
 
 Once installed and setup step completed, you can launch MusicLib from:
+
 - **Application menu** → Search "MusicLib"
 - **Command line**: `musiclib`
 - **System tray** (appears after first launch)
 
 ---
 
+## Quick Start
+
+If you've just finished setup, here's how to get up and running in your first session. This walks through the three things most people want to do first: get their music into MusicLib, rate some tracks, and understand what's happening under the hood.
+
+### Step 1: Import Your Existing Music
+
+If your music files are already organized on disk, MusicLib can scan them and build a database in one step. Open a terminal and run:
+
+```bash
+musiclib-cli build
+```
+
+This scans your configured music directory, reads each file's tags, and creates the `musiclib.dsv` database. For large collections this can take a while — it's fine to let it run in the background.
+
+Once it finishes, launch MusicLib (`musiclib` from the terminal, or search for it in your application menu). You should see your tracks listed in the Library View.
+
+### Step 2: Rate Some Tracks
+
+Open MusicLib and play a track in Audacious. In the MusicLib toolbar at the top you'll see the track name and a row of stars. Click a star to set the rating — it saves instantly to both the database and the audio file itself.
+
+You can also rate tracks without playing them: find a track in the Library View, click its star column directly, and the rating is set.
+
+If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE System Settings → Shortcuts → Custom Shortcuts** and you can rate anything playing in Audacious without touching MusicLib's window.
+
+### Step 3: Import a New Album
+
+When you download new music, use the **Add New Tracks** workflow rather than dropping files into your folder manually — this ensures filenames are normalized and the database stays in sync.
+
+Before importing, open the album in Kid3 and check that the Artist and Album tags are correct and consistently named (e.g., "Pink Floyd" not "pink floyd" or "The Pink Floyd"). MusicLib uses the Album tag to name the destination folder.
+
+Then, in MusicLib:
+
+1. Open the **Maintenance Panel**
+2. Find the **Add New Tracks** frame
+3. Enter the artist name and click **Execute**
+
+MusicLib will normalize filenames, move the files into your music repository under `artist/album/`, and add the tracks to the database.
+
+### What Comes Next
+
+- **Mobile sync** — If you want music on your phone, see the [Mobile Sync](#mobile-sync) section.
+- **Tag cleanup** — If your existing files have inconsistent or messy tags, see [Cleaning Tags](#cleaning-tags).
+- **Keyboard shortcuts and system tray** — See [Desktop Integration](#desktop-integration) to set up system-wide shortcuts and tray access.
+- **Understanding how it all works** — See [Core Concepts](#core-concepts) for a deeper explanation of the database, rating system, and playback tracking.
+
+---
 
 ## Core Concepts
 
@@ -316,6 +375,7 @@ Once installed and setup step completed, you can launch MusicLib from:
 MusicLib stores all your music metadata in a simple text file called `musiclib.dsv` (Delimiter Separated Values). This file lives at `~/.local/share/musiclib/data/musiclib.dsv` and contains one row per track with fields separated by `^` characters.
 
 Each row includes:
+
 - **ID** — Unique track identifier
 - **Artist**, **Album**, **AlbumArtist**, **SongTitle** — Metadata
 - **SongPath** — Absolute path to the audio file
@@ -328,6 +388,7 @@ Each row includes:
 ### How Rating Works
 
 When you rate a song, MusicLib:
+
 1. Updates the `musiclib.dsv` database
 2. Writes the rating to the audio file's ID3 tags (POPM tag)
 3. Updates the Grouping/Work tag with star symbols
@@ -338,20 +399,21 @@ This means your ratings are preserved in the files themselves, not just in the d
 
 #### Rating Default Values (POPM)
 
-POPM (Popularimeter) is the ID3v2 frame used to store ratings. The default POPM ranges below align with the star rating/POPM values and ranges used by Kid3, Windows Media Player, and Winamp
+POPM (Popularimeter) is the ID3v2 frame used to store ratings. The default POPM ranges below align with the star rating/POPM values and ranges used by Kid3, Windows Media Player, and Winamp:
 
-#### Rating Group Number = Low POPM,High POPM
-- RatingGroup1="1,32"
-- RatingGroup2="33,96"
-- RatingGroup3="97,160"
-- RatingGroup4="161,228"
-- RatingGroup5="229,255"
+| Stars           | POPM Range |
+| --------------- | ---------- |
+| ★ (1 star)      | 1–32       |
+| ★★ (2 stars)    | 33–96      |
+| ★★★ (3 stars)   | 97–160     |
+| ★★★★ (4 stars)  | 161–228    |
+| ★★★★★ (5 stars) | 229–255    |
 
 ### Mobile Sync Workflow
 
 Mobile sync is a two-phase operation:
 
-**Phase A (Accounting)**: When you upload a new playlist, MusicLib first processes the *previous* playlist. It calculates how long that playlist was on your phone (time between uploads) and distributes synthetic "last played" timestamps across the tracks using an exponential distribution. This gives you playback history even though your phone can't report what you actually listened to. It uses actual timestamps for the tracks played from your desktop in Audacious.
+**Phase A (Playback logging)**: When you upload a new playlist, MusicLib first processes the *previous* playlist. It calculates how long that playlist was on your phone (time between uploads) and distributes synthetic "last played" timestamps across the tracks using an exponential distribution. This gives you playback history even though your phone can't report what you actually listened to. It uses actual timestamps for the tracks played from your desktop in Audacious.
 
 **Phase B (Upload)**: MusicLib converts the playlist to `.m3u` format and sends it along with all the music files to your device via KDE Connect.
 
@@ -359,11 +421,13 @@ Mobile sync is a two-phase operation:
 
 MusicLib tracks when you listen to music in two ways:
 
-**Desktop (Audacious)**: The Audacious Song Change hook monitors playback and updates `LastTimePlayed` when you've listened to at least 50% of a track (bounded between 30 seconds and 4 minutes). This is logged with the exact timestamp.
+**Desktop (Audacious)**: The Audacious Song Change hook monitors playback and updates `LastTimePlayed` when you've listened to at least 50% of a track (with the threshold capped at a minimum of 30 seconds and a maximum of 4 minutes). This is logged with the exact timestamp.
 
-**Mobile**: Since mobile devices can't report precise playback data, MusicLib uses the "accounting" system described above to synthesize timestamps based on how long the playlist was on your device.
+**Mobile**: Since mobile devices can't report precise playback data, MusicLib uses the logging approach described above to synthesize timestamps based on how long the playlist was on your device.
 
 ---
+
+## Using the GUI
 
 ### Main Window
 
@@ -376,17 +440,18 @@ The MusicLib GUI has three main areas:
 ### Library View
 
 The library view shows all your tracks in a sortable table. You can:
+
 - **Search** — Filter by artist, album, or title 
 - **Filter** - Library-level filter rated only, unrated only, or no filter
 - **Sort** — Click column headers to sort
 
 You can select individual entries and:
+
 - **Rate** — Click the stars to directly rate any track, playing or not
 - **Play** — Context menu: play or add selected track to Audacious play queue
 - **Edit** — Context menu: open the selected track in Kid3 to edit tag
 - **Remove** — Context menu: Remove selected record from the database (does not remove the file)
 - **Open Music Library** — Context menu: Launches/activates the associated Dolphin music folder 
-
 
 ### Panels
 
@@ -401,6 +466,7 @@ Select from the Side Panel on the left to access the other panels:
 ### Toolbar Elements (Top)
 
 **Now Playing** - Shows for the currently playing track:
+
 - Artist and track name
 - Star rating (click to change)
 
@@ -441,6 +507,7 @@ When you download new music:
 7. Click **Execute**
 
 MusicLib will:
+
 - Normalize the file tags
 - Rename files, artist directory, album directory to lowercase with underscores
 - Move files from your downloads folder to your music repository under `artist/album/`
@@ -448,14 +515,16 @@ MusicLib will:
 
 ### Rebuilding the Database
 
-If you need to rebuild the database, it is preferred to run `musiclib-cli build` in the console. See the Command-Line Reference Section in this manual for detaled information, or run `musiclib-cli build --help` in the console. Optionally, you can:
+If you need to rebuild the database, it is preferred to run `musiclib-cli build` in the console. See the Command-Line Reference Section in this manual for detailed information, or run `musiclib-cli build --help` in the console. Optionally, you can:
 
 1. Open the **Maintenance Panel**
 2. Click **Build Library**
 3. Optionally use **Dry Run** to preview changes
 4. Click **Execute**
 
-This scans your entire music repository and rebuilds `musiclib.dsv`. Your existing ratings are preserved where paths match. This can take a long time, particualrly for large collections.
+This scans your entire music repository and rebuilds `musiclib.dsv`. Your existing ratings are preserved where paths match. This can take a long time, particularly for large collections.
+
+**Note**: The GUI always creates a timestamped backup of the existing database before running. When using the CLI directly, backup is opt-in via the `-b` flag.
 
 ### Cleaning Tags
 
@@ -494,22 +563,25 @@ To normalize loudness across an album using ReplayGain:
 
 ---
 
-## Mobile Sync with Android
+## Mobile Sync
 
 ### Setting Up KDE Connect
 
 Before you can sync to mobile:
 
 1. **Install KDE Connect App on your phone/device**:
+   
    - **Android**: Install from Google Play Store
    - **iOS**: Install from Apple App Store (iOS 14 or later)
 
 2. **Pair your devices**:
+   
    - Open KDE Connect on both devices
    - Click "Refresh" to discover devices
    - Click your device name and accept the pairing request on both sides
 
 3. **Configure MusicLib**:
+   
    - Open **Settings** in MusicLib
    - Go to the **Mobile** tab
    - Enter your device ID (shown in KDE Connect)
@@ -517,15 +589,17 @@ Before you can sync to mobile:
 
 ### Uploading a Playlist
 
+If you have non-Audacious playlists, it is simple to import them using Audacious; then from the MusicLib Mobile Panel, you can click "Refresh from Audacious" to import them into Musiclib.
+
 1. Create a playlist in Audacious with the tracks you want on your phone
 2. Open the KDE Connect App on your desktop and mobile device and ensure they are paired
 3. Open the **Mobile Panel** in MusicLib
-4. If you have non-Audacious playlists, it is simple to import them using Audacious; then from the Mobile Panel, you can click "Refresh from Audacious" to import them into Musiclib
-5. Select the playlist from the dropdown
+4. Select the playlist from the dropdown
 5. Select your device
 6. Click **Upload**
 
 MusicLib will:
+
 - Process the previous playlist's last-played data (if any)
 - Copy the current version of the selected playlist from Audacious to MusicLib unless you specify otherwise
 - Convert the playlist to `.m3u` format. 
@@ -543,6 +617,7 @@ Log errors are normal if you move or delete associated tracks, or their database
 ### iOS Limitations
 
 Due to Apple's restrictions:
+
 - File access is more limited than Android
 - Playback tracking has reduced precision
 - Some file transfer operations may be slower
@@ -552,17 +627,20 @@ The core functionality (uploading playlists, last-played accounting) works the s
 ### Troubleshooting Mobile Sync
 
 **Device not found**:
+
 1. Ensure both devices are on the same Wi-Fi network
 2. Open KDE Connect on both devices and ensure they are paired
 3. Click "Refresh" in KDE Connect
 4. Check your firewall isn't blocking port 1716
 
 **Transfer fails**:
+
 1. Ensure the phone has enough storage space
 2. Check KDE Connect is running on both devices
 3. Try restarting KDE Connect on the phone
 
 **Accounting doesn't work**:
+
 1. Make sure you upload the playlist you intended
 2. Verify the previous playlist metadata files exist
 3. Check the time between uploads is at least 1 hour
@@ -576,6 +654,7 @@ The core functionality (uploading playlists, last-played accounting) works the s
 MusicLib runs in the system tray. Hovering over it displays the track and rating info
 
 Right-click the icon for quick actions:
+
 - **Library**— Open MusicLib with the Library Panel
 - **Maintenance**— Open MusicLib with the Maintenance Panel
 - **Mobile**— Open MusicLib with the Mobile Panel
@@ -583,6 +662,7 @@ Right-click the icon for quick actions:
 - **Quit**— Close MusicLib, including the System Tray instance
 
 Left-click the icon for quick actions:
+
 - **Rate Current Track** — Quick rating menu
 - **Edit in Kid3** — Edit the currently playing track's tag in Kid3
 - **Copy Filepath** — Copy to clipboard currently playing filepath for console use
@@ -591,6 +671,7 @@ Left-click the icon for quick actions:
 ### Dolphin Context Menu
 
 Right-click any audio file in Dolphin file manager:
+
 - **Rate in MusicLib** — Set star rating
 - **Add to MusicLib** — Import the file
 - **Edit Tags with Kid3** — Open in tag editor
@@ -612,12 +693,13 @@ MusicLib generates output files with music data and images for use with a Conky 
 **Output directory**: `~/.local/share/musiclib/data/conky_output/`
 
 **Files generated**:
+
 - `detail.txt` — Artist or album summary
 - `starrating.png` — Visual star rating image
 - `artloc.txt` — Path to album art
 - `folder.jpg` — Album art image 
 
-Add the paths to your `.conkyrc` to display now-playing information on your desktop or use them other display purposes.
+Add the paths to your `.conkyrc` to display now-playing information on your desktop or for other display purposes.
 
 ---
 
@@ -628,6 +710,7 @@ MusicLib provides a full command-line interface via `musiclib-cli`. All GUI oper
 ### Global Options
 
 These options are handled by the `musiclib-cli` wrapper before any subcommand:
+
 - `-h, --help` — Show help message and available commands
 - `-v, --version` — Show version information
 - `--config <path>` — Use alternate config file (default: `~/.config/musiclib/musiclib.conf`)
@@ -639,14 +722,17 @@ These options are handled by the `musiclib-cli` wrapper before any subcommand:
 **Purpose**: Interactive first-run configuration wizard.
 
 **Usage**:
+
 ```bash
 musiclib-cli setup [--force]
 ```
 
 **Options**:
+
 - `--force` — Overwrite existing configuration
 
 **What it does**:
+
 - Detects Audacious installation and configures its integration
 - Scans for music directories
 - Creates XDG directory structure
@@ -655,6 +741,7 @@ musiclib-cli setup [--force]
 - Optionally builds initial database
 
 **Example**:
+
 ```bash
 # First-time setup
 musiclib-cli setup
@@ -670,19 +757,23 @@ musiclib-cli setup --force
 **Purpose**: Set star rating (0–5) for a track.
 
 **Usage**:
+
 ```bash
 musiclib-cli rate RATING [FILEPATH]
 ```
 
 **Parameters**:
+
 - `RATING` — Integer 0–5 (0=unrated, 5=highest)
 - `FILEPATH` — (Optional) Absolute path to audio file
 
 **Behavior**:
-- When `FILEPATH` is provided: Rates that specific file (GUI mode)
+
+- When `FILEPATH` is provided: Rates that specific file
 - When omitted: Rates the currently playing track in Audacious (keyboard shortcut mode)
 
 **Examples**:
+
 ```bash
 # Rate a specific file
 musiclib-cli rate 4 "/mnt/music/pink_floyd/dark_side/money.mp3"
@@ -692,6 +783,7 @@ musiclib-cli rate 5
 ```
 
 **What changes**:
+
 - Updates database (`musiclib.dsv`)
 - Writes POPM tag to file
 - Updates Grouping/Work tag (0-5)
@@ -704,14 +796,17 @@ musiclib-cli rate 5
 **Purpose**: Build or rebuild the music library database from a full filesystem scan.
 
 **Usage**:
+
 ```bash
 musiclib-cli build [MUSIC_DIR] [options]
 ```
 
 **Arguments**:
+
 - `MUSIC_DIR` — Root directory of music library (defaults to configured `MUSIC_ROOT_DIR`)
 
 **Options**:
+
 - `-h, --help` — Display this help
 - `-d, --dry-run` — Preview mode — show what would be processed without making changes
 - `-o FILE` — Output file path (default: configured `MUSICDB`)
@@ -724,6 +819,7 @@ musiclib-cli build [MUSIC_DIR] [options]
 - `--no-progress` — Disable progress indicators
 
 **What it does**:
+
 - Scans the music directory recursively for audio files
 - Extracts metadata (artist, album, title, duration, etc.) from file tags via `exiftool`
 - Generates a fresh database (`musiclib.dsv`) with all discovered tracks
@@ -731,6 +827,7 @@ musiclib-cli build [MUSIC_DIR] [options]
 - Assigns new sequential track IDs and regenerates album IDs
 
 **Examples**:
+
 ```bash
 # Preview what would be rebuilt (safe to run anytime)
 musiclib-cli build --dry-run
@@ -749,11 +846,12 @@ musiclib-cli build /mnt/music/Rock -t
 ```
 
 **Exit codes**:
+
 - `0` — Success
-- `1` — Dry-run complete (informational) or user error (invalid arguments)
+- `1` — User error (invalid arguments)
 - `2` — System failure (missing directory, tools unavailable, lock timeout, scan failure)
 
-**Note**: This replaces the entire database. It takes 10+ minutes for large libraries (10,000+ tracks). Always use `--dry-run` first, and `-b` to back up before rebuilding.
+**Note**: This replaces the entire database. It takes a long time for large libraries (10,000+ tracks). Always use `--dry-run` first, and `-b` to back up before rebuilding.
 
 ---
 
@@ -762,20 +860,24 @@ musiclib-cli build /mnt/music/Rock -t
 **Purpose**: Import new music downloads from the configured download directory into the library.
 
 **Usage**:
+
 ```bash
 musiclib-cli new-tracks [artist_name]
 musiclib-cli new-tracks --help|-h|help
 ```
 
 **Arguments**:
+
 - `artist_name` — Artist name to use for folder organization (optional — prompts interactively if omitted). Normalized to lowercase with underscores.
 
 **Options**:
+
 - `--help, -h, help` — Display help message and exit
 
 **What it does**:
+
 1. Extracts any ZIP archive found in the download directory (automatic)
-2. Pauses to let you edit tags in kid3-qt — **check the Album tag**, since it determines the destination folder name
+2. Pauses to let you edit tags in GUI (kid3, kid3-qt) — **check the Album tag**, since it determines the destination folder name
 3. Normalizes MP3 filenames from their ID3 tags (lowercase, underscores)
 4. Standardizes volume levels with `rsgain` (if installed)
 5. Organizes files into `MUSIC_REPO/artist/album/` folder structure
@@ -784,6 +886,7 @@ musiclib-cli new-tracks --help|-h|help
 **Required tools**: `kid3-cli`, `exiftool`, `unzip`. `rsgain` is optional (used for volume normalization).
 
 **Examples**:
+
 ```bash
 # Interactive mode — prompts for artist name
 musiclib-cli new-tracks
@@ -794,6 +897,7 @@ musiclib-cli new-tracks "the_beatles"
 ```
 
 **Exit codes**:
+
 - `0` — Success (all tracks imported)
 - `1` — User error (invalid input, user cancelled)
 - `2` — System error (missing tools, I/O failure, config error)
@@ -812,23 +916,28 @@ Mobile playlist operations. Has several subcommands:
 **Purpose**: Upload a playlist to mobile device via KDE Connect.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile upload <playlist.audpl> [device_id] [options]
 ```
 
 **Arguments**:
+
 - `<playlist.audpl>` — Playlist filename or basename (with or without `.audpl` extension)
 - `[device_id]` — KDE Connect device ID (optional — uses configured default if omitted)
 
 **Options**:
+
 - `--end-time "MM/DD/YYYY HH:MM:SS"` — Override the accounting window end time (default: now)
 - `--non-interactive` — Skip interactive prompts; auto-refreshes Musiclib playlists with any newer Audacious playlists or modified versions without asking (used by the GUI)
 
 **What it does**:
+
 1. **Accounting**: Processes the previous playlist's last-played data before replacing it
 2. **Upload**: Converts the playlist to `.m3u` format and transfers it plus all track files to the device via `kdeconnect-cli --share`
 
 **Example**:
+
 ```bash
 # Upload with interactive prompts
 musiclib-cli mobile upload workout
@@ -848,11 +957,13 @@ musiclib-cli mobile upload workout --end-time "02/15/2026 21:00:00"
 **Purpose**: Show current mobile playlist status.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile status
 ```
 
 **Output shows**:
+
 - Current active playlist
 - Upload timestamp
 - Track count
@@ -864,6 +975,7 @@ musiclib-cli mobile status
 **Purpose**: Re-attempt failed last-played updates.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile retry <playlist_name>
 ```
@@ -876,11 +988,13 @@ Processes tracks from `.pending_tracks` and `.failed` recovery files, attempting
 **Purpose**: Manually trigger last-played accounting for a playlist.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile update-lastplayed <playlist_name> [--end-time "MM/DD/YYYY HH:MM:SS"]
 ```
 
 **Example**:
+
 ```bash
 # Process with current time
 musiclib-cli mobile update-lastplayed workout
@@ -894,6 +1008,7 @@ musiclib-cli mobile update-lastplayed workout --end-time "02/15/2026 18:00:00"
 **Purpose**: Copy playlists from Audacious to MusicLib directory.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile refresh-audacious-only
 ```
@@ -903,14 +1018,17 @@ musiclib-cli mobile refresh-audacious-only
 **Purpose**: Display the mobile operations log.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile logs [filter]
 ```
 
 **Arguments**:
+
 - `[filter]` — Optional keyword to narrow output. Recognized values: `errors`, `warnings`, `stats`, `today`
 
 **Example**:
+
 ```bash
 # Show all log entries
 musiclib-cli mobile logs
@@ -930,6 +1048,7 @@ musiclib-cli mobile logs stats
 **Purpose**: Remove orphaned playlist metadata files.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile cleanup
 ```
@@ -939,11 +1058,13 @@ musiclib-cli mobile cleanup
 **Purpose**: Check if Audacious playlist is newer than MusicLib copy.
 
 **Usage**:
+
 ```bash
 musiclib-cli mobile check-update <playlist_name>
 ```
 
 **Output**:
+
 - `STATUS:newer` — Audacious version is newer (exit 0)
 - `STATUS:new` — Playlist exists in Audacious but not MusicLib (exit 0)
 - `STATUS:same` — MusicLib version is current (exit 1)
@@ -956,11 +1077,13 @@ musiclib-cli mobile check-update <playlist_name>
 **Purpose**: Clean and normalize MP3 ID3 tags for MusicLib compatibility.
 
 **Usage**:
+
 ```bash
 musiclib-cli tagclean [COMMAND] [TARGET] [options]
 ```
 
 **Subcommands** (optional — pass instead of a path to get help/info):
+
 - `help` — Show help message (same as `-h`)
 - `examples` — Show common usage examples
 - `modes` — Explain the three operation modes in detail
@@ -968,9 +1091,11 @@ musiclib-cli tagclean [COMMAND] [TARGET] [options]
 - `process TARGET` — Explicitly process a file or directory (default behavior when TARGET looks like a path)
 
 **Arguments**:
+
 - `TARGET` — MP3 file or directory to process
 
 **Options**:
+
 - `-h, --help` — Show help
 - `-r, --recursive` — Process directories recursively
 - `-a, --remove-ape` — Remove APE tags (default: keep them)
@@ -984,11 +1109,13 @@ musiclib-cli tagclean [COMMAND] [TARGET] [options]
 - `--rg-only` — Remove ReplayGain tags only (can be combined with any mode)
 
 **Modes**:
+
 - `merge` — Merge ID3v1 → ID3v2.4, remove ID3v1 tags, optionally remove APE/ReplayGain tags, and embed album art from `folder.jpg`
 - `strip` — Remove ID3v1 and APE tags only (no art embedding)
 - `embed-art` — Only embed album art from a `folder.jpg` file if art is missing from the tag
 
 **Examples**:
+
 ```bash
 # Full cleanup with merge mode (the default)
 musiclib-cli tagclean /mnt/music/pink_floyd -r
@@ -1026,14 +1153,17 @@ musiclib-cli tagclean troubleshoot
 **Purpose**: Repair corrupted or malformed ID3 tags on MP3 files by restoring values from the MusicLib database.
 
 **Usage**:
+
 ```bash
 musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 ```
 
 **Arguments**:
+
 - `TARGET` — One or more MP3 files or directories to process. Multiple targets can be given in a single call.
 
 **Options**:
+
 - `-r, --recursive` — Process directories recursively
 - `-n, --dry-run` — Preview changes without modifying any files
 - `-v, --verbose` — Show detailed processing information per file
@@ -1041,12 +1171,14 @@ musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 - `-h, --help` — Show help message
 
 **What it does**:
+
 1. Looks up each track in the `musiclib.dsv` database by file path
 2. Strips all existing (corrupted) tags from the file
 3. Rewrites tags using database-authoritative values: artist, album, title, track number, rating, etc.
 4. Restores non-database fields that are preserved during the process: ReplayGain tags and embedded album art
 
 **Examples**:
+
 ```bash
 # Repair a single file
 musiclib-cli tagrebuild /mnt/music/corrupted/song.mp3
@@ -1065,6 +1197,7 @@ musiclib-cli tagrebuild /mnt/music/pink_floyd -r
 ```
 
 **Recommended workflow**:
+
 ```bash
 # Step 1: Preview with verbose output
 musiclib-cli tagrebuild /path/to/music -r -n -v
@@ -1080,78 +1213,36 @@ musiclib-cli tagrebuild /path/to/music -r
 **Purpose**: Apply ReplayGain loudness targeting to an album.
 
 **Usage**:
+
 ```bash
 musiclib-cli boost ALBUM_DIR LOUDNESS
 ```
 
 **Arguments**:
+
 - `ALBUM_DIR` — Path to the directory containing the album's MP3 files (required)
-- `LOUDNESS` — Target loudness level as a positive integer (required). This is the absolute value of the target in LUFS — e.g., `12` means −12 LUFS, `13` means −13 LUFS. Higher numbers = quieter result; lower numbers = louder result. Values of `12` or `13` are typical.
+- `LOUDNESS` — Target loudness level as a positive integer (required). This is the absolute value of the target in LUFS — e.g., `12` means −12 LUFS, `18` means −18 LUFS. Higher numbers = quieter result; lower numbers = louder result. Default value is `18`.
+
+> **Note**: The CLI takes a positive integer, but most audio tools (including the MusicLib GUI) display LUFS as a negative number. Do not enter a negative value or the command will fail. To match a GUI target of −18 LUFS, pass `18` on the command line.
 
 Both arguments are required. The script exits immediately with a usage error if either is missing.
 
 **What it does**:
+
 1. Removes any existing ReplayGain tags from all `.mp3` files in the directory (via `kid3-cli`)
 2. Rescans the album with `rsgain` at the specified target loudness, applying album-level ReplayGain tags
 
 **Examples**:
+
 ```bash
 # Target -12 LUFS (louder)
 musiclib-cli boost /mnt/music/pink_floyd/the_wall 12
 
-# Target -13 LUFS (slightly quieter)
-musiclib-cli boost /mnt/music/radiohead/ok_computer 13
+# Target -19 LUFS (slightly quieter)
+musiclib-cli boost /mnt/music/radiohead/ok_computer 19
 ```
 
 **Note**: Requires both `rsgain` and `kid3-cli` to be installed. Only processes `.mp3` files directly inside `ALBUM_DIR` (not recursive).
-
----
-
-#### `musiclib-cli scan`
-
-**Purpose**: Scan playlists and generate cross-reference CSV.
-
-**Usage**:
-```bash
-musiclib-cli scan [PLAYLIST_DIR]
-```
-
-**Parameters**:
-- `PLAYLIST_DIR` — Directory to scan (defaults to `~/.local/share/musiclib/playlists/`)
-
-**Output**: CSV to stdout showing which playlists contain which tracks.
-
-**Example**:
-```bash
-# Scan default directory
-musiclib-cli scan > playlist_cross_reference.csv
-
-# Scan specific directory
-musiclib-cli scan ~/.config/audacious/playlists > audacious_playlists.csv
-```
-
----
-
-#### `musiclib-cli audacious`
-
-**Purpose**: Audacious Song Change hook (called automatically by Audacious).
-
-**Usage**:
-```bash
-musiclib-cli audacious
-```
-
-**Called by**: Audacious Song Change plugin on every track change
-
-**What it does**:
-1. Queries current track from Audacious
-2. Updates Conky display files
-3. Extracts album art
-4. Monitors playback to scrobble threshold (50% of track, 30s–4min)
-5. Updates `LastTimePlayed` in database and file tags
-6. Logs to playback history
-
-**Note**: You should not call this manually. It's configured in Audacious Settings → Plugins → Song Change.
 
 ---
 
@@ -1160,17 +1251,20 @@ musiclib-cli audacious
 **Purpose**: Remove a track's database record (doesn't delete the file).
 
 **Usage**:
+
 ```bash
 musiclib-cli remove-record FILEPATH
 ```
 
 **Parameters**:
+
 - `FILEPATH` — Absolute path to audio file
 
 **What it does**:
 Removes the database row for the specified file. The audio file itself is not deleted from disk.
 
 **Example**:
+
 ```bash
 # Remove a track's database record
 musiclib-cli remove-record "/mnt/music/deleted/old_track.mp3"
@@ -1183,6 +1277,7 @@ musiclib-cli remove-record "/mnt/music/deleted/old_track.mp3"
 **Purpose**: Display help information.
 
 **Usage**:
+
 ```bash
 musiclib-cli help [command]
 musiclib-cli --help
@@ -1190,6 +1285,7 @@ musiclib-cli <command> --help
 ```
 
 **Examples**:
+
 ```bash
 # Show all commands
 musiclib-cli help
@@ -1206,6 +1302,7 @@ musiclib-cli rate --help
 **Purpose**: Display version information.
 
 **Usage**:
+
 ```bash
 musiclib-cli version
 musiclib-cli --version
@@ -1224,6 +1321,7 @@ MusicLib includes standalone utility scripts that operate outside the normal com
 **Purpose**: Rename non-conforming music filenames to MusicLib naming standards **before** database creation.
 
 **When to use**: Before running `musiclib-cli setup`, if your music files have:
+
 - Uppercase letters
 - Spaces in filenames
 - Accented or special characters
@@ -1232,6 +1330,7 @@ MusicLib includes standalone utility scripts that operate outside the normal com
 **How it works**:
 
 The script scans your music directory and applies these naming rules:
+
 - **Lowercase only**: `Track_01.mp3` → `track_01.mp3`
 - **Spaces become underscores**: `My Song.mp3` → `my_song.mp3`
 - **Non-ASCII transliterated**: `Café.mp3` → `cafe.mp3`
@@ -1255,6 +1354,7 @@ The script scans your music directory and applies these naming rules:
 ```
 
 **Options**:
+
 - `--execute` — Actually rename files (default is dry-run preview)
 - `--dry-run` — Preview changes without renaming (default)
 - `-v, --verbose` — Show detailed output for each file
@@ -1366,7 +1466,7 @@ A: MusicLib uses Audacious for two reasons:
 A: All core features (organizing, rating, syncing within Linux) still work. If you have an iPhone, MusicLib supports iOS too via KDE Connect.
 
 **Q: Can I use MusicLib with both Android and iOS devices?**  
-A: Yes! MusicLib works with both. See the "Mobile Sync with Android" section for setup.
+A: Yes! MusicLib works with both. See the "Mobile Sync" section for setup.
 
 **Q: Are there differences between Android and iOS syncing?**  
 A: Yes, due to Apple's restrictions. iOS has limited playback tracking and file access, and transfers may be slower.
@@ -1399,28 +1499,33 @@ A: The database stores absolute paths. If you move files, run `musiclib-cli buil
 ### Common Issues
 
 **MusicLib won't start**
+
 1. Check that KDE Plasma 6 is running: `plasmashell --version`
 2. Verify dependencies are installed: `kid3-cli --version`, `exiftool -ver`
 3. Check logs: `~/.local/share/musiclib/logs/musiclib.log`
 
 **Ratings don't save**
+
 1. Ensure `kid3-cli` is installed: `which kid3-cli`
 2. Check file permissions: Files must be writable
 3. Verify database isn't corrupted: `musiclib-cli build --dry-run`
 
 **Audacious integration not working**
+
 1. Verify Audacious is running: `pgrep audacious`
-2. Check Song Change plugin is enabled: Audacious → Settings → Plugins
+2. Check Song Change plugin is enabled: Services → Plugins in Audacious
 3. Verify hook script path: `/usr/lib/musiclib/bin/musiclib_audacious.sh`
 4. Test manually: `musiclib-cli audacious`
 
 **Conky not updating**
+
 1. Check Conky output directory exists: `ls ~/.local/share/musiclib/data/conky_output/`
-2. Verify Audacious hook is configured (see above)
+2. Verify Audacious hook is configured (see Services → Plugins → SongChange → Settings in Audacious)
 3. Play a track and check if files are created
 4. Check permissions on output directory
 
 **Mobile sync fails**
+
 1. **Device not found**:
    - Ensure both devices on same Wi-Fi network
    - Open KDE Connect on both devices
@@ -1437,12 +1542,14 @@ A: The database stores absolute paths. If you move files, run `musiclib-cli buil
    - Verify previous playlist metadata files exist
 
 **Database corruption**
+
 1. Check for backup files: `ls ~/.local/share/musiclib/data/*.backup.*`
-2. Restore from backup: `cp musiclib.dsv.backup.YYYYMMDD_HHMMSS musiclib.dsv`
+2. Restore backup. `cd ~/.local/share/musiclib/data` then `cp musiclib.dsv.backup.YYYYMMDD_HHMMSS musiclib.dsv`
 3. If no backup: `musiclib-cli build` to rebuild from filesystem
 4. Always make manual backups: `cp musiclib.dsv musiclib.dsv.manual.backup`
 
 **Lock timeout errors**
+
 - Wait a few seconds and try again
 - Check if another MusicLib process is running: `ps aux | grep musiclib`
 - Kill stuck processes: `pkill -f musiclib`
@@ -1451,6 +1558,7 @@ A: The database stores absolute paths. If you move files, run `musiclib-cli buil
 ### KDE Connect Issues
 
 **Devices won't pair**
+
 1. Ensure KDE Connect is the same version on both devices
 2. Some distros ship outdated KDE Connect — try updating:
    - **Fedora**: `sudo dnf upgrade kdeconnect`
@@ -1465,13 +1573,6 @@ A: The database stores absolute paths. If you move files, run `musiclib-cli buil
 
 ## Tips & Tricks
 
-### Speed Up Search
-
-Long library? Use smart filtering:
-- Filter by **Genre** first (narrows the pool)
-- Then search within that genre
-- Much faster than searching everything
-
 ### Backup Your Library
 
 Your database is important. Backup regularly:
@@ -1482,43 +1583,26 @@ cp ~/.local/share/musiclib/data/musiclib.dsv \
 ```
 
 Or automate it with a cron job:
+
 ```bash
 # Add to crontab: backup database daily at 2am
 0 2 * * * cp ~/.local/share/musiclib/data/musiclib.dsv ~/Backup/musiclib.dsv.$(date +\%Y\%m\%d)
 ```
 
-### Export Playlists for Other Apps
-
-MusicLib exports to standard `.m3u` format, readable by any media player:
-
-```bash
-ls ~/.local/share/musiclib/playlists/*.m3u
-```
-
-Copy these files to USB, upload to your phone, or open in other apps.
-
 ### Use Global Shortcuts
 
 Set up keyboard shortcuts for:
+
 - `Ctrl+M` — Open MusicLib window
 - `Ctrl+1` through `Ctrl+5` — Quick rate (1-5 stars)
 - `Ctrl+0` — Clear rating
-- `Ctrl+Shift+M` — Toggle system tray
 
 This speeds up workflow without opening windows.
-
-### Create Smart Filters
-
-Save your favorite filter combinations:
-
-1. Set up a filter (e.g., "Jazz, 4+ stars, added this year")
-2. Click **[Save as Smart Filter]**
-3. Name it (e.g., "Summer Jazz Favorites")
-4. Next time, one click loads it
 
 ### Batch Rating
 
 To rate multiple tracks at once:
+
 1. Select multiple rows in the library view (Ctrl+Click or Shift+Click)
 2. Right-click → **Set Rating**
 3. Choose your rating
@@ -1536,7 +1620,7 @@ done
 
 # Import multiple artist directories
 for artist in "Radiohead" "Pink Floyd" "The Beatles"; do
-    musiclib-cli new-tracks "$artist" --source ~/Downloads/new_music
+    musiclib-cli new-tracks "$artist" 
 done
 ```
 
@@ -1545,7 +1629,7 @@ done
 ## Glossary
 
 - **Audacious** — The music player MusicLib controls
-- **DSV** — Delimited Separated Values (the text format of the database)
+- **DSV** — Delimiter Separated Values (the text format of the database)
 - **KDE Connect** — Technology for syncing between your computer and phone
 - **KDE Plasma** — The desktop environment
 - **Metadata** — Information about songs (artist, title, album, etc.)
@@ -1572,6 +1656,7 @@ Future versions will include intelligent playlist generation that considers mult
 - **Smart Mixing**: Combine these factors to generate varied, fresh playlists automatically
 
 **Example use cases**:
+
 - "Show me my favorite songs I haven't heard in a month"
 - "Create a playlist from different artists, avoiding those I heard yesterday"
 - "Mix my top-rated songs with some new discoveries"
@@ -1579,6 +1664,7 @@ Future versions will include intelligent playlist generation that considers mult
 ### KRunner Integration (Planned for v0.3)
 
 Quick actions from KRunner (Alt+Space):
+
 - Search and play tracks
 - Rate current song
 - Upload playlists
@@ -1606,12 +1692,6 @@ If you find a bug:
    - Your MusicLib version (`musiclib --version`)
    - Your KDE Plasma version
    - Any error messages from logs
-
-### Asking Questions
-
-- **Forum**: Arch Linux forums (tag your post `[musiclib]`)
-- **IRC**: KDE Plasma IRC channel
-- **Reddit**: r/archlinux, r/kde
 
 ---
 

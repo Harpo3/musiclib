@@ -174,7 +174,11 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "Description:" << Qt::endl;
         cout << "  Scans the music repository and builds/rebuilds the database." << Qt::endl;
         cout << "  Preserves existing ratings when possible (matches by filepath)." << Qt::endl;
-        cout << "  Creates automatic backup before making changes." << Qt::endl;
+        cout << "  Use -b to create a backup before rebuilding." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Notes:" << Qt::endl;
+        cout << "  - Takes a long time to process for large libraries (10,000+ tracks)" << Qt::endl;
+        cout << "  - Use --dry-run in a subdirectory first to preview changes safely" << Qt::endl;
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
         cout << "  musiclib-cli build --dry-run   # Preview changes" << Qt::endl;
@@ -211,7 +215,7 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "  Imports new music downloads into the library and database." << Qt::endl;
         cout << "  Processes files from the download directory ($NEW_DOWNLOAD_DIR) by:" << Qt::endl;
         cout << "    1. Extracting ZIP files (if present)" << Qt::endl;
-        cout << "    2. Pausing for tag editing in kid3-qt" << Qt::endl;
+        cout << "    2. Pausing for tag editing in GUI (kid3, kid3-qt)" << Qt::endl;
         cout << "    3. Normalizing MP3 filenames from ID3 tags" << Qt::endl;
         cout << "    4. Standardizing volume levels with rsgain" << Qt::endl;
         cout << "    5. Organizing files into artist/album folder structure" << Qt::endl;

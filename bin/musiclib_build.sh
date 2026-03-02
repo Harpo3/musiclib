@@ -92,8 +92,8 @@ Notes:
   - Album IDs (IDAlbum) will be regenerated
   - Track IDs will be sequential starting from 1
   - LastTimePlayed will be set to 0 (never played)
-  - Takes 10+ minutes for large libraries (10,000+ tracks)
-  - Use --dry-run first to preview changes safely
+  - Takes a long time to process for large libraries (10,000+ tracks)
+  - Use --dry-run in a subdirectory first to preview changes safely
 
 EOF
 }
