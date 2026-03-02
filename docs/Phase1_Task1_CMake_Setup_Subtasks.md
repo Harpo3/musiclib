@@ -292,7 +292,7 @@ endif()
    - Configurable via `-DCMAKE_INSTALL_PREFIX`
 2. Define binary installation:
    - `musiclib-cli` → `/usr/bin/`
-   - Future: `musiclib-qt` → `/usr/bin/`
+   - Future: `musiclib` → `/usr/bin/`
 3. Define library installation (if building shared libs):
    - `libmusiclib_common.so` → `/usr/lib/musiclib/`
 4. Define script installation:

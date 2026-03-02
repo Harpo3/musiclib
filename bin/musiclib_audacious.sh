@@ -13,8 +13,6 @@ set -o pipefail
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$(dirname "$SCRIPT_DIR")}"
-
 # Load utilities and config
 if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     {
@@ -29,8 +27,8 @@ if ! load_config 2>/dev/null; then
 fi
 
 # Configuration values (loaded from config file)
-MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
-MUSIC_DISPLAY_DIR="${MUSIC_DISPLAY_DIR:-$MUSICLIB_ROOT/data/conky_output}"
+MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
+MUSIC_DISPLAY_DIR="${MUSIC_DISPLAY_DIR:-$(get_data_dir)/data/conky_output}"
 STAR_DIR="${STAR_DIR:-$MUSIC_DISPLAY_DIR/stars}"
 
 # Ensure directories exist
@@ -297,7 +295,7 @@ update_play_time() {
 
         # Load tag functions if not already loaded
         if ! type rebuild_tag >/dev/null 2>&1; then
-            source "$MUSICLIB_ROOT/bin/musiclib_utils_tag_functions.sh" || {
+            source "$SCRIPT_DIR/musiclib_utils_tag_functions.sh" || {
                 error_exit 2 "Failed to load tag functions" "script" "musiclib_utils_tag_functions.sh"
                 return 2
             }
@@ -369,8 +367,8 @@ monitor_playback() {
     update_lastplayed_display "$sql_time"
 
     # After successful database update, process any pending operations
-    if [ $update_result -eq 0 ] && [ -f "$MUSICLIB_ROOT/bin/musiclib_process_pending.sh" ]; then
-        "$MUSICLIB_ROOT/bin/musiclib_process_pending.sh" &
+    if [ $update_result -eq 0 ] && [ -f "$SCRIPT_DIR/musiclib_process_pending.sh" ]; then
+        "$SCRIPT_DIR/musiclib_process_pending.sh" &
     fi
 
     return 0

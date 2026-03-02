@@ -2,7 +2,7 @@
 
 ## Document Purpose
 
-Canonical specification of the interface between `musiclib-qt` GUI, `musiclib-cli` dispatcher, and shell scripts. All backend scripts must conform to this contract to ensure reliable integration.
+Canonical specification of the interface between `musiclib` GUI, `musiclib-cli` dispatcher, and shell scripts. All backend scripts must conform to this contract to ensure reliable integration.
 
 **Scope**: Exit codes, error JSON format, locking protocol, script invocation signatures, configuration reading, and CLI subcommand reference.
 
@@ -1020,7 +1020,7 @@ musiclib-cli setup
 musiclib-cli setup --force
 ```
 
-**Equivalent GUI**: First-run wizard dialog in `musiclib-qt` (Phase 2+)
+**Equivalent GUI**: First-run wizard dialog in `musiclib` (Phase 2+)
 
 **Configuration File Generated**:
 ```bash

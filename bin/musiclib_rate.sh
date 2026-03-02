@@ -20,15 +20,11 @@ unset QT_DEBUG_PLUGINS  # Just in case it's set
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$HOME/musiclib}"
-
 # Source utilities - REQUIRED for locking and error handling
-if [ ! -f "$MUSICLIB_ROOT/bin/musiclib_utils.sh" ]; then
-    echo '{"error":"musiclib_utils.sh not found","script":"musiclib_rate.sh","code":2,"context":{"expected_path":"'"$MUSICLIB_ROOT/bin/musiclib_utils.sh"'"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
+if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
+    echo '{"error":"musiclib_utils.sh not found","script":"musiclib_rate.sh","code":2,"context":{"expected_path":"'"$SCRIPT_DIR/musiclib_utils.sh"'"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
     exit 2
 fi
-
-source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"
 
 # Load configuration
 if ! load_config 2>/dev/null; then
@@ -38,8 +34,8 @@ fi
 
 # Fallback configuration
 MUSIC_DISPLAY_DIR="${MUSIC_DISPLAY_DIR:-}"
-MUSIC_DIR="${MUSIC_DIR:-${MUSIC_DISPLAY_DIR:-$MUSICLIB_ROOT/data/conky_output}}"
-MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
+MUSIC_DIR="${MUSIC_DIR:-${MUSIC_DISPLAY_DIR:-$(get_data_dir)/data/conky_output}}"
+MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
 STAR_DIR="${STAR_DIR:-$MUSIC_DIR/stars}"
 
 # Star rating to POPM mapping (midpoints from RatingGroups)
@@ -346,7 +342,7 @@ fi
 # Handle result
 if [ "$success" = false ]; then
     # All retries failed - queue the operation for later processing
-    PENDING_FILE="${MUSICLIB_ROOT}/data/.pending_operations"
+    PENDING_FILE="$(get_data_dir)/data/.pending_operations"
     TIMESTAMP=$(date +%s)
 
     # Ensure pending operations directory exists
@@ -450,8 +446,8 @@ fi
 # Process Any Other Pending Operations
 #############################################
 # After successfully updating, process any other queued operations
-if [ -f "$MUSICLIB_ROOT/bin/musiclib_process_pending.sh" ]; then
-    "$MUSICLIB_ROOT/bin/musiclib_process_pending.sh" &
+if [ -f "$SCRIPT_DIR/musiclib_process_pending.sh" ]; then
+    "$SCRIPT_DIR/musiclib_process_pending.sh" &
 fi
 
 exit 0

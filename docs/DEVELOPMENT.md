@@ -26,7 +26,7 @@ MusicLib uses a **hybrid architecture**:
 ```
 ┌─────────────────────────────────────┐
 │  User Interfaces                    │
-│  • musiclib-qt  (Qt6/KDE GUI)       │
+│  • musiclib  (Qt6/KDE GUI)       │
 │  • musiclib-cli (C++ CLI dispatcher)│
 └──────────────┬──────────────────────┘
                │ QProcess / exec()
@@ -211,7 +211,7 @@ make -j$(nproc)
 
 **Expected Outputs**:
 - `build/musiclib-cli` — CLI dispatcher
-- `build/musiclib-qt` — Qt6/KDE GUI application
+- `build/musiclib` — Qt6/KDE GUI application
 
 ### Installation
 
@@ -223,7 +223,7 @@ sudo make install
 
 **What gets installed**:
 - `/usr/bin/musiclib-cli`
-- `/usr/bin/musiclib-qt` (if GUI built)
+- `/usr/bin/musiclib` (if GUI built)
 - `/usr/lib/musiclib/bin/` — shell scripts
 - `/usr/lib/musiclib/config/` — reference configs
 - `/usr/share/musiclib/` — example files
@@ -250,7 +250,7 @@ sudo make uninstall  # Or manually remove files
 **GUI**:
 ```bash
 # From build directory
-./musiclib-qt
+./musiclib
 ```
 
 **Important**: When running from the build directory, the CLI/GUI will look for shell scripts in:
@@ -294,7 +294,7 @@ vim src/gui/mainwindow.cpp
 cd build && make -j$(nproc)
 
 # 3. Launch GUI
-./musiclib-qt
+./musiclib
 
 # 4. Interact with UI, check logs
 tail -f ~/.local/share/musiclib/logs/musiclib.log
@@ -316,7 +316,7 @@ gdb ./musiclib-cli
 
 **GUI**:
 ```bash
-gdb ./musiclib-qt
+gdb ./musiclib
 (gdb) run
 ```
 
@@ -392,7 +392,7 @@ musiclib/
 │   └── ...
 │
 └── desktop/                    # Desktop integration files
-    ├── org.musiclib.musiclib-qt.desktop
+    ├── org.musiclib.musiclib.desktop
     ├── musiclib.svg
     └── musiclib-dolphin.desktop
 ```
@@ -468,7 +468,7 @@ make test
 **Manual Testing**:
 ```bash
 # Launch GUI
-./musiclib-qt
+./musiclib
 
 # Test workflows:
 # 1. Library view loads DSV correctly
@@ -584,7 +584,7 @@ Example: Adding a "Statistics" panel in Phase 3+.
 4. **Build and test**:
    ```bash
    cd build && make
-   ./musiclib-qt
+   ./musiclib
    ```
 
 ### Modifying Shell Script Backend
@@ -756,7 +756,7 @@ cmake .. && make -j$(nproc)
 ./musiclib-cli rate "/mnt/music/test.mp3" 4
 
 # Run GUI manually
-./musiclib-qt
+./musiclib
 
 # Test shell script directly
 bash -x /usr/lib/musiclib/bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
@@ -777,7 +777,7 @@ cd build && make test
 
 # Installed binaries
 /usr/bin/musiclib-cli
-/usr/bin/musiclib-qt
+/usr/bin/musiclib
 
 # Installed scripts
 /usr/lib/musiclib/bin/

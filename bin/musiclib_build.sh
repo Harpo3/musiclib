@@ -15,16 +15,14 @@ set -o pipefail
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$HOME/musiclib}"
-
 # Source utilities if available
-if [ -f "$MUSICLIB_ROOT/bin/musiclib_utils.sh" ]; then
-    source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"
+if [ -f "$SCRIPT_DIR/musiclib_utils.sh" ]; then
+    source "$SCRIPT_DIR/musiclib_utils.sh"
     load_config 2>/dev/null || true
 fi
 
 # Fallback configuration
-MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
+MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
 MUSIC_ROOT_DIR="${MUSIC_ROOT_DIR:-/mnt/music}"
 
 # Default settings

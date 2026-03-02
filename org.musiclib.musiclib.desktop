@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=MusicLib
-Exec=musiclib-qt
+Exec=musiclib
 Icon=musiclib
 Terminal=false
 Categories=AudioVideo;

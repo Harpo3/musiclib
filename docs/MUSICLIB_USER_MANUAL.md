@@ -80,7 +80,7 @@ Before installing MusicLib, ensure you have:
 3. **kid3-common** (command-line tag editor — required)
 4. **exiftool** (metadata processor)
 5. **KDE Connect** (for mobile sync)
-6. Standard Unix tools: `bash`, `bc`, `coreutils`, `grep`, `sed`
+6. **Standard Unix tools** like `bash`, `bc`, `coreutils`, `grep`, `sed`
 7. A **mobile device** (optional, for mobile features):
    - **Android** (any version with KDE Connect support)
    - **iOS/iPhone** (iOS 14 or later with KDE Connect app)
@@ -221,7 +221,7 @@ This table shows how to find the same packages on different distros:
 | Package | Purpose | Arch | Fedora | Ubuntu/Neon | openSUSE | Debian |
 |---------|---------|------|--------|------------|----------|--------|
 | audacious | Audio player | audacious | audacious | audacious | audacious | audacious |
-| kid3-common | Tag editor | kid3-common | kid3-common | kid3-core | kid3? | kid3-core |
+| kid3-common | Tag editor | kid3-common | kid3-common | kid3-core | kid3-cli | kid3-core |
 | exiftool | Metadata tool | perl-image-exiftool | perl-Image-ExifTool | libimage-exiftool-perl | perl-Image-ExifTool | libimage-exiftool-perl |
 | kdeconnect | Mobile sync | kdeconnect | kdeconnect | kdeconnect | kdeconnect | kdeconnect |
 | rsgain | ReplayGain analysis | rsgain | rsgain | rsgain (universe) | rsgain | rsgain |
@@ -249,13 +249,13 @@ The easiest way to set up MusicLib is to run the setup command in your terminal:
 ```bash
 musiclib-cli setup
 ```
-Alternatively, you can modify the musiclib.conf file directly from ~/.config/musiclib/
+Alternatively, you can make a copy of /usr/lib/musiclib/config/musiclib.conf, place it in ~/.config/musiclib/, and edit all settings directly. 
 
 This interactive script guides you through initial MusicLib configuration. Here's what it does:
 
 ### Step 1: Detect Audacious Installation
 
-The setup script checks for an existing Audacious installation on your system. This ensures MusicLib can properly integrate with your audio player and locate its configuration files.
+The setup script checks for an existing Audacious installation on your system. This ensures MusicLib can properly integrate with this audio player and locate its configuration files.
 
 ### Step 2: Locate Music Repository Directories
 
@@ -263,7 +263,7 @@ The script scans for common music directories:
 - `~/Music`
 - `/mnt/music`
 - `~/Downloads/Music`
-- Any custom directories you specify
+- Any custom directory you specify
 
 It shows you what it finds and lets you select which directories to include in your library.
 
@@ -291,15 +291,11 @@ No manual folder creation needed—the script handles it all.
 
 ### Step 6: Configure Audacious Integration
 
-If Audacious is detected, the the Song Change plugin and script is configured automatically. 
+If Audacious is detected, the Song Change plugin and script is configured automatically. 
 
 ### Step 7: Build Initial Database
 
 The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. 
-
-### Migration from Legacy Layout
-
-If you have an existing MusicLib installation in `~/musiclib/`, the setup wizard will detect it and offer to migrate your data to the new XDG-compliant locations.
 
 ---
 ### After Installation
@@ -378,7 +374,8 @@ You can select individual entries and:
 - **Rate** — Click the stars to directly rate any track, playing or not
 - **Play** — Context menu: play or add selected track to Audacious play queue
 - **Edit** — Context menu: open the selected track in Kid3 to edit tag
-- **Remove** — Remove selected record from the database (does not remove the file)
+- **Remove** — Context menu: Remove selected record from the database (does not remove the file)
+- **Open Music Library** — Context menu: Launches/activates the associated Dolphin music folder 
 
 
 ### Panels
@@ -404,6 +401,8 @@ Select from the Side Panel on the left to access the other panels:
 **Audacious** — Launches/activates Audacious
 
 **Kid3** — Launches/activates Kid3 for currently playing track
+
+**Dolphin** — Launches/activates Dolphin music folder for currently playing track
 
 ### Rating Songs
 
@@ -464,11 +463,11 @@ To normalize ID3 tags across your collection:
 
 If a file's tags are corrupted, you can easily rebuild it using data from the file's associated database record:
 
-1. Right-click the track in the library view
-2. Select **Rebuild Tag**
+1. Right-click the track/tracks in the library view
+2. Select **Rebuild Tag/Tags**
 3. Confirm the operation
 
-MusicLib will look up the track in the database and rewrite tag from stored values.
+MusicLib will look up the track(s) in the database and rewrite tag(s) from stored values.
 
 ### Boosting Album Loudness
 
@@ -490,7 +489,7 @@ To normalize loudness across an album using ReplayGain:
 
 Before you can sync to mobile:
 
-1. **Install KDE Connect on your phone**:
+1. **Install KDE Connect App on your phone/device**:
    - **Android**: Install from Google Play Store
    - **iOS**: Install from Apple App Store (iOS 14 or later)
 
@@ -508,13 +507,15 @@ Before you can sync to mobile:
 ### Uploading a Playlist
 
 1. Create a playlist in Audacious with the tracks you want on your phone
-2. Open the **Mobile Panel** in MusicLib
-3. Select the playlist from the dropdown
-4. Select your device
-5. Click **Upload**
+2. Open the KDE Connect App on your mobile device and ensure it is paired
+3. Open the **Mobile Panel** in MusicLib
+4. Select the playlist from the dropdown
+5. Select your device
+6. Click **Upload**
 
 MusicLib will:
 - Process the previous playlist's last-played data (if any)
+- Copy the current version of the selected playlist from Audacious to MusicLib unless specified
 - Convert the playlist to `.m3u` format
 - Send all music files to your device
 - Record the upload timestamp
@@ -523,7 +524,7 @@ MusicLib will:
 
 When you upload a *new* playlist, MusicLib looks at the *previous* playlist and asks: "How long was that on the phone?" The time between uploads becomes the "accounting window."
 
-MusicLib then distributes synthetic timestamps across the tracks in the old playlist using an exponential distribution (front-loaded—tracks at the beginning get more recent timestamps). This gives you approximate playback history.
+MusicLib then distributes synthetic timestamps across the tracks in the old playlist using an exponential distribution (front-loaded—tracks at the beginning get more recent timestamps). This gives you approximate playback history for tracks played on mobile. Playlist tracks played from Audacious within the accounting window are logged already so they are not assigned synthetic timestamps. Loggings errors are normal for tracks moved or deleted from the database during the accounting window.
 
 ### iOS Limitations
 
@@ -538,7 +539,7 @@ The core functionality (uploading playlists, last-played accounting) works the s
 
 **Device not found**:
 1. Ensure both devices are on the same Wi-Fi network
-2. Open KDE Connect on both devices
+2. Open KDE Connect on both devices and ensure they are paired
 3. Click "Refresh" in KDE Connect
 4. Check your firewall isn't blocking port 1716
 
@@ -548,7 +549,7 @@ The core functionality (uploading playlists, last-played accounting) works the s
 3. Try restarting KDE Connect on the phone
 
 **Accounting doesn't work**:
-1. Make sure you upload playlists in sequence (don't skip)
+1. Make sure you upload the playlist you intended
 2. Verify the previous playlist metadata files exist
 3. Check the time between uploads is at least 1 hour
 
@@ -1569,7 +1570,7 @@ Desktop/panel widget showing now-playing information from Conky output with clic
 ## Documentation
 
 - **In-app Help**: Press `F1` in MusicLib
-- **Man Pages**: `man musiclib-qt`, `man musiclib-cli`
+- **Man Pages**: `man musiclib`, `man musiclib-cli`
 - **Online**: Visit the MusicLib GitHub wiki
 
 ### Reporting Issues
@@ -1580,7 +1581,7 @@ If you find a bug:
 2. **Reproduce the issue**: Try to make it happen again
 3. **Report on GitHub**: Include:
    - Steps to reproduce
-   - Your MusicLib version (`musiclib-qt --version`)
+   - Your MusicLib version (`musiclib --version`)
    - Your KDE Plasma version
    - Any error messages from logs
 

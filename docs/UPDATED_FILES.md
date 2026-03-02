@@ -76,8 +76,8 @@ cmake/
 
 ```
 data/
-  org.musiclib.musiclib-qt.desktop      # .desktop file for GUI
-  org.musiclib.musiclib-qt.appdata.xml  # AppStream metadata
+  org.musiclib.musiclib.desktop      # .desktop file for GUI
+  org.musiclib.musiclib.appdata.xml  # AppStream metadata
   musiclib-dolphin.desktop              # Dolphin service menu
   musiclib.svg                          # Application icon
 ```
@@ -124,9 +124,9 @@ packaging/
     musiclib/
       PKGBUILD              # AUR package for scripts + CLI
       musiclib.install      # Post-install message
-    musiclib-qt/
+    musiclib/
       PKGBUILD              # AUR package for GUI
-      musiclib-qt.install   # Post-install message
+      musiclib.install   # Post-install message
 ```
 
 ### 1.8 Man Pages
@@ -134,7 +134,7 @@ packaging/
 ```
 man/
   musiclib-cli.1            # CLI manual page (covers all commands: setup, audacious-hook, new-tracks, tagrebuild, boost, scan, etc.)
-  musiclib-qt.1             # GUI manual page
+  musiclib.1             # GUI manual page
   musiclib.conf.5           # Config file format
 ```
 
@@ -297,7 +297,7 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 **Updated**: Add sections:
 - Architecture overview (GUI/CLI/scripts diagram)
-- Installation (AUR packages: `musiclib`, `musiclib-qt`)
+- Installation (AUR packages: `musiclib`, `musiclib`)
 - Quick start (GUI and CLI examples)
 - Configuration (XDG layout, `musiclib.conf` reference)
 - CLI subcommand reference (with examples)
@@ -340,7 +340,7 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 **Add**:
 - `src/gui/` (entire directory)
-- `data/org.musiclib.musiclib-qt.desktop`
+- `data/org.musiclib.musiclib.desktop`
 - `data/musiclib.svg`
 - `tests/unit/test_library_model.cpp`
 - `docs/USER_GUIDE.md`
@@ -384,7 +384,7 @@ bin/upload_playlist.sh      → Replaced by musiclib-cli mobile upload
 
 **Add**:
 - `packaging/aur/musiclib/PKGBUILD`
-- `packaging/aur/musiclib-qt/PKGBUILD`
+- `packaging/aur/musiclib/PKGBUILD`
 - `docs/DEVELOPMENT.md`
 - `docs/GLOSSARY.md`
 - `docs/MIGRATION.md`
@@ -440,7 +440,7 @@ ls ~/.local/share/musiclib/data/musiclib.dsv
 musiclib-cli rate --help
 
 # Test GUI
-musiclib-qt
+musiclib
 
 # Verify Audacious hook
 audtool --current-song-filename  # Play a track, check Conky updates

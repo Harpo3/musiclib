@@ -120,7 +120,7 @@ MainWindow::MainWindow(QWidget *parent)
     refreshNowPlaying();
 
     // KXmlGuiWindow standard setup (menus, accelerators)
-    setupGUI(Default, QStringLiteral("musiclib-qtui.rc"));
+    setupGUI(Default, QStringLiteral("musiclibui.rc"));
 
     resize(950, 650);
 }

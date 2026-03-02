@@ -10,7 +10,7 @@ MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect int
 
 MusicLib uses a hybrid architecture:
 - **Shell script backend** (`/usr/lib/musiclib/bin/`) – authoritative for all write operations
-- **Qt/KDE GUI** (`musiclib-qt`) – smart client for library browsing, rating, maintenance
+- **Qt/KDE GUI** (`musiclib`) – smart client for library browsing, rating, maintenance
 - **C++ CLI dispatcher** (`musiclib-cli`) – thin wrapper for command-line access
 - **Flat-file database** (`musiclib.dsv`) – ^-delimited, human-readable, easily backed up
 
@@ -33,7 +33,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component diagrams.
 yay -S musiclib
 
 # Install GUI (depends on musiclib)
-yay -S musiclib-qt
+yay -S musiclib
 ```
 
 ### Manual Build
@@ -65,7 +65,7 @@ musiclib-cli setup
 ```
 The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. For large libraries, this can take a long time, as in hours. The build script will provide a time estimate. Run `musiclib-cli setup --force` to reconfigure later.
 
-**GUI**: Launch `musiclib-qt` and follow the setup wizard (Phase 2+).
+**GUI**: Launch `musiclib` and follow the setup wizard (Phase 2+).
 
 ---
 
@@ -73,7 +73,7 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect)
 
 ### GUI Interface
 
-**Launch**: `musiclib-qt` or via application menu (MusicLib)
+**Launch**: `musiclib` or via application menu (MusicLib)
 
 **Features**:
 - **Library View**: Browse, filter, sort tracks; inline star rating

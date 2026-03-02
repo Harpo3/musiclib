@@ -8,11 +8,11 @@
 #
 
 # Load config to get MUSICDB path
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$HOME/musiclib}"
-if [ -f "$MUSICLIB_ROOT/config/musiclib.conf" ]; then
-    source "$MUSICLIB_ROOT/config/musiclib.conf"
+_MUSICLIB_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/musiclib/musiclib.conf"
+if [ -f "$_MUSICLIB_CONF" ]; then
+    source "$_MUSICLIB_CONF"
 else
-    echo "Error: Cannot load config from $MUSICLIB_ROOT/config/musiclib.conf"
+    echo "Error: Cannot load config from $_MUSICLIB_CONF"
     exit 1
 fi
 

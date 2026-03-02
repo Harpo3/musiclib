@@ -16,15 +16,11 @@ unset QT_DEBUG_PLUGINS
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$HOME/musiclib}"
-
 # Source utilities - REQUIRED for locking and error handling
-if [ ! -f "$MUSICLIB_ROOT/bin/musiclib_utils.sh" ]; then
-    echo "Error: musiclib_utils.sh not found at $MUSICLIB_ROOT/bin/musiclib_utils.sh" >&2
+if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
+    echo "Error: musiclib_utils.sh not found at $SCRIPT_DIR/musiclib_utils.sh" >&2
     exit 2
 fi
-
-source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"
 
 # Load configuration
 if ! load_config 2>/dev/null; then
@@ -33,8 +29,8 @@ if ! load_config 2>/dev/null; then
 fi
 
 # Fallback configuration
-MUSICDB="${MUSICDB:-$MUSICLIB_ROOT/data/musiclib.dsv}"
-PENDING_FILE="${MUSICLIB_ROOT}/data/.pending_operations"
+MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
+PENDING_FILE="$(get_data_dir)/data/.pending_operations"
 PENDING_LOCK_FILE="${PENDING_FILE}.lock"
 
 # Don't run if no pending operations

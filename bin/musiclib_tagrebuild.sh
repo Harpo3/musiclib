@@ -24,24 +24,22 @@ set -o pipefail
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$HOME/musiclib}"
-
 # Load utilities and config
-if ! source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"; then
+if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     # Can't use error_exit yet, utils not loaded
     {
-        echo "{\"error\":\"Failed to load musiclib_utils.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$MUSICLIB_ROOT/bin/musiclib_utils.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
+        echo "{\"error\":\"Failed to load musiclib_utils.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$SCRIPT_DIR/musiclib_utils.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
     } >&2
     exit 2
 fi
 
 if ! load_config; then
-    error_exit 2 "Configuration load failed" "config_file" "$MUSICLIB_ROOT/config/musiclib.conf"
+    error_exit 2 "Configuration load failed"
     exit 2
 fi
 
 # Configuration
-BACKUP_DIR="${TAG_BACKUP_DIR:-$MUSICLIB_ROOT/data/tag_backups}"
+BACKUP_DIR="${TAG_BACKUP_DIR:-$(get_data_dir)/data/tag_backups}"
 MAX_BACKUP_AGE="${MAX_BACKUP_AGE_DAYS:-30}"
 DB_LOCK_TIMEOUT="${LOCK_TIMEOUT:-5}"
 
@@ -331,8 +329,8 @@ fi
 
 # Load tag functions
 if ! declare -f rebuild_tag >/dev/null 2>&1; then
-    if [ -f "$MUSICLIB_ROOT/bin/musiclib_utils_tag_functions.sh" ]; then
-        if ! source "$MUSICLIB_ROOT/bin/musiclib_utils_tag_functions.sh"; then
+    if [ -f "$SCRIPT_DIR/musiclib_utils_tag_functions.sh" ]; then
+        if ! source "$SCRIPT_DIR/musiclib_utils_tag_functions.sh"; then
             error_exit 2 "Failed to load tag functions" "file" "musiclib_utils_tag_functions.sh"
             exit 2
         fi

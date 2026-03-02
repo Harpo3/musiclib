@@ -13,13 +13,13 @@ set(GUI_SOURCES
     systemtrayicon.cpp
 )
 
-qt_add_executable(musiclib-qt ${GUI_SOURCES})
+qt_add_executable(musiclib ${GUI_SOURCES})
 
 # ── KConfigXT code generation ──
 # Reads musiclib.kcfg at build time and generates musiclibsettings.h/.cpp
 # with the MusicLibSettings singleton class.
 # This replaces the older .kcfgc file approach with the CMake-native API.
-kconfig_target_kcfg_file(musiclib-qt
+kconfig_target_kcfg_file(musiclib
     FILE        musiclib.kcfg
     CLASS_NAME  MusicLibSettings
     MUTATORS
@@ -31,13 +31,13 @@ set_source_files_properties(${CMAKE_SOURCE_DIR}/musiclib.png
     PROPERTIES QT_RESOURCE_ALIAS musiclib.png
 )
 
-qt_add_resources(musiclib-qt "app_icons"
+qt_add_resources(musiclib "app_icons"
     PREFIX "/icons"
     FILES
         ${CMAKE_SOURCE_DIR}/musiclib.png
 )
 
-target_link_libraries(musiclib-qt
+target_link_libraries(musiclib
     PRIVATE
         musiclib_common
         Qt6::Widgets
@@ -54,13 +54,13 @@ target_link_libraries(musiclib-qt
 
 # The KConfigXT generator puts musiclibsettings.h in the build dir.
 # We need this on the include path so other sources can #include it.
-target_include_directories(musiclib-qt
+target_include_directories(musiclib
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-install(TARGETS musiclib-qt
+install(TARGETS musiclib
     RUNTIME DESTINATION bin
 )
 

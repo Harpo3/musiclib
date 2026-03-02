@@ -37,8 +37,6 @@ VERBOSE="${VERBOSE:-false}"
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$(dirname "$SCRIPT_DIR")}"
-
 # Load utilities and config
 if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     {
@@ -69,7 +67,7 @@ END_TIME_OVERRIDE=""
 #############################################
 # Mobile-specific logging
 #############################################
-MOBILE_LOG_DIR="$MUSICLIB_ROOT/logs/mobile"
+MOBILE_LOG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/musiclib/logs/mobile"
 MOBILE_LOG_FILE="$MOBILE_LOG_DIR/mobile_operations.log"
 
 # Ensure log directory exists
@@ -1026,7 +1024,7 @@ upload_playlist() {
     if [ "$accounting_result" -eq 1 ]; then
         echo ""
         echo "Upload complete, but accounting had partial failures."
-        echo "Run 'musiclib_mobile.sh status' for details."
+        echo "Run 'musiclib-cli mobile status' for details."
         exit 0  # Upload itself succeeded
     fi
 

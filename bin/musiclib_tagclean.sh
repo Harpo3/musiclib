@@ -14,10 +14,8 @@ set -o pipefail
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$HOME/musiclib}"
-
 # Load utilities and config
-if ! source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"; then
+if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     echo '{"error":"Failed to load musiclib_utils.sh","script":"musiclib_tagclean.sh","code":2,"context":{},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
     exit 2
 fi
@@ -28,7 +26,7 @@ if ! load_config; then
 fi
 
 # Configuration (loaded from config file)
-BACKUP_DIR="${TAG_BACKUP_DIR:-$MUSICLIB_ROOT/data/tag_backups}"
+BACKUP_DIR="${TAG_BACKUP_DIR:-$(get_data_dir)/data/tag_backups}"
 MAX_BACKUP_AGE="${MAX_BACKUP_AGE_DAYS:-30}"
 
 # Check for required tools and output JSON error if missing

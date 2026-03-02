@@ -38,26 +38,24 @@ set -o pipefail
 
 # Setup paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MUSICLIB_ROOT="${MUSICLIB_ROOT:-$(dirname "$SCRIPT_DIR")}"
-
 # Load utilities and config
-if ! source "$MUSICLIB_ROOT/bin/musiclib_utils.sh"; then
+if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     # Can't use error_exit yet, utils not loaded
     {
-        echo "{\"error\":\"Failed to load musiclib_utils.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$MUSICLIB_ROOT/bin/musiclib_utils.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
+        echo "{\"error\":\"Failed to load musiclib_utils.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$SCRIPT_DIR/musiclib_utils.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
     } >&2
     exit 2
 fi
 
 if ! load_config; then
-    error_exit 2 "Configuration load failed" "config_file" "$MUSICLIB_ROOT/config/musiclib.conf"
+    error_exit 2 "Configuration load failed"
     exit 2
 fi
 
-if ! source "$MUSICLIB_ROOT/bin/musiclib_utils_tag_functions.sh"; then
+if ! source "$SCRIPT_DIR/musiclib_utils_tag_functions.sh" 2>/dev/null; then
     # Can't use error_exit yet, utils not loaded
     {
-        echo "{\"error\":\"Failed to load /musiclib_utils_tag_functions.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$MUSICLIB_ROOT/bin/musiclib_utils_tag_functions.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
+        echo "{\"error\":\"Failed to load musiclib_utils_tag_functions.sh\",\"script\":\"$(basename "$0")\",\"code\":2,\"context\":{\"file\":\"$SCRIPT_DIR/musiclib_utils_tag_functions.sh\"},\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}"
     } >&2
     exit 2
 fi
@@ -102,10 +100,9 @@ EXAMPLES:
   musiclib-cli new-tracks --help
 
 CONFIGURATION:
-  Define variable values in: musiclib/config/musiclib.conf
+  Define variable values in: ~/.config/musiclib/musiclib.conf
 
   Required variables:
-    - MUSICLIB_ROOT (music library root directory)
     - MUSIC_REPO (repository path for organized music)
     - NEW_DOWNLOAD_DIR (where new downloads are placed)
     - MUSICDB (path to music database file)
@@ -263,7 +260,7 @@ add_track_to_database() {
         
         if [ "$lock_result" -eq 1 ]; then
             # Lock timeout - queue the operation for later
-            local pending_file="${MUSICLIB_ROOT}/data/.pending_operations"
+            local pending_file="$(get_data_dir)/data/.pending_operations"
             local timestamp=$(date +%s)
             
             # Create pending operations directory if it doesn't exist
@@ -665,9 +662,9 @@ done
 echo "Database update summary: $added track(s) added, $deferred queued, $failed failed."
 
 # Trigger pending operations processor if any operations were deferred
-if [ $deferred -gt 0 ] && [ -f "$MUSICLIB_ROOT/bin/musiclib_process_pending.sh" ]; then
+if [ $deferred -gt 0 ] && [ -f "$SCRIPT_DIR/musiclib_process_pending.sh" ]; then
     echo "Triggering pending operations processor..."
-    "$MUSICLIB_ROOT/bin/musiclib_process_pending.sh" &
+    "$SCRIPT_DIR/musiclib_process_pending.sh" &
 fi
 
 echo ""

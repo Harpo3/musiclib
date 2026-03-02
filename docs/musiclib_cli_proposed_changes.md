@@ -131,10 +131,10 @@ QString promptUserForNewDBPath() {
 }
 ```
 
-### GUI Implementation (musiclib-qt)
+### GUI Implementation (musiclib)
 
 ```cpp
-// In musiclib-qt main window
+// In musiclib main window
 
 void MainWindow::onBuildDatabase() {
     QString targetDir = getSelectedDirectory();
@@ -339,10 +339,10 @@ musiclib-cli new-tracks "radiohead" --source-dialog
 musiclib-cli new-tracks "radiohead" --source /mnt/external/new_music -v --dry-run
 ```
 
-### GUI Implementation (musiclib-qt)
+### GUI Implementation (musiclib)
 
 ```cpp
-// In musiclib-qt new track import dialog
+// In musiclib new track import dialog
 
 void MainWindow::onNewTrackImport() {
     QDialog dialog(this);

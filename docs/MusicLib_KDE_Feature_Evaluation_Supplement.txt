@@ -50,7 +50,7 @@ Regarding system-level versus local settings: for a single-user tool like MusicL
 musiclib-cli is to be a thin dispatcher that calls the existing shell scripts. The installed layout will look like:
 
 /usr/bin/musiclib-cli              ← compiled C++ dispatcher binary
-/usr/bin/musiclib-qt               ← compiled C++ Qt/KDE GUI binary
+/usr/bin/musiclib               ← compiled C++ Qt/KDE GUI binary
 /usr/lib/musiclib/bin/             ← shell scripts (the actual backend)
     musiclib_utils.sh
     musiclib_utils_tag_functions.sh
@@ -72,7 +72,7 @@ musiclib-cli is to be a thin dispatcher that calls the existing shell scripts. T
     conky_example.conf
     musiclib_example.dsv
 /usr/share/applications/
-    org.musiclib.musiclib-qt.desktop
+    org.musiclib.musiclib.desktop
 /usr/share/kservices5/ (or kio/servicemenus/)
     musiclib-dolphin.desktop
 

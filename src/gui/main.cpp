@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
     // KDE application metadata — used by Help > About, D-Bus registration,
     // desktop file matching, and KDE crash handler.
     KAboutData aboutData(
-        QStringLiteral("musiclib-qt"),           // component name (internal)
+        QStringLiteral("musiclib"),               // component name (internal)
         i18n("MusicLib"),                         // display name
         QStringLiteral("0.1.0"),                  // version
         i18n("Music library manager for KDE"),    // short description
@@ -24,10 +24,10 @@ int main(int argc, char *argv[])
     );
 
     aboutData.setOrganizationDomain("musiclib.org");
-    aboutData.setDesktopFileName("org.musiclib.musiclib-qt");
+    aboutData.setDesktopFileName("org.musiclib.musiclib");
 
     KAboutData::setApplicationData(aboutData);
-    KLocalizedString::setApplicationDomain("musiclib-qt");
+    KLocalizedString::setApplicationDomain("musiclib");
 
     // Initialize KConfigXT settings singleton.
     // This reads ~/.config/musiclibrc (or creates it with defaults).

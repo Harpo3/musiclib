@@ -16,7 +16,7 @@ MusicLib is a hybrid architecture combining a battle-tested shell script backend
 ┌──────────────────────────────────────────────────────────────┐
 │                      User Layer                               │
 ├───────────────┬──────────────────┬───────────────────────────┤
-│ musiclib-qt   │  musiclib-cli    │  Desktop Integration      │
+│ musiclib   │  musiclib-cli    │  Desktop Integration      │
 │ (Qt/KDE GUI)  │  (C++ Dispatcher)│  (Dolphin, KRunner, Tray) │
 │               │                  │                            │
 │ • Library View│  • rate          │  • Service Menus          │
@@ -90,7 +90,7 @@ MusicLib is a hybrid architecture combining a battle-tested shell script backend
 ```
 User opens GUI
     ↓
-musiclib-qt reads ~/.local/share/musiclib/data/musiclib.dsv
+musiclib reads ~/.local/share/musiclib/data/musiclib.dsv
     ↓
 Parses DSV into QAbstractTableModel
     ↓
@@ -110,7 +110,7 @@ User sees library (no backend invocation needed)
 ```
 User clicks 5th star on track in library view
     ↓
-musiclib-qt invokes QProcess:
+musiclib invokes QProcess:
     /usr/lib/musiclib/bin/musiclib_rate.sh "/path/to/song.mp3" 5
     ↓
 musiclib_rate.sh sources musiclib_utils.sh
@@ -124,7 +124,7 @@ Calls with_db_lock() helper:
     ↓
 Returns exit code 0 (success) to QProcess
     ↓
-musiclib-qt receives exit code, shows KNotification:
+musiclib receives exit code, shows KNotification:
     "Rated: Artist – Title (★★★★★)"
     ↓
 QFileSystemWatcher detects DSV change, triggers model refresh
@@ -139,7 +139,7 @@ musiclib_rate.sh exits with code 2 (lock timeout)
 Outputs JSON to stderr:
     {"error": "Database lock timeout", "code": 2, ...}
     ↓
-musiclib-qt parses JSON, shows error dialog:
+musiclib parses JSON, shows error dialog:
     "Unable to rate track: Database lock timeout (another operation in progress)"
     ↓
 Logs error to ~/.local/share/musiclib/logs/musiclib.log
@@ -206,7 +206,7 @@ User selects "workout.audpl" in GUI Mobile panel
     ↓
 Clicks "Upload" button
     ↓
-musiclib-qt invokes QProcess:
+musiclib invokes QProcess:
     /usr/lib/musiclib/bin/musiclib_mobile.sh upload abc123def456 \
         /home/user/.local/share/musiclib/playlists/workout.audpl
     ↓
@@ -226,7 +226,7 @@ musiclib_mobile.sh:
     ↓
 Returns exit code 0 (success)
     ↓
-musiclib-qt shows success notification:
+musiclib shows success notification:
     "Uploaded 42 tracks to Samsung Galaxy S21"
     ↓
 Updated last-played times appear in library view after refresh
@@ -254,7 +254,7 @@ Result: Realistic-looking last-played distribution in library view
 **Binaries** (`/usr/bin/`):
 ```
 musiclib-cli       # C++ dispatcher, thin wrapper around scripts
-musiclib-qt        # Qt/KDE GUI application
+musiclib        # Qt/KDE GUI application
 ```
 
 **Backend Scripts** (`/usr/lib/musiclib/bin/`):
@@ -287,7 +287,7 @@ musiclib_example.dsv                 # Example database (for testing)
 
 **Desktop Integration** (`/usr/share/`):
 ```
-/usr/share/applications/org.musiclib.musiclib-qt.desktop
+/usr/share/applications/org.musiclib.musiclib.desktop
 /usr/share/kservices5/musiclib-dolphin.desktop    # Or kio/servicemenus/
 ```
 
@@ -569,7 +569,7 @@ if (code == 1) {
 
 **Behavior**:
 - **Tooltip**: `"Artist – Title ★★★★☆"`
-- **Left-click**: Open `musiclib-qt` to Maintenance Panel
+- **Left-click**: Open `musiclib` to Maintenance Panel
 - **Right-click menu**:
   - Quick Rate → 0–5 stars (submenu)
   - Open Library
@@ -610,7 +610,7 @@ for (int i = 0; i <= 5; ++i) {
 KGlobalAccel* globalAccel = KGlobalAccel::self();
 for (int i = 0; i <= 5; ++i) {
     QAction* rateAction = new QAction(QString("Rate %1 Stars").arg(i), this);
-    rateAction->setProperty("componentName", "musiclib-qt");
+    rateAction->setProperty("componentName", "musiclib");
     rateAction->setProperty("componentDisplayName", "MusicLib");
     globalAccel->setGlobalShortcut(rateAction, 
         QKeySequence(QString("Meta+%1").arg(i)));
@@ -926,7 +926,7 @@ void TestLibraryModel::testDSVParsing() {
 **Proposed Architecture**:
 ```
 ┌─────────────────────────────────────────┐
-│  musiclib-qt & musiclib-cli             │
+│  musiclib & musiclib-cli             │
 ├─────────────────────────────────────────┤
 │  Link against libmusiclib.so            │
 └─────────────┬───────────────────────────┘
