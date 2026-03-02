@@ -1293,6 +1293,14 @@ case "$COMMAND" in
         ;;
 
     cleanup)
+        # Parse optional --force flag
+        CLEANUP_FORCE=0
+        for arg in "${@:2}"; do
+            if [ "$arg" = "--force" ]; then
+                CLEANUP_FORCE=1
+            fi
+        done
+
         echo "Cleaning up orphaned mobile metadata files..."
 
         if [ ! -f "$CURRENT_PLAYLIST_FILE" ]; then
@@ -1302,7 +1310,12 @@ case "$COMMAND" in
 
         current=$(cat "$CURRENT_PLAYLIST_FILE")
         echo "Current playlist: $current"
-        echo "Keeping: ${current}.meta, ${current}.tracks, and any .pending_tracks/.failed files"
+        if [ "$CLEANUP_FORCE" -eq 1 ]; then
+            echo "Keeping: ${current}.meta, ${current}.tracks, and any .pending_tracks/.failed files"
+            echo "Force mode: recovery files for old playlists will also be removed"
+        else
+            echo "Keeping: ${current}.meta, ${current}.tracks, and any .pending_tracks/.failed files"
+        fi
         echo ""
 
         removed=0
@@ -1312,16 +1325,29 @@ case "$COMMAND" in
                 # Skip current playlist files
                 if [[ "$file_basename" != "${current}.meta" ]] && [[ "$file_basename" != "${current}.tracks" ]]; then
                     # Check if there's a corresponding .pending_tracks or .failed
-                    # If so, don't remove — the metadata is needed for retry
+                    # Unless --force is set, don't remove — the metadata is needed for retry
                     local_pl_name="${file_basename%.meta}"
                     local_pl_name="${local_pl_name%.tracks}"
-                    if [ -f "$MOBILE_DIR/${local_pl_name}.pending_tracks" ] || [ -f "$MOBILE_DIR/${local_pl_name}.failed" ]; then
+                    if [ "$CLEANUP_FORCE" -eq 0 ] && { [ -f "$MOBILE_DIR/${local_pl_name}.pending_tracks" ] || [ -f "$MOBILE_DIR/${local_pl_name}.failed" ]; }; then
                         echo "Keeping: $file_basename (has recovery files)"
                         continue
                     fi
                     echo "Removing: $file_basename"
                     rm -f "$file"
                     removed=$((removed + 1))
+                    # In force mode, also remove any recovery files for this playlist
+                    if [ "$CLEANUP_FORCE" -eq 1 ]; then
+                        if [ -f "$MOBILE_DIR/${local_pl_name}.pending_tracks" ]; then
+                            echo "Removing: ${local_pl_name}.pending_tracks (recovery)"
+                            rm -f "$MOBILE_DIR/${local_pl_name}.pending_tracks"
+                            removed=$((removed + 1))
+                        fi
+                        if [ -f "$MOBILE_DIR/${local_pl_name}.failed" ]; then
+                            echo "Removing: ${local_pl_name}.failed (recovery)"
+                            rm -f "$MOBILE_DIR/${local_pl_name}.failed"
+                            removed=$((removed + 1))
+                        fi
+                    fi
                 fi
             fi
         done

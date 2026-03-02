@@ -228,11 +228,19 @@ QWidget* MobilePanel::createActionButtons()
            "Preserves current playlist and any playlists with recovery files."));
     connect(m_cleanupBtn, &QPushButton::clicked, this, &MobilePanel::startCleanup);
 
+    m_cleanupForceCheck = new QCheckBox(tr("Clear recovery files"));
+    m_cleanupForceCheck->setChecked(false);
+    m_cleanupForceCheck->setToolTip(
+        tr("When checked, also removes recovery files (.pending_tracks / .failed)\n"
+           "for old playlists instead of keeping them for retry.\n"
+           "Use this to fully discard a previous playlist and its error state."));
+
     layout->addWidget(m_previewBtn);
     layout->addWidget(m_uploadBtn);
     layout->addWidget(m_retryBtn);
     layout->addStretch();
     layout->addWidget(m_updateLastPlayedBtn);
+    layout->addWidget(m_cleanupForceCheck);
     layout->addWidget(m_cleanupBtn);
 
     return widget;
@@ -1112,9 +1120,13 @@ void MobilePanel::startCleanup()
         }
     });
 
+    QStringList cleanupArgs = {QStringLiteral("cleanup")};
+    if (m_cleanupForceCheck->isChecked())
+        cleanupArgs << QStringLiteral("--force");
+
     startScriptProcess(m_operationProcess,
                        QStringLiteral("musiclib_mobile.sh"),
-                       {QStringLiteral("cleanup")});
+                       cleanupArgs);
 }
 
 void MobilePanel::onCleanupFinished(int exitCode, QProcess::ExitStatus /*exitStatus*/)
@@ -1218,6 +1230,7 @@ void MobilePanel::setOperationInProgress(bool busy)
     m_retryBtn->setEnabled(!busy && m_retryBtn->isVisible());
     m_updateLastPlayedBtn->setEnabled(!busy);
     m_cleanupBtn->setEnabled(!busy);
+    m_cleanupForceCheck->setEnabled(!busy);
     m_refreshAudaciousBtn->setEnabled(!busy);
     m_playlistCombo->setEnabled(!busy);
     m_deviceCombo->setEnabled(!busy);

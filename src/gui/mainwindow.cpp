@@ -210,15 +210,18 @@ void MainWindow::setupConfWriter()
         QString xdgData = QDir::homePath()
             + QStringLiteral("/.local/share/musiclib");
 
-        if (m_musicDisplayDir.contains(QLatin1Char('$'))) {
+        if (m_musicDisplayDir.isEmpty()
+            || m_musicDisplayDir.contains(QLatin1Char('$'))) {
             m_musicDisplayDir = xdgData
                 + QStringLiteral("/data/conky_output");
         }
-        if (m_databasePath.contains(QLatin1Char('$'))) {
+        if (m_databasePath.isEmpty()
+            || m_databasePath.contains(QLatin1Char('$'))) {
             m_databasePath = xdgData
                 + QStringLiteral("/data/musiclib.dsv");
         }
-        if (m_playlistsDir.contains(QLatin1Char('$'))) {
+        if (m_playlistsDir.isEmpty()
+            || m_playlistsDir.contains(QLatin1Char('$'))) {
             m_playlistsDir = xdgData + QStringLiteral("/playlists");
         }
         // m_mobileDir fallback AFTER m_playlistsDir is fully resolved

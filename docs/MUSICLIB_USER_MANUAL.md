@@ -18,8 +18,9 @@
 8. [Desktop Integration](#desktop-integration)
 9. [Command-Line Reference](#command-line-reference)
 10. [Standalone Utilities](#standalone-utilities)
-11. [Troubleshooting](#troubleshooting)
-12. [Tips & Tricks](#tips--tricks)
+11. [FAQ](#frequently-asked-questions)
+12. [Troubleshooting](#troubleshooting)
+13. [Tips & Tricks](#tips--tricks)
 
 ---
 
@@ -335,6 +336,17 @@ When you rate a song, MusicLib:
 
 This means your ratings are preserved in the files themselves, not just in the database.
 
+#### Rating Default Values (POPM)
+
+POPM (Popularimeter) is the ID3v2 frame used to store ratings. The default POPM ranges below align with the star rating/POPM values and ranges used by Kid3, Windows Media Player, and Winamp
+
+#### Rating Group Number = Low POPM,High POPM
+- RatingGroup1="1,32"
+- RatingGroup2="33,96"
+- RatingGroup3="97,160"
+- RatingGroup4="161,228"
+- RatingGroup5="229,255"
+
 ### Mobile Sync Workflow
 
 Mobile sync is a two-phase operation:
@@ -353,14 +365,12 @@ MusicLib tracks when you listen to music in two ways:
 
 ---
 
-## Using the GUI
-
 ### Main Window
 
 The MusicLib GUI has three main areas:
 
 1. **Library View** (default main panel) — Browse and filter your music collection
-2. **Toolbar with Now Playing Strip** (top) — See what's currently playing in Audacious, rate the current track, access Audacious and Kid3
+2. **Toolbar** (top) — Now Playing with star rating (click to change), Album View, Playlists, Audacious, Kid3, and Dolphin folder
 3. **Side Panel** (left) — Access different features via tabs
 
 ### Library View
@@ -416,7 +426,7 @@ Ratings appear instantly and are saved to both the database and the audio file t
 
 ---
 
-## Common Tasks
+## Library Management Tasks
 
 ### Importing New Music
 
@@ -425,14 +435,15 @@ When you download new music:
 1. Open the **Maintenance Panel**
 2. Find the **Add New Tracks** frame
 3. Enter the artist name 
-4. Setting/changing the directory used for placing new tracks with this task is done via the Settings menu.
-5. Always review/edit the new track info in kid3 to ensure artist/album name consistency before proceeding
-6. Click **Execute**
+4. Setting/changing the download directory used for staging new tracks for your library is done via the Settings menu
+5. Stage only one artist, one album at a time
+6. Always review/edit the new track info in kid3 to ensure artist/album name consistency before proceeding
+7. Click **Execute**
 
 MusicLib will:
 - Normalize the file tags
 - Rename files, artist directory, album directory to lowercase with underscores
-- Move files to your music repository under `artist/album/`
+- Move files from your downloads folder to your music repository under `artist/album/`
 - Add the new tracks to the database
 
 ### Rebuilding the Database
@@ -444,7 +455,7 @@ If you need to rebuild the database, it is preferred to run `musiclib-cli build`
 3. Optionally use **Dry Run** to preview changes
 4. Click **Execute**
 
-This scans your entire music repository and rebuilds `musiclib.dsv`. Your existing ratings are preserved where paths match.
+This scans your entire music repository and rebuilds `musiclib.dsv`. Your existing ratings are preserved where paths match. This can take a long time, particualrly for large collections.
 
 ### Cleaning Tags
 
@@ -507,24 +518,27 @@ Before you can sync to mobile:
 ### Uploading a Playlist
 
 1. Create a playlist in Audacious with the tracks you want on your phone
-2. Open the KDE Connect App on your mobile device and ensure it is paired
+2. Open the KDE Connect App on your desktop and mobile device and ensure they are paired
 3. Open the **Mobile Panel** in MusicLib
-4. Select the playlist from the dropdown
+4. If you have non-Audacious playlists, it is simple to import them using Audacious; then from the Mobile Panel, you can click "Refresh from Audacious" to import them into Musiclib
+5. Select the playlist from the dropdown
 5. Select your device
 6. Click **Upload**
 
 MusicLib will:
 - Process the previous playlist's last-played data (if any)
-- Copy the current version of the selected playlist from Audacious to MusicLib unless specified
-- Convert the playlist to `.m3u` format
+- Copy the current version of the selected playlist from Audacious to MusicLib unless you specify otherwise
+- Convert the playlist to `.m3u` format. 
 - Send all music files to your device
 - Record the upload timestamp
 
 ### Understanding Last-Played Accounting
 
-When you upload a *new* playlist, MusicLib looks at the *previous* playlist and asks: "How long was that on the phone?" The time between uploads becomes the "accounting window."
+When you upload a *new* playlist to a mobile device, MusicLib looks at the *previous* playlist, its upload date, and asks: "How long was that on the phone?" The time between uploads becomes the "accounting window."
 
-MusicLib then distributes synthetic timestamps across the tracks in the old playlist using an exponential distribution (front-loaded—tracks at the beginning get more recent timestamps). This gives you approximate playback history for tracks played on mobile. Playlist tracks played from Audacious within the accounting window are logged already so they are not assigned synthetic timestamps. Loggings errors are normal for tracks moved or deleted from the database during the accounting window.
+MusicLib then distributes synthetic timestamps across the tracks in the old playlist using an exponential distribution (tracks at the beginning get earlier timestamps, and tracks that follow them get later timestamps all within the accounting window). This gives you approximate playback history for tracks played on mobile. Playlist tracks played with Audacious from your desktop during the accounting window are logged separately. Those are not assigned synthetic timestamps. 
+
+Log errors are normal if you move or delete associated tracks, or their database entries, during the accounting window.
 
 ### iOS Limitations
 
@@ -559,11 +573,20 @@ The core functionality (uploading playlists, last-played accounting) works the s
 
 ### System Tray
 
-MusicLib runs in the system tray. Right-click the icon for quick actions:
-- **Show Window** — Open the main interface
+MusicLib runs in the system tray. Hovering over it displays the track and rating info
+
+Right-click the icon for quick actions:
+- **Library**— Open MusicLib with the Library Panel
+- **Maintenance**— Open MusicLib with the Maintenance Panel
+- **Mobile**— Open MusicLib with the Mobile Panel
+- **Settings**— Open MusicLib with the Settings Window
+- **Quit**— Close MusicLib, including the System Tray instance
+
+Left-click the icon for quick actions:
 - **Rate Current Track** — Quick rating menu
-- **Mobile Upload** — Fast playlist upload
-- **Quit** — Close MusicLib
+- **Edit in Kid3** — Edit the currently playing track's tag in Kid3
+- **Copy Filepath** — Copy to clipboard currently playing filepath for console use
+- **Library Record** — Open MusicLib with the Artist/Album Window for currently playing track
 
 ### Dolphin Context Menu
 
@@ -584,17 +607,17 @@ These work system-wide without focusing the MusicLib window.
 
 ### Conky Integration
 
-MusicLib generates output files for Conky desktop widgets:
+MusicLib generates output files with music data and images for use with a Conky desktop panel or other panel/widget:
 
 **Output directory**: `~/.local/share/musiclib/data/conky_output/`
 
 **Files generated**:
-- `detail.txt` — Artist, album, title
+- `detail.txt` — Artist or album summary
 - `starrating.png` — Visual star rating image
 - `artloc.txt` — Path to album art
-- Album art images (copied for display)
+- `folder.jpg` — Album art image 
 
-Add these to your `.conkyrc` to display now-playing information on your desktop.
+Add the paths to your `.conkyrc` to display now-playing information on your desktop or use them other display purposes.
 
 ---
 
@@ -624,12 +647,11 @@ musiclib-cli setup [--force]
 - `--force` — Overwrite existing configuration
 
 **What it does**:
-- Detects Audacious installation
+- Detects Audacious installation and configures its integration
 - Scans for music directories
 - Creates XDG directory structure
 - Detects optional dependencies (RSGain, Kid3 GUI)
 - Generates configuration file
-- Provides Audacious Song Change plugin setup instructions
 - Optionally builds initial database
 
 **Example**:
@@ -672,8 +694,8 @@ musiclib-cli rate 5
 **What changes**:
 - Updates database (`musiclib.dsv`)
 - Writes POPM tag to file
-- Updates Grouping/Work tag
-- Regenerates Conky star rating image
+- Updates Grouping/Work tag (0-5)
+- Regenerates star rating image
 
 ---
 
@@ -746,13 +768,13 @@ musiclib-cli new-tracks --help|-h|help
 ```
 
 **Arguments**:
-- `artist_name` — Artist name for folder organization (optional — prompts interactively if omitted). Normalized to lowercase with underscores.
+- `artist_name` — Artist name to use for folder organization (optional — prompts interactively if omitted). Normalized to lowercase with underscores.
 
 **Options**:
 - `--help, -h, help` — Display help message and exit
 
 **What it does**:
-1. Extracts any ZIP archives found in the download directory (automatic)
+1. Extracts any ZIP archive found in the download directory (automatic)
 2. Pauses to let you edit tags in kid3-qt — **check the Album tag**, since it determines the destination folder name
 3. Normalizes MP3 filenames from their ID3 tags (lowercase, underscores)
 4. Standardizes volume levels with `rsgain` (if installed)
@@ -800,7 +822,7 @@ musiclib-cli mobile upload <playlist.audpl> [device_id] [options]
 
 **Options**:
 - `--end-time "MM/DD/YYYY HH:MM:SS"` — Override the accounting window end time (default: now)
-- `--non-interactive` — Skip interactive prompts; auto-refreshes newer Audacious playlists without asking (used by the GUI)
+- `--non-interactive` — Skip interactive prompts; auto-refreshes Musiclib playlists with any newer Audacious playlists or modified versions without asking (used by the GUI)
 
 **What it does**:
 1. **Accounting**: Processes the previous playlist's last-played data before replacing it
@@ -1320,6 +1342,58 @@ After the script completes, re-run `musiclib-cli setup`.
 
 ---
 
+## Frequently Asked Questions
+
+**Q: Do I need Arch Linux to use MusicLib?**  
+A: No. MusicLib works on any Linux distribution with KDE Plasma 6 — Fedora, Ubuntu, openSUSE, Debian, etc.
+
+**Q: Does MusicLib replace my music player?**  
+A: No. It works alongside Audacious. You play music in Audacious; MusicLib manages everything else.
+
+**Q: Can I use MusicLib with Spotify?**  
+A: Not yet. MusicLib is for local files only.
+
+**Q: Why do I have to use Audacious?**  
+A: MusicLib uses Audacious for two reasons:
+
+**1. Rich Data Access via audtool**: `audtool` provides programmatic access that no other Linux player offers, allowing MusicLib to track with precision, detect changes immediately, and automate complex operations.
+
+**2. Superior Sound Quality**: Audacious offers direct ALSA output (bypasses PulseAudio resampling), floating-point processing, and minimal DSP for bit-perfect audio.
+
+**How MusicLib Complements Audacious**: While Audacious excels at playback, MusicLib fills critical gaps in library management, ratings & organization, last-played tracking, and deep KDE integration.
+
+**Q: What if I don't have an Android phone?**  
+A: All core features (organizing, rating, syncing within Linux) still work. If you have an iPhone, MusicLib supports iOS too via KDE Connect.
+
+**Q: Can I use MusicLib with both Android and iOS devices?**  
+A: Yes! MusicLib works with both. See the "Mobile Sync with Android" section for setup.
+
+**Q: Are there differences between Android and iOS syncing?**  
+A: Yes, due to Apple's restrictions. iOS has limited playback tracking and file access, and transfers may be slower.
+
+**Q: Can multiple people share one library?**  
+A: Not yet. Each computer needs its own MusicLib instance.
+
+**Q: Do I lose my ratings if I delete MusicLib?**  
+A: No. Ratings are saved in the song files themselves (POPM tag). You can import them into another library tool.
+
+**Q: How much disk space does MusicLib use?**  
+A: Very little. The database is text-based and typically <5MB even for huge libraries.
+
+**Q: Is my listening history private?**  
+A: Yes. Everything stays on your devices. Nothing is sent to the internet.
+
+**Q: What if rsgain isn't available for my distro?**  
+A: You can skip it. MusicLib works fine without rsgain — the Boost Album feature just won't be available.
+
+**Q: Can I edit the database file directly?**  
+A: Technically yes (it's plain text), but it's not recommended. Use the GUI or CLI instead to avoid corruption.
+
+**Q: What happens if I move my music files?**  
+A: The database stores absolute paths. If you move files, run `musiclib-cli build` to rebuild the database with new paths. Ratings will be preserved where filenames match.
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
@@ -1481,58 +1555,6 @@ done
 - **LUFS** — Loudness Units relative to Full Scale (audio loudness measurement)
 - **ReplayGain** — Audio normalization standard that adjusts volume without affecting quality
 - **XDG** — XDG Base Directory Specification (Linux standard for config/data locations)
-
----
-
-## Frequently Asked Questions
-
-**Q: Do I need Arch Linux to use MusicLib?**  
-A: No. MusicLib works on any Linux distribution with KDE Plasma 6 — Fedora, Ubuntu, openSUSE, Debian, etc.
-
-**Q: Does MusicLib replace my music player?**  
-A: No. It works alongside Audacious. You play music in Audacious; MusicLib manages everything else.
-
-**Q: Can I use MusicLib with Spotify?**  
-A: Not yet. MusicLib is for local files only.
-
-**Q: Why do I have to use Audacious?**  
-A: MusicLib uses Audacious for two reasons:
-
-**1. Rich Data Access via audtool**: `audtool` provides programmatic access that no other Linux player offers, allowing MusicLib to track with precision, detect changes immediately, and automate complex operations.
-
-**2. Superior Sound Quality**: Audacious offers direct ALSA output (bypasses PulseAudio resampling), floating-point processing, and minimal DSP for bit-perfect audio.
-
-**How MusicLib Complements Audacious**: While Audacious excels at playback, MusicLib fills critical gaps in library management, ratings & organization, last-played tracking, and deep KDE integration.
-
-**Q: What if I don't have an Android phone?**  
-A: All core features (organizing, rating, syncing within Linux) still work. If you have an iPhone, MusicLib supports iOS too via KDE Connect.
-
-**Q: Can I use MusicLib with both Android and iOS devices?**  
-A: Yes! MusicLib works with both. See the "Mobile Sync with Android" section for setup.
-
-**Q: Are there differences between Android and iOS syncing?**  
-A: Yes, due to Apple's restrictions. iOS has limited playback tracking and file access, and transfers may be slower.
-
-**Q: Can multiple people share one library?**  
-A: Not yet. Each computer needs its own MusicLib instance.
-
-**Q: Do I lose my ratings if I delete MusicLib?**  
-A: No. Ratings are saved in the song files themselves (POPM tag). You can import them into another library tool.
-
-**Q: How much disk space does MusicLib use?**  
-A: Very little. The database is text-based and typically <5MB even for huge libraries.
-
-**Q: Is my listening history private?**  
-A: Yes. Everything stays on your devices. Nothing is sent to the internet.
-
-**Q: What if rsgain isn't available for my distro?**  
-A: You can skip it. MusicLib works fine without rsgain — the Boost Album feature just won't be available.
-
-**Q: Can I edit the database file directly?**  
-A: Technically yes (it's plain text), but it's not recommended. Use the GUI or CLI instead to avoid corruption.
-
-**Q: What happens if I move my music files?**  
-A: The database stores absolute paths. If you move files, run `musiclib-cli build` to rebuild the database with new paths. Ratings will be preserved where filenames match.
 
 ---
 

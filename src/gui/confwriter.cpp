@@ -70,7 +70,52 @@ QString ConfWriter::filePath() const
 
 bool ConfWriter::loadFromDefaultLocation()
 {
-    return loadFromFile(locateConfigFile());
+    // Two-pass loading: system config provides base defaults; user config
+    // overrides.  m_filePath and m_rawLines always point to the user file
+    // so that save() writes back to the right place.
+
+    // ── Pass 1: system-wide defaults ──
+    // This file defines all the path variables (MUSICDB, MUSIC_DISPLAY_DIR,
+    // etc.) that the user config intentionally leaves out.  Values here
+    // contain unresolved shell variables like $MUSICLIB_XDG_DATA; the
+    // fallback logic in setupConfWriter() converts them to absolute paths.
+    const QString systemConfig =
+        QStringLiteral("/usr/lib/musiclib/config/musiclib.conf");
+    if (QFile::exists(systemConfig)) {
+        QFile sysFile(systemConfig);
+        if (sysFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream sysStream(&sysFile);
+            while (!sysStream.atEnd()) {
+                QString line = sysStream.readLine();
+                QString key, val;
+                if (parseLine(line, key, val))
+                    m_values[key] = val;
+            }
+            sysFile.close();
+        }
+    }
+
+    // ── Pass 2: user config (overrides system defaults) ──
+    // m_filePath / m_rawLines target this file so save() rewrites it.
+    m_filePath = locateConfigFile();
+    m_rawLines.clear();
+
+    QFile userFile(m_filePath);
+    if (!userFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // No user config yet — system defaults alone are sufficient.
+        return !m_values.isEmpty();
+    }
+
+    QTextStream stream(&userFile);
+    while (!stream.atEnd()) {
+        QString line = stream.readLine();
+        m_rawLines.append(line);
+        QString key, val;
+        if (parseLine(line, key, val))
+            m_values[key] = val;   // user value wins over system default
+    }
+    userFile.close();
+    return true;
 }
 
 bool ConfWriter::loadFromFile(const QString &filePath)

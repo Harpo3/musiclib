@@ -198,6 +198,7 @@ private:
     QPushButton *m_retryBtn;
     QPushButton *m_updateLastPlayedBtn;
     QPushButton *m_cleanupBtn;
+    QCheckBox   *m_cleanupForceCheck;
 
     // --- Preview section widgets ---
     QGroupBox    *m_previewGroup;
