@@ -168,6 +168,17 @@ QGroupBox* MobilePanel::createOptionsSection()
     m_haltIfNewerCheck->setChecked(false);
     layout->addWidget(m_haltIfNewerCheck);
 
+    // Skip-accounting checkbox
+    m_skipAccountingCheck = new QCheckBox(
+        tr("Don't log previous playlist (skip accounting)"));
+    m_skipAccountingCheck->setToolTip(
+        tr("When checked, the previous playlist's last-played data will NOT be\n"
+           "written to the database on upload. Use this when you are swapping\n"
+           "to a different playlist before playing it, or after only a few\n"
+           "tracks and don't want that partial session recorded."));
+    m_skipAccountingCheck->setChecked(false);
+    layout->addWidget(m_skipAccountingCheck);
+
     // End-time override
     auto *endTimeRow = new QHBoxLayout;
     m_endTimeCheck = new QCheckBox(tr("Override accounting end time:"));
@@ -187,6 +198,42 @@ QGroupBox* MobilePanel::createOptionsSection()
     endTimeRow->addWidget(m_endTimeCheck);
     endTimeRow->addWidget(m_endTimeEdit, 1);
     layout->addLayout(endTimeRow);
+
+    // End-track override
+    auto *endTrackRow = new QHBoxLayout;
+    m_endTrackCheck = new QCheckBox(tr("End previous playlist at track:"));
+    m_endTrackCheck->setToolTip(
+        tr("When checked, only the first N tracks of the previous playlist\n"
+           "are logged. Rows after N are removed from the .tracks file so\n"
+           "that synthetic timestamps are only assigned up to that point.\n"
+           "Use this when you stopped the playlist early and want to avoid\n"
+           "logging tracks you never reached."));
+    m_endTrackCheck->setChecked(false);
+
+    m_endTrackSpin = new QSpinBox;
+    m_endTrackSpin->setMinimum(1);
+    m_endTrackSpin->setMaximum(9999);
+    m_endTrackSpin->setValue(1);
+    m_endTrackSpin->setEnabled(false);
+    m_endTrackSpin->setToolTip(tr("Track number to end at (inclusive). "
+                                  "Tracks after this position will not be logged."));
+
+    connect(m_endTrackCheck, &QCheckBox::toggled,
+            m_endTrackSpin, &QSpinBox::setEnabled);
+
+    endTrackRow->addWidget(m_endTrackCheck);
+    endTrackRow->addWidget(m_endTrackSpin);
+    endTrackRow->addStretch(1);
+    layout->addLayout(endTrackRow);
+
+    // When skip-accounting is on, all accounting-related options are irrelevant — grey them out.
+    connect(m_skipAccountingCheck, &QCheckBox::toggled, this,
+            [this](bool skip) {
+                m_endTimeCheck->setEnabled(!skip);
+                m_endTimeEdit->setEnabled(!skip && m_endTimeCheck->isChecked());
+                m_endTrackCheck->setEnabled(!skip);
+                m_endTrackSpin->setEnabled(!skip && m_endTrackCheck->isChecked());
+            });
 
     return group;
 }
@@ -871,10 +918,20 @@ void MobilePanel::executeUpload()
 
     args << QStringLiteral("--non-interactive");
 
-    // End-time override
-    if (m_endTimeCheck->isChecked()) {
+    // Skip-accounting opt-out
+    if (m_skipAccountingCheck->isChecked())
+        args << QStringLiteral("--skip-accounting");
+
+    // End-time override (only meaningful when accounting is not skipped)
+    if (!m_skipAccountingCheck->isChecked() && m_endTimeCheck->isChecked()) {
         args << QStringLiteral("--end-time");
         args << m_endTimeEdit->dateTime().toString(QStringLiteral("MM/dd/yyyy HH:mm:ss"));
+    }
+
+    // End-track override (only meaningful when accounting is not skipped)
+    if (!m_skipAccountingCheck->isChecked() && m_endTrackCheck->isChecked()) {
+        args << QStringLiteral("--end-track");
+        args << QString::number(m_endTrackSpin->value());
     }
 
     // Create/reuse upload process (separate from m_operationProcess since
@@ -1067,6 +1124,11 @@ void MobilePanel::startUpdateLastPlayed()
     if (m_endTimeCheck->isChecked()) {
         args << QStringLiteral("--end-time");
         args << m_endTimeEdit->dateTime().toString(QStringLiteral("MM/dd/yyyy HH:mm:ss"));
+    }
+
+    if (m_endTrackCheck->isChecked()) {
+        args << QStringLiteral("--end-track");
+        args << QString::number(m_endTrackSpin->value());
     }
 
     startScriptProcess(m_operationProcess,

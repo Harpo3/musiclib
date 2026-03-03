@@ -2,8 +2,8 @@
 #
 # musiclib_mobile.sh - Mobile playlist management and last-played tracking
 #
-# Usage: musiclib-cli mobile upload <playlist.audpl> [device_id] [--non-interactive] [--end-time "MM/DD/YYYY HH:MM:SS"]
-#        musiclib-cli mobile update-lastplayed <playlist_name> [--end-time "MM/DD/YYYY HH:MM:SS"]
+# Usage: musiclib-cli mobile upload <playlist.audpl> [device_id] [--non-interactive] [--end-time "MM/DD/YYYY HH:MM:SS"] [--end-track N]
+#        musiclib-cli mobile update-lastplayed <playlist_name> [--end-time "MM/DD/YYYY HH:MM:SS"] [--end-track N]
 #        musiclib-cli mobile retry <playlist_name>
 #        musiclib-cli mobile refresh-audacious-only
 #        musiclib-cli mobile status
@@ -63,6 +63,8 @@ AUDACIOUS_PLAYLISTS_DIR="${AUDACIOUS_PLAYLISTS_DIR:-$HOME/.config/audacious/play
 #############################################
 NON_INTERACTIVE=false
 END_TIME_OVERRIDE=""
+SKIP_ACCOUNTING=false
+END_TRACK=0          # 0 = no truncation; >0 = log only first N tracks of old playlist
 
 #############################################
 # Mobile-specific logging
@@ -393,6 +395,17 @@ process_previous_playlist() {
     local updated=0
     local skipped_desktop=0
     local failed_count=0
+
+    # Truncate the track list if --end-track was specified
+    if [ "$END_TRACK" -gt 0 ] && [ "$END_TRACK" -lt "$total_tracks" ]; then
+        echo "ACCOUNTING: Truncating previous playlist to first $END_TRACK of $total_tracks tracks"
+        mobile_log "INFO" "TRUNCATE" "Truncating ${prev_playlist}.tracks from $total_tracks to $END_TRACK"
+        local temp_truncated
+        temp_truncated=$(mktemp)
+        head -n "$END_TRACK" "$prev_tracks" > "$temp_truncated"
+        mv "$temp_truncated" "$prev_tracks"
+        total_tracks=$END_TRACK
+    fi
 
     # Prepare recovery files (write to temp, move on completion)
     local pending_file="$MOBILE_DIR/${prev_playlist}.pending_tracks"
@@ -989,11 +1002,16 @@ upload_playlist() {
     # PHASE A: Accounting (device-independent)
     # =========================================
     local accounting_result=0
-    process_previous_playlist "$pl_basename" "$end_epoch" || accounting_result=$?
+    if [ "$SKIP_ACCOUNTING" = true ]; then
+        echo "ACCOUNTING: Skipped — previous playlist not logged (--skip-accounting)"
+        mobile_log "INFO" "SKIP_ACCOUNTING" "User opted out of logging previous playlist"
+    else
+        process_previous_playlist "$pl_basename" "$end_epoch" || accounting_result=$?
 
-    if [ "$accounting_result" -eq 2 ]; then
-        # System error in accounting — abort
-        exit 2
+        if [ "$accounting_result" -eq 2 ]; then
+            # System error in accounting — abort
+            exit 2
+        fi
     fi
 
     # Phase A partial failure (exit 1) is non-blocking for Phase B.
@@ -1077,6 +1095,14 @@ Options:
   --end-time "MM/DD/YYYY HH:MM:SS"
                         Override the completion timestamp for the previous
                         playlist (default: now).
+  --skip-accounting     Do not log last-played data for the previous playlist.
+                        Use when you are switching playlists before playing
+                        (or after only a few tracks) and do not want the old
+                        playlist's accounting window written to the database.
+  --end-track N         Truncate the previous playlist's track list to the
+                        first N tracks before logging. Rows after N are removed
+                        from the .tracks file so synthetic timestamps are only
+                        assigned to those N tracks. No-op if N >= total tracks.
 
 Examples:
   musiclib_mobile.sh upload ~/music/workout.audpl
@@ -1113,6 +1139,18 @@ parse_global_flags() {
                     exit 1
                 fi
                 END_TIME_OVERRIDE="$2"
+                shift 2
+                ;;
+            --skip-accounting)
+                SKIP_ACCOUNTING=true
+                shift
+                ;;
+            --end-track)
+                if [ $# -lt 2 ]; then
+                    error_exit 1 "Missing value for --end-track"
+                    exit 1
+                fi
+                END_TRACK="$2"
                 shift 2
                 ;;
             *)

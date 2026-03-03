@@ -23,6 +23,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QDateTimeEdit>
+#include <QSpinBox>
 #include <QGroupBox>
 #include <QLabel>
 #include <QProgressBar>
@@ -189,8 +190,11 @@ private:
 
     // --- Options section widgets ---
     QCheckBox    *m_haltIfNewerCheck;
+    QCheckBox    *m_skipAccountingCheck;
     QCheckBox    *m_endTimeCheck;
     QDateTimeEdit *m_endTimeEdit;
+    QCheckBox    *m_endTrackCheck;
+    QSpinBox     *m_endTrackSpin;
 
     // --- Action buttons ---
     QPushButton *m_previewBtn;

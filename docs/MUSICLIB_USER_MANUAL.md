@@ -317,7 +317,7 @@ Once installed and setup step completed, you can launch MusicLib from:
 
 - **Application menu** → Search "MusicLib"
 - **Command line**: `musiclib`
-- **System tray** (appears after first launch)
+- **System tray** Go to GUI → Settings →  Advanced → GUI Behavior to set system tray behavior
 
 ---
 
@@ -327,7 +327,7 @@ If you've just finished setup, here's how to get up and running in your first se
 
 ### Step 1: Import Your Existing Music
 
-If your music files are already organized on disk, MusicLib can scan them and build a database in one step. Open a terminal and run:
+If your music files are already organized on disk, During setup, you choose to have MusicLib scan them and build a database in one step. If you skipped that step, all you need to do is open a terminal and run:
 
 ```bash
 musiclib-cli build
@@ -347,7 +347,7 @@ If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE Syst
 
 ### Step 3: Import a New Album
 
-When you download new music, use the **Add New Tracks** workflow rather than dropping files into your folder manually — this ensures filenames are normalized and the database stays in sync.
+**IMPORTANT:** When you download new music, use the **Add New Tracks** workflow rather than dropping files into your music library manually — this ensures filenames are normalized and the database stays in sync.
 
 Before importing, open the album in Kid3 and check that the Artist and Album tags are correct and consistently named (e.g., "Pink Floyd" not "pink floyd" or "The Pink Floyd"). MusicLib uses the Album tag to name the destination folder.
 
@@ -672,8 +672,8 @@ Left-click the icon for quick actions:
 
 Right-click any audio file in Dolphin file manager:
 
-- **Rate in MusicLib** — Set star rating
-- **Add to MusicLib** — Import the file
+- **Rate in MusicLib** — Set star rating (coming soon)
+- **Add to MusicLib** — Import the file(s) from your downloads folder (coming soon)
 - **Edit Tags with Kid3** — Open in tag editor
 
 ### Global Shortcuts
