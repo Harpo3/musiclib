@@ -129,6 +129,17 @@ MainWindow::MainWindow(QWidget *parent)
     // KXmlGuiWindow standard setup (menus, accelerators)
     setupGUI(Default, QStringLiteral("musiclibui.rc"));
 
+    // ── Hide the dead KDE-standard actions ──
+    // KXmlGuiWindow's setupGUI() creates default "MusicLib Handbook" and
+    // "Configure Toolbars…" entries that are non-functional (we have no .qch
+    // help file and our toolbar is a plain QToolBar, not a KDE-tracked KToolBar).
+    // We keep the action objects in the collection (so internal KDE look-ups
+    // still find them) but hide them from the menus.
+    if (auto *a = actionCollection()->action(QStringLiteral("help_contents")))
+        a->setVisible(false);
+    if (auto *a = actionCollection()->action(QStringLiteral("options_configure_toolbars")))
+        a->setVisible(false);
+
     // ── Inject "Configure Toolbars…" into the Settings menu ──
     // Done after setupGUI() so the KXmlGui-built Settings menu already exists.
     // We create our own action rather than using KStandardAction::configureToolbars
