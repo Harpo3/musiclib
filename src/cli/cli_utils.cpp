@@ -3,13 +3,14 @@
 
 #include "cli_utils.h"
 #include "output_streams.h"
-#include <QProcess>
 #include <QFileInfo>
 #include <QDir>
 #include <QCoreApplication>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QDebug>
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#include <vector>
+#include <string>
 
 int CLIUtils::executeScript(const QString& scriptName, const QStringList& args) {
     // Resolve script path
@@ -24,60 +25,28 @@ int CLIUtils::executeScript(const QString& scriptName, const QStringList& args) 
         return 2;
     }
     
-    // Execute script via QProcess
-    QProcess process;
-    process.setProgram(scriptPath);
-    process.setArguments(args);
-    
-    // Start process and wait for completion
-    process.start();
-    
-    if (!process.waitForStarted()) {
-        cerr << "Error: Failed to start script: " << scriptPath << Qt::endl;
-        cerr << "Reason: " << process.errorString() << Qt::endl;
-        return 2;
-    }
-    
-    if (!process.waitForFinished(-1)) {  // Wait indefinitely
-        cerr << "Error: Script execution timeout or crash" << Qt::endl;
-        return 2;
-    }
-    
-    // Capture output
-    QString stdoutData = QString::fromUtf8(process.readAllStandardOutput());
-    QString stderrData = QString::fromUtf8(process.readAllStandardError());
-    
-    int exitCode = process.exitCode();
-    
-    // Display stdout (script may have informational output)
-    if (!stdoutData.isEmpty()) {
-        cout << stdoutData;
-        if (!stdoutData.endsWith('\n')) {
-            cout << Qt::endl;
-        }
-    }
-    
-    // Handle errors (exit code != 0)
-    if (exitCode != 0) {
-        // Try to parse JSON error from stderr
-        if (!stderrData.isEmpty()) {
-            // Check if stderr looks like JSON
-            if (stderrData.trimmed().startsWith('{')) {
-                displayScriptError(stderrData);
-            } else {
-                // Not JSON, display raw stderr
-                cerr << "Script error output:" << Qt::endl;
-                cerr << stderrData;
-                if (!stderrData.endsWith('\n')) {
-                    cerr << Qt::endl;
-                }
-            }
-        } else {
-            cerr << "Script failed with exit code " << exitCode << " (no error details)" << Qt::endl;
-        }
-    }
-    
-    return exitCode;
+    // Replace this process with the script using execvp.
+    // The script inherits the real terminal's stdin/stdout/stderr directly —
+    // no pipes, no buffering, no Qt event loop in between.
+    // This is correct for a thin dispatcher: once the script is found and
+    // arguments are validated, there is nothing left for C++ to do.
+    // execvp only returns if exec itself fails (e.g. permission denied).
+    std::vector<std::string> argStorage;
+    argStorage.push_back(scriptPath.toStdString());
+    for (const QString& arg : args)
+        argStorage.push_back(arg.toStdString());
+
+    std::vector<char*> argv;
+    for (auto& s : argStorage)
+        argv.push_back(const_cast<char*>(s.c_str()));
+    argv.push_back(nullptr);
+
+    execvp(argv[0], argv.data());
+
+    // Only reached if execvp failed
+    cerr << "Error: Failed to execute script: " << scriptPath << Qt::endl;
+    cerr << "Reason: " << strerror(errno) << Qt::endl;
+    return 2;
 }
 
 QString CLIUtils::resolveScriptPath(const QString& scriptName) {
@@ -124,44 +93,6 @@ QString CLIUtils::resolveScriptPath(const QString& scriptName) {
     return QString();  // Not found
 }
 
-void CLIUtils::displayScriptError(const QString& jsonOutput) {
-    QJsonParseError parseError;
-    QJsonDocument doc = QJsonDocument::fromJson(jsonOutput.toUtf8(), &parseError);
-    
-    if (parseError.error != QJsonParseError::NoError) {
-        // JSON parsing failed, display raw output
-        cerr << "Script error (malformed JSON):" << Qt::endl;
-        cerr << jsonOutput << Qt::endl;
-        return;
-    }
-    
-    QJsonObject errorObj = doc.object();
-    
-    // Extract error fields
-    QString errorMsg = errorObj["error"].toString("Unknown error");
-    QString script = errorObj["script"].toString("unknown");
-    int code = errorObj["code"].toInt(-1);
-    QString timestamp = errorObj["timestamp"].toString();
-    
-    // Display formatted error
-    cerr << "Error: " << errorMsg << Qt::endl;
-    cerr << "Script: " << script;
-    if (code >= 0) {
-        cerr << " (exit code " << code << ")";
-    }
-    cerr << Qt::endl;
-    
-    // Display context if present
-    if (errorObj.contains("context")) {
-        QJsonObject context = errorObj["context"].toObject();
-        if (!context.isEmpty()) {
-            cerr << "Context:" << Qt::endl;
-            for (auto it = context.begin(); it != context.end(); ++it) {
-                cerr << "  " << it.key() << ": " << it.value().toString() << Qt::endl;
-            }
-        }
-    }
-}
 
 bool CLIUtils::isAudioFile(const QString& filepath) {
     QFileInfo fileInfo(filepath);
