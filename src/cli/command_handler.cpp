@@ -399,5 +399,9 @@ int CommandHandler::handleSetup(const QStringList& args) {
     // Pass all arguments directly to musiclib_init_config.sh - the script handles its own
     // argument parsing and validation.
     // Supported: [--build-db] [-h/--help]
-    return CLIUtils::executeScript("musiclib_init_config.sh", args);
+    //
+    // interactive=true: this script uses read, clear, and prompts, so it
+    // needs direct access to the terminal's stdin/stdout/stderr.
+    return CLIUtils::executeScript("musiclib_init_config.sh", args,
+                                   /*interactive=*/true);
 }

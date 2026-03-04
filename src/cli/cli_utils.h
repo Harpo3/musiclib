@@ -19,15 +19,13 @@ public:
      * @brief Execute a backend shell script with arguments
      * @param scriptName Name of script (e.g., "musiclib_rate.sh")
      * @param args Arguments to pass to script
+     * @param interactive If true, forward stdin/stdout/stderr directly to
+     *        the terminal so the script can use read, clear, prompts, etc.
+     *        If false (default), capture output and parse JSON errors.
      * @return Exit code from script (0=success, 1-3=error codes)
-     * 
-     * This function:
-     * 1. Resolves script path (checks dev paths, then install paths)
-     * 2. Replaces this process with the script via execvp
-     *    (stdin/stdout/stderr inherited from the terminal — no pipes)
-     * 3. Only returns if execvp itself fails (returns exit code 2)
      */
-    static int executeScript(const QString& scriptName, const QStringList& args);
+    static int executeScript(const QString& scriptName, const QStringList& args,
+                             bool interactive = false);
     
     /**
      * @brief Resolve full path to a backend script
@@ -41,6 +39,21 @@ public:
      * 4. ./scripts/ (fallback for direct execution)
      */
     static QString resolveScriptPath(const QString& scriptName);
+    
+    /**
+     * @brief Parse and display JSON error output from scripts
+     * @param jsonOutput JSON error string from script stderr
+     * 
+     * Expected JSON format:
+     * {
+     *   "error": "Error message",
+     *   "script": "script_name.sh",
+     *   "code": 2,
+     *   "context": { ... },
+     *   "timestamp": "ISO8601"
+     * }
+     */
+    static void displayScriptError(const QString& jsonOutput);
     
     /**
      * @brief Check if a path is a valid audio file
