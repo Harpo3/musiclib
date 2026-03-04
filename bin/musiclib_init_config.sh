@@ -38,6 +38,19 @@ if command -v audacious &>/dev/null; then
     fi
 fi
 
+# Detect optional tools
+RSGAIN_DETECTED=false
+if command -v rsgain &>/dev/null; then
+    RSGAIN_DETECTED=true
+fi
+
+KID3_GUI_DETECTED="none"
+if command -v kid3 &>/dev/null; then
+    KID3_GUI_DETECTED="kid3"
+elif command -v kid3-qt &>/dev/null; then
+    KID3_GUI_DETECTED="kid3-qt"
+fi
+
 #############################################
 # Helper Functions
 #############################################
@@ -141,21 +154,18 @@ This wizard will:
   3. Optionally configure KDE Connect device
   4. Create XDG directory structure
   5. Generate minimal user configuration
-  6. Configure Audacious Song Change integration (if installed)
+  6. Auto-detect optional tools (rsgain, kid3 GUI) and write to config
+  7. Refresh playlists from Audacious (if installed)
+  8. Configure Audacious Song Change integration (if installed)
 
 The wizard writes ONLY user-specific values to ~/.config/musiclib/musiclib.conf
 All other settings use system defaults from /usr/lib/musiclib/config/musiclib.conf
 
 Options:
   -h, --help    Show this help message
-  --build-db    Build initial database after setup
 
 EOF
             exit 0
-            ;;
-        --build-db)
-            BUILD_DB=true
-            shift
             ;;
         *)
             echo "Unknown option: $1"
@@ -164,8 +174,6 @@ EOF
             ;;
     esac
 done
-
-BUILD_DB="${BUILD_DB:-false}"
 
 #############################################
 # Welcome Banner
@@ -431,47 +439,60 @@ DEVICE_ID="$DEVICE_ID"
 EOF
 fi
 
+# Write optional dependency overrides only when detected (differ from system defaults)
+if [ "$RSGAIN_DETECTED" = true ] || [ "$KID3_GUI_DETECTED" != "none" ]; then
+    cat >> "$CONFIG_FILE" << EOF
+#############################################
+# OPTIONAL DEPENDENCIES (auto-detected by setup)
+#############################################
+
+EOF
+    if [ "$RSGAIN_DETECTED" = true ]; then
+        cat >> "$CONFIG_FILE" << 'EOF'
+# rsgain detected - Boost Album feature enabled in the GUI
+RSGAIN_INSTALLED=true
+
+EOF
+    fi
+    if [ "$KID3_GUI_DETECTED" != "none" ]; then
+        cat >> "$CONFIG_FILE" << EOF
+# kid3 GUI detected - tag editor integration enabled
+KID3_GUI_INSTALLED="$KID3_GUI_DETECTED"
+
+EOF
+    fi
+fi
+
 print_success "Configuration saved to: $CONFIG_FILE"
 echo ""
 print_info "Configuration contains only your custom settings."
 print_info "All other defaults are loaded from system configuration."
 
 #############################################
-# Build Initial Database (Optional)
+# Database Check
 #############################################
 
-if [ "$BUILD_DB" = true ]; then
-    print_header "Building initial database"
+print_header "Database Check"
 
-    DB_FILE="${DATA_DIR}/data/musiclib.dsv"
+DB_FILE="${DATA_DIR}/data/musiclib.dsv"
 
-    if [ -f "$DB_FILE" ]; then
-        print_info "Database already exists: $DB_FILE"
+if [ -f "$DB_FILE" ]; then
+    print_success "Database found"
+else
+    echo "Looks like this is a first time install - no database found at: $MUSIC_REPO"
+    echo ""
 
-        if ! prompt_yn "Rebuild database (existing data will be backed up)?" "n"; then
-            print_info "Skipped: Database rebuild"
-            BUILD_DB=false
-        fi
-    fi
-
-    if [ "$BUILD_DB" = true ]; then
-        REBUILD_SCRIPT="/usr/lib/musiclib/bin/musiclib_build.sh"
-
-        if [ -f "$REBUILD_SCRIPT" ]; then
-            print_info "Running: $REBUILD_SCRIPT"
-            echo ""
-
-            "$REBUILD_SCRIPT" "$MUSIC_REPO" || {
-                print_error "Database build failed"
-                exit 2
-            }
-
-            echo ""
-            print_success "Database build complete"
+    if prompt_yn "Build it now?" "n"; then
+        echo ""
+        if command -v musiclib-cli &>/dev/null; then
+            musiclib-cli build || print_error "Database build failed"
         else
-            print_error "Build script not found: $REBUILD_SCRIPT"
-            print_info "Install the musiclib package to access backend scripts."
+            print_error "musiclib-cli not found - install the musiclib package first"
+            print_info "When ready just run 'musiclib-cli build' in the terminal."
         fi
+    else
+        echo ""
+        print_info "When ready just run 'musiclib-cli build' in the terminal."
     fi
 fi
 
@@ -557,6 +578,40 @@ if [ "$AUDACIOUS_DETECTED" = true ]; then
 fi
 
 #############################################
+# Refresh Playlists from Audacious
+#############################################
+
+AUDACIOUS_PLAYLISTS_SRC="${HOME}/.config/audacious/playlists"
+
+if [ -d "$AUDACIOUS_PLAYLISTS_SRC" ]; then
+    print_header "Refreshing playlists from Audacious"
+
+    MOBILE_SCRIPT="/usr/lib/musiclib/bin/musiclib_mobile.sh"
+    if [ ! -f "$MOBILE_SCRIPT" ]; then
+        MOBILE_SCRIPT="$(dirname "$(readlink -f "$0")")/musiclib_mobile.sh"
+    fi
+
+    if [ ! -f "$MOBILE_SCRIPT" ]; then
+        print_info "Skipped: musiclib_mobile.sh not found"
+        print_info "Install the musiclib package and re-run setup to populate playlists."
+    else
+        print_info "Copying Audacious playlists → $DATA_DIR/playlists"
+        echo ""
+        if "$MOBILE_SCRIPT" refresh-audacious-only 2>/dev/null; then
+            echo ""
+            print_success "Playlist directory populated from Audacious"
+        else
+            echo ""
+            print_info "Playlist refresh could not complete (kdeconnect-cli may not be installed)"
+            print_info "Run manually: musiclib-cli mobile refresh-audacious-only"
+        fi
+    fi
+else
+    print_info "No Audacious playlists found at: $AUDACIOUS_PLAYLISTS_SRC"
+    print_info "Open Audacious, create playlists, then run: musiclib-cli mobile refresh-audacious-only"
+fi
+
+#############################################
 # Setup Complete
 #############################################
 
@@ -575,7 +630,6 @@ fi
 echo ""
 echo "Next steps:"
 echo "  1. Install musiclib package if not already installed"
-echo "  2. Run 'musiclib-cli build' to create/update database"
 echo ""
 echo "To customize additional settings, edit:"
 echo "  $CONFIG_FILE"

@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=MusicLib
+Comment=Manage your music library
 Exec=musiclib
 Icon=musiclib
 Terminal=false

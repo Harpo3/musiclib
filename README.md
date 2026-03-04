@@ -26,7 +26,11 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component diagrams.
 
 ## Installation
 
-### AUR Packages (Planned)
+### AUR Packages 
+
+musiclib (KDE GUI)
+musiclib-cli (console only)
+
 
 ### Manual Build
 
@@ -58,7 +62,7 @@ sudo make install
 ```bash
 musiclib-cli setup
 ```
-The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, configures Audacious Song Change, and optionally builds the initial database. Can be re-run.
+The setup wizard detects your system (Audacious, music directories, KDE Connect, Kid3, and rsgain), creates the local configuration file, configures Audacious integration, and prompts to build the library database if one is not detected. Can be re-run. 
 
 ---
 
@@ -134,16 +138,13 @@ musiclib-cli help rate
 ```bash
 MUSICDB="~/.local/share/musiclib/data/musiclib.dsv"
 MUSIC_REPO="/mnt/music"
-CONKY_OUTPUT_DIR="~/.local/share/musiclib/data/conky_output"
 DEVICE_ID="abc123def456"  # KDE Connect device (from kdeconnect-cli -l)
-DEFAULT_RATING=3
-LOCK_TIMEOUT=5
 ```
 
 **Audacious Hook** (for Conky updates):
-Configured automatically during `musiclib-cli setup`. Run Audacious at least one time before running setup so its plugins are initialized.
+Configured automatically during `musiclib-cli setup`. Run Audacious at least one time before running MusicLib setup so its plugins are initialized.
 
-**Conky Integration**:
+**Conky Integration (optional)**:
 - Point Conky config to `~/.local/share/musiclib/data/conky_output/`
 - Example: `${cat ~/.local/share/musiclib/data/conky_output/artist.txt}`
 - See `conky_example.conf` in `/usr/share/musiclib/`
