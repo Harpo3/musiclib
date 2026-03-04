@@ -494,6 +494,21 @@ QWidget *SettingsDialog::createAdvancedPage()
              "Takes effect on the next launch."));
     guiForm->addRow(m_startMinimizedCheck);
 
+    // ── Mutual exclusion: only one tray-hide mode at a time ──────────────
+    // If both "close to tray" and "minimize to tray" are active together the
+    // window never stays open after being restored from the tray, so we make
+    // them behave like a radio-button pair: checking one unchecks the other.
+    connect(m_closeToTrayCheck, &QCheckBox::toggled, this,
+            [this](bool checked) {
+                if (checked && m_minimizeToTrayCheck->isChecked())
+                    m_minimizeToTrayCheck->setChecked(false);
+            });
+    connect(m_minimizeToTrayCheck, &QCheckBox::toggled, this,
+            [this](bool checked) {
+                if (checked && m_closeToTrayCheck->isChecked())
+                    m_closeToTrayCheck->setChecked(false);
+            });
+
     layout->addWidget(guiGroup);
 
     // ── Info row ──

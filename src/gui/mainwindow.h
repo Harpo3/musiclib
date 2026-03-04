@@ -41,6 +41,10 @@ class AlbumWindow;
 // Forward declarations - settings
 class ConfWriter;
 class SettingsDialog;
+class QWidgetAction;
+
+// Brings in ToolbarItemId / ToolbarItem used by load/save/rebuild signatures
+#include "configuretoolbarsdialog.h"
 
 // Forward declaration - system tray
 class SystemTrayIcon;
@@ -113,6 +117,12 @@ public Q_SLOTS:
     /// Open the Settings dialog (KConfigDialog).
     void showSettingsDialog();
 
+    /// Open the MusicLib Handbook in a new viewer window.
+    void showHandbook();
+
+    /// Open the Configure Toolbars dialog.
+    void showConfigureToolbarsDialog();
+
 private Q_SLOTS:
     /// Sidebar selection changed
     void onSidebarItemChanged(int currentRow);
@@ -173,6 +183,17 @@ private:
     /// Build status bar text from current now-playing data
     QString buildStatusBarText() const;
 
+    /// Rebuild the configurable portion of the toolbar (everything after the
+    /// fixed separator) using the given ordered item list.
+    void rebuildToolbar(const QList<ToolbarItemId> &order);
+
+    /// Read the saved toolbar item order from KConfig.
+    /// Returns the default order if no config has been saved yet.
+    QList<ToolbarItemId> loadToolbarConfig() const;
+
+    /// Persist the toolbar item order to KConfig.
+    void saveToolbarConfig(const QList<ToolbarItemId> &order);
+
     // ── Layout widgets ──
     QListWidget    *m_sidebar;         ///< Left navigation panel
     QStackedWidget *m_panelStack;      ///< Stacked content panels
@@ -182,9 +203,22 @@ private:
     MaintenancePanel *m_maintenancePanel;   ///< Maintenance operations panel
     MobilePanel          *m_mobilePanel;        ///< Mobile sync panel
 
-    // ── Toolbar widgets ──
+    // ── Toolbar ──
+    QToolBar      *m_toolbar         = nullptr;  ///< Main toolbar
+    QAction       *m_fixedSeparator  = nullptr;  ///< Marks end of fixed section
+
+    // ── Toolbar: fixed built-in widgets (always present, not configurable) ──
     QLabel      *m_nowPlayingLabel;    ///< "Artist – Title" text in toolbar
     QToolButton *m_starButtons[6];     ///< Star rating buttons 0-5 (0 = clear)
+
+    // ── Toolbar: configurable actions (order/presence saved to KConfig) ──
+    QAction       *m_albumAction     = nullptr;
+    QWidgetAction *m_playlistAction  = nullptr;  ///< Wraps playlist label + dropdown
+    QAction       *m_audaciousAction = nullptr;
+    QAction       *m_kid3Action      = nullptr;
+    QAction       *m_dolphinAction   = nullptr;
+
+    // ── Toolbar: other widgets kept as members for live updates ──
     QComboBox   *m_playlistDropdown;   ///< Playlist selector dropdown
 
     // ── Status bar widgets ──

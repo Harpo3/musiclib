@@ -11,6 +11,7 @@
 #include "maintenancepanel.h"
 #include "scriptrunner.h"
 #include "settingsdialog.h"
+#include "configuretoolbarsdialog.h"
 #include "mobile_panel.h"
 #include "systemtrayicon.h"
 #include "musiclib.h"   // KConfigXT-generated MusicLibSettings singleton
@@ -19,6 +20,8 @@
 #include <KActionCollection>
 #include <KStandardAction>
 #include <KLocalizedString>
+#include <KSharedConfig>
+#include <KConfigGroup>
 #include <KWindowSystem>
 #include <KX11Extras>
 #include <KWindowInfo>
@@ -30,6 +33,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QWidgetAction>
 #include <QAction>
 #include <QDir>
 #include <QFile>
@@ -39,10 +43,13 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QFont>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QThread>
 #include <QDBusInterface>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QSystemTrayIcon>
 #include <QCloseEvent>
 
@@ -121,6 +128,67 @@ MainWindow::MainWindow(QWidget *parent)
 
     // KXmlGuiWindow standard setup (menus, accelerators)
     setupGUI(Default, QStringLiteral("musiclibui.rc"));
+
+    // ── Inject "Configure Toolbars…" into the Settings menu ──
+    // Done after setupGUI() so the KXmlGui-built Settings menu already exists.
+    // We create our own action rather than using KStandardAction::configureToolbars
+    // because our toolbar is a manually-managed QToolBar, not a KToolBar tracked
+    // by KXmlGui.
+    auto *configToolbarsAction = new QAction(
+        QIcon::fromTheme(QStringLiteral("configure-toolbars")),
+        i18n("Configure Toolbars…"), this);
+    connect(configToolbarsAction, &QAction::triggered,
+            this, &MainWindow::showConfigureToolbarsDialog);
+
+    // Find the Settings menu (KXmlGui names it "settings")
+    if (QMenu *settingsMenu = findChild<QMenu *>(QStringLiteral("settings"))) {
+        // Insert before the first action (i.e. at the top of the menu)
+        settingsMenu->insertAction(settingsMenu->actions().value(0), configToolbarsAction);
+        settingsMenu->insertSeparator(settingsMenu->actions().value(1));
+    } else {
+        // Fallback: scan the menu bar titles
+        for (QAction *topAction : menuBar()->actions()) {
+            if (topAction->text().remove(QLatin1Char('&'))
+                    .contains(i18n("Settings"), Qt::CaseInsensitive)) {
+                if (QMenu *menu = topAction->menu()) {
+                    menu->insertAction(menu->actions().value(0), configToolbarsAction);
+                    menu->insertSeparator(menu->actions().value(1));
+                }
+                break;
+            }
+        }
+    }
+
+    // ── Inject "MusicLib Handbook" into the Help menu ──
+    // Done AFTER setupGUI() so we can find the fully-built Help menu
+    // and insert our action directly, bypassing KXmlGui's action
+    // collection which can silently absorb standard help actions.
+    // KXmlGuiWindow may also place a dead "MusicLib Handbook" entry
+    // that relies on the Qt .qch help infrastructure — we leave it
+    // alone and simply insert our working action above it.
+    auto *handbookAction = new QAction(
+        QIcon::fromTheme(QStringLiteral("help-contents")),
+        i18n("MusicLib Handbook"), this);
+    handbookAction->setShortcut(QKeySequence::HelpContents);   // F1
+    connect(handbookAction, &QAction::triggered,
+            this, &MainWindow::showHandbook);
+
+    if (QMenu *helpMenu = findChild<QMenu *>(QStringLiteral("help"))) {
+        helpMenu->insertAction(helpMenu->actions().value(0), handbookAction);
+        helpMenu->insertSeparator(helpMenu->actions().value(1));
+    } else {
+        // Fallback: search the menu bar by title.
+        for (QAction *topAction : menuBar()->actions()) {
+            if (topAction->text().remove(QLatin1Char('&'))
+                    .contains(i18n("Help"), Qt::CaseInsensitive)) {
+                if (QMenu *menu = topAction->menu()) {
+                    menu->insertAction(menu->actions().value(0), handbookAction);
+                    menu->insertSeparator(menu->actions().value(1));
+                }
+                break;
+            }
+        }
+    }
 
     resize(950, 650);
 }
@@ -336,19 +404,19 @@ void MainWindow::setupPanels()
 
 void MainWindow::setupToolbar()
 {
-    QToolBar *toolbar = new QToolBar(i18n("Main Toolbar"), this);
-    toolbar->setObjectName(QStringLiteral("mainToolBar"));
-    toolbar->setMovable(false);
-    toolbar->setIconSize(QSize(22, 22));
-    addToolBar(Qt::TopToolBarArea, toolbar);
+    m_toolbar = new QToolBar(i18n("Main Toolbar"), this);
+    m_toolbar->setObjectName(QStringLiteral("mainToolBar"));
+    m_toolbar->setMovable(false);
+    m_toolbar->setIconSize(QSize(22, 22));
+    addToolBar(Qt::TopToolBarArea, m_toolbar);
 
-    // ── Now Playing label ──
+    // ── Fixed: Now Playing label (always present, not configurable) ──
     m_nowPlayingLabel = new QLabel(i18n("Not playing"), this);
     m_nowPlayingLabel->setStyleSheet(
         QStringLiteral("QLabel { padding: 0 8px; font-weight: bold; }"));
-    toolbar->addWidget(m_nowPlayingLabel);
+    m_toolbar->addWidget(m_nowPlayingLabel);
 
-    // ── Star rating buttons (0–5) ──
+    // ── Fixed: Star rating buttons 0–5 (always present, not configurable) ──
     for (int i = 0; i <= 5; ++i) {
         m_starButtons[i] = new QToolButton(this);
         m_starButtons[i]->setAutoRaise(true);
@@ -361,83 +429,181 @@ void MainWindow::setupToolbar()
         } else {
             m_starButtons[i]->setText(QString(QChar(0x2606)));  // ☆ empty star
             m_starButtons[i]->setFont(QFont(QString(), 14));
+            m_toolbar->addWidget(m_starButtons[i]);
         }
 
         connect(m_starButtons[i], &QToolButton::clicked, this, [this, i]() {
             rateCurrentTrack(i);
         });
-
-        if (i > 0) {
-            toolbar->addWidget(m_starButtons[i]);
-        }
     }
 
-    toolbar->addSeparator();
+    // ── Separator: marks the boundary between fixed and configurable items ──
+    // Stored so rebuildToolbar() knows where to start removing/inserting.
+    m_fixedSeparator = m_toolbar->addSeparator();
 
-    // ── Album button ──
-    QAction *albumAction = new QAction(
+    // ── Configurable actions (created once here; placement handled by rebuildToolbar) ──
+
+    // Album
+    m_albumAction = new QAction(
         QIcon::fromTheme(QStringLiteral("media-optical-audio")),
         i18n("Album"), this);
-    albumAction->setToolTip(i18n("Show album details for current track"));
-    connect(albumAction, &QAction::triggered, this, &MainWindow::showAlbumWindow);
-    toolbar->addAction(albumAction);
+    m_albumAction->setToolTip(i18n("Show album details for current track"));
+    connect(m_albumAction, &QAction::triggered, this, &MainWindow::showAlbumWindow);
 
-    toolbar->addSeparator();
+    // Playlist — the label and dropdown live in a container widget so they
+    // move as a single unit when the toolbar order changes.
+    auto *playlistContainer = new QWidget(this);
+    auto *playlistLayout    = new QHBoxLayout(playlistContainer);
+    playlistLayout->setContentsMargins(0, 0, 0, 0);
+    playlistLayout->addWidget(new QLabel(i18n(" Playlist: "), playlistContainer));
 
-    // ── Playlist dropdown ──
-    auto *playlistLabel = new QLabel(i18n(" Playlist: "), this);
-    toolbar->addWidget(playlistLabel);
-
-    m_playlistDropdown = new QComboBox(this);
+    m_playlistDropdown = new QComboBox(playlistContainer);
     m_playlistDropdown->setMinimumWidth(120);
-    m_playlistDropdown->setToolTip(i18n("Select a playlist — switches active playlist in Audacious"));
+    m_playlistDropdown->setToolTip(
+        i18n("Select a playlist — switches active playlist in Audacious"));
     populatePlaylistDropdown();
     connect(m_playlistDropdown, QOverload<int>::of(&QComboBox::activated),
             this, &MainWindow::onPlaylistSelected);
-    toolbar->addWidget(m_playlistDropdown);
+    playlistLayout->addWidget(m_playlistDropdown);
 
-    toolbar->addSeparator();
+    m_playlistAction = new QWidgetAction(this);
+    m_playlistAction->setDefaultWidget(playlistContainer);
 
-    // ── Audacious button ──
-    QAction *audaciousAction = new QAction(
+    // Audacious
+    m_audaciousAction = new QAction(
         QIcon::fromTheme(QStringLiteral("audacious")),
         i18n("Audacious"), this);
-    audaciousAction->setToolTip(i18n("Launch Audacious or raise it to the foreground"));
-    connect(audaciousAction, &QAction::triggered,
+    m_audaciousAction->setToolTip(i18n("Launch Audacious or raise it to the foreground"));
+    connect(m_audaciousAction, &QAction::triggered,
             this, &MainWindow::onRaiseAudacious);
-    toolbar->addAction(audaciousAction);
 
-    // ── Kid3 button ──
-    // Check which Kid3 GUI version is installed (if any)
-    QString kid3GuiVersion = m_confWriter->value("KID3_GUI_INSTALLED");
-    bool hasKid3Gui = (kid3GuiVersion == "kid3" || kid3GuiVersion == "kid3-qt");
-    
-    QAction *kid3Action = new QAction(
+    // Kid3 — enabled only when the GUI package is installed
+    const QString kid3GuiVersion = m_confWriter->value("KID3_GUI_INSTALLED");
+    const bool    hasKid3Gui     = (kid3GuiVersion == "kid3" ||
+                                    kid3GuiVersion == "kid3-qt");
+
+    m_kid3Action = new QAction(
         QIcon::fromTheme(QStringLiteral("kid3-qt")),
         i18n("Kid3"), this);
-    
+
     if (hasKid3Gui) {
-        kid3Action->setToolTip(
+        m_kid3Action->setToolTip(
             i18n("Open current track in Kid3, or raise Kid3 if already open"));
-        connect(kid3Action, &QAction::triggered,
+        connect(m_kid3Action, &QAction::triggered,
                 this, &MainWindow::onOpenKid3);
     } else {
-        kid3Action->setEnabled(false);
-        kid3Action->setToolTip(
+        m_kid3Action->setEnabled(false);
+        m_kid3Action->setToolTip(
             i18n("Kid3 GUI not installed. Install kid3 or kid3-qt package to enable tag editor.\n"
                  "Run musiclib_init_config.sh again after installation."));
     }
-    
-    toolbar->addAction(kid3Action);
 
-    // ── Dolphin button ──
-    QAction *dolphinAction = new QAction(
+    // Dolphin
+    m_dolphinAction = new QAction(
         QIcon::fromTheme(QStringLiteral("system-file-manager")),
         i18n("Dolphin"), this);
-    dolphinAction->setToolTip(i18n("Open the folder containing the current track in Dolphin"));
-    connect(dolphinAction, &QAction::triggered,
+    m_dolphinAction->setToolTip(
+        i18n("Open the folder containing the current track in Dolphin"));
+    connect(m_dolphinAction, &QAction::triggered,
             this, &MainWindow::onOpenDolphin);
-    toolbar->addAction(dolphinAction);
+
+    // ── Place configurable items according to saved (or default) config ──
+    rebuildToolbar(loadToolbarConfig());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toolbar configuration persistence
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Default order used when no config has been saved yet.
+static const QList<ToolbarItemId> s_defaultToolbarOrder = {
+    ToolbarItemId::Album,
+    ToolbarItemId::Playlist,
+    ToolbarItemId::Audacious,
+    ToolbarItemId::Kid3,
+    ToolbarItemId::Dolphin,
+};
+
+QList<ToolbarItemId> MainWindow::loadToolbarConfig() const
+{
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group(config, QStringLiteral("Toolbar"));
+
+    if (!group.hasKey(QStringLiteral("ItemOrder")))
+        return s_defaultToolbarOrder;
+
+    const QStringList saved =
+        group.readEntry(QStringLiteral("ItemOrder"), QStringList());
+
+    QList<ToolbarItemId> order;
+    order.reserve(saved.size());
+    for (const QString &s : saved) {
+        bool ok;
+        const int id = s.toInt(&ok);
+        if (ok)
+            order.append(static_cast<ToolbarItemId>(id));
+    }
+    return order.isEmpty() ? s_defaultToolbarOrder : order;
+}
+
+void MainWindow::saveToolbarConfig(const QList<ToolbarItemId> &order)
+{
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group(config, QStringLiteral("Toolbar"));
+
+    QStringList values;
+    values.reserve(order.size());
+    for (ToolbarItemId id : order)
+        values.append(QString::number(static_cast<int>(id)));
+
+    group.writeEntry(QStringLiteral("ItemOrder"), values);
+    config->sync();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toolbar rebuild
+// ─────────────────────────────────────────────────────────────────────────────
+
+void MainWindow::rebuildToolbar(const QList<ToolbarItemId> &order)
+{
+    // Remove every action that lives after the fixed separator, leaving the
+    // Now Playing label, star buttons, and the separator itself untouched.
+    bool pastSeparator = false;
+    for (QAction *action : m_toolbar->actions()) {
+        if (action == m_fixedSeparator) {
+            pastSeparator = true;
+            continue;
+        }
+        if (pastSeparator)
+            m_toolbar->removeAction(action);
+    }
+
+    // Re-add the configurable items in the requested order.
+    // A separator is inserted between each pair of adjacent items.
+    bool first = true;
+    for (ToolbarItemId id : order) {
+        if (!first)
+            m_toolbar->addSeparator();
+        first = false;
+
+        switch (id) {
+        case ToolbarItemId::Album:
+            m_toolbar->addAction(m_albumAction);
+            break;
+        case ToolbarItemId::Playlist:
+            m_toolbar->addAction(m_playlistAction);
+            break;
+        case ToolbarItemId::Audacious:
+            m_toolbar->addAction(m_audaciousAction);
+            break;
+        case ToolbarItemId::Kid3:
+            m_toolbar->addAction(m_kid3Action);
+            break;
+        case ToolbarItemId::Dolphin:
+            m_toolbar->addAction(m_dolphinAction);
+            break;
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -462,6 +628,7 @@ void MainWindow::setupActions()
     // Standard preferences action — opens Settings dialog from menu bar
     KStandardAction::preferences(this, &MainWindow::showSettingsDialog,
                                  actionCollection());
+
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -592,6 +759,89 @@ void MainWindow::showSettingsDialog()
             this, &MainWindow::onPollIntervalChanged);
 
     dialog->show();
+}
+
+// ═════════════════════════════════════════════════════════════
+// Configure Toolbars dialog
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::showConfigureToolbarsDialog()
+{
+    // ── Full descriptor table for every configurable toolbar item ──
+    //
+    // "Now Playing" and "Star Ratings" are fixed built-ins and do not appear
+    // here.  To add a new configurable action in the future:
+    //   1. Add a ToolbarItemId enumerator (configuretoolbarsdialog.h).
+    //   2. Add an entry to allItems below.
+    //   3. Create the QAction / QWidgetAction in setupToolbar().
+    //   4. Handle the new id in the switch in rebuildToolbar().
+    //
+    const QList<ToolbarItem> allItems = {
+        { ToolbarItemId::Album,     i18n("Album"),     QStringLiteral("media-optical-audio")  },
+        { ToolbarItemId::Playlist,  i18n("Playlist"),  QStringLiteral("view-media-playlist")  },
+        { ToolbarItemId::Audacious, i18n("Audacious"), QStringLiteral("audacious")            },
+        { ToolbarItemId::Kid3,      i18n("Kid3"),      QStringLiteral("kid3-qt")              },
+        { ToolbarItemId::Dolphin,   i18n("Dolphin"),   QStringLiteral("system-file-manager")  },
+    };
+
+    // ── Load the saved order and split into current / available ──
+    const QList<ToolbarItemId> savedOrder = loadToolbarConfig();
+
+    // Build a map for quick lookup
+    QMap<ToolbarItemId, ToolbarItem> itemMap;
+    for (const auto &item : allItems)
+        itemMap[item.id] = item;
+
+    // Current: items present in the saved config, in saved order
+    QList<ToolbarItem> currentItems;
+    for (ToolbarItemId id : savedOrder) {
+        if (itemMap.contains(id))
+            currentItems.append(itemMap.value(id));
+    }
+
+    // Available: items in allItems that are NOT in the saved config
+    QList<ToolbarItem> availableItems;
+    for (const auto &item : allItems) {
+        if (!savedOrder.contains(item.id))
+            availableItems.append(item);
+    }
+
+    auto *dlg = new ConfigureToolbarsDialog(currentItems, availableItems, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+
+    connect(dlg, &ConfigureToolbarsDialog::toolbarConfigChanged,
+            this, [this](const QList<ToolbarItemId> &newOrder) {
+        saveToolbarConfig(newOrder);
+        rebuildToolbar(newOrder);
+    });
+
+    dlg->exec();
+}
+
+// ═════════════════════════════════════════════════════════════
+// Handbook viewer
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::showHandbook()
+{
+    const QString url = QStringLiteral(
+        "https://github.com/Harpo3/musiclib/blob/main/docs/MUSICLIB_USER_MANUAL.md");
+
+    // Try several openers in order; the first one found on $PATH wins.
+    // xdg-open and kde-open6 can fail inside IDE environments that lack
+    // full desktop-session variables, so we fall back to common browsers.
+    for (const QString &cmd : {QStringLiteral("xdg-open"),
+                               QStringLiteral("kde-open6"),
+                               QStringLiteral("firefox"),
+                               QStringLiteral("chromium"),
+                               QStringLiteral("google-chrome")}) {
+        const QString exe = QStandardPaths::findExecutable(cmd);
+        if (!exe.isEmpty() && QProcess::startDetached(exe, {url}))
+            return;
+    }
+
+    qWarning("showHandbook: no suitable browser found to open %s",
+             qPrintable(url));
 }
 
 void MainWindow::onDatabasePathChanged()

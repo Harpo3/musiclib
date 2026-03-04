@@ -8,6 +8,7 @@ set(GUI_SOURCES
     maintenancepanel.cpp
     albumwindow.cpp
     settingsdialog.cpp
+    configuretoolbarsdialog.cpp
     confwriter.cpp
     mobile_panel.cpp
     systemtrayicon.cpp
@@ -64,7 +65,17 @@ install(TARGETS musiclib
     RUNTIME DESTINATION bin
 )
 
+# Copy the KXmlGui UI definition next to the binary so setupGUI() finds it
+# both during development (Qt Creator) and after installation.
+configure_file(musiclibui.rc
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/musiclibui.rc COPYONLY)
+
+install(FILES musiclibui.rc
+    DESTINATION share/kxmlgui5/musiclib
+)
+
 # Install the .kcfg schema so KDE system settings can find it.
 install(FILES musiclib.kcfg
     DESTINATION share/config.kcfg
 )
+

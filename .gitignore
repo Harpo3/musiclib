@@ -66,3 +66,7 @@ bin/*.shbak
 # ----- Qt Creator -----
 *.user
 *.user.*
+
+# ----- AUR packaging (lives in separate AUR git repos) -----
+pkg/
+docs/PKGBUILD_TESTING.md

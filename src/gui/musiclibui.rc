@@ -1,0 +1,6 @@
+<!DOCTYPE gui SYSTEM "kpartgui.dtd">
+<gui name="musiclib" version="2">
+  <!-- Menu layout is handled by KXmlGuiWindow defaults.
+       Custom actions (e.g. MusicLib Handbook) are injected
+       programmatically after setupGUI(). -->
+</gui>
