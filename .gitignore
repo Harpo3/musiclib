@@ -33,6 +33,7 @@ Makefile
 
 # ----- Runtime data (personal/live) -----
 data/
+!tests/data/
 playlists/
 logs/
 config/musiclib.conf
