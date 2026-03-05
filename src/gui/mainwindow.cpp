@@ -99,7 +99,19 @@ MainWindow::MainWindow(QWidget *parent)
     auto *centralWidget = new QWidget(this);
     auto *splitter = new QSplitter(Qt::Horizontal, centralWidget);
 
-    splitter->addWidget(m_sidebar);
+    // Wrap sidebar list + folder art in a vertical container
+    auto *sideContainer = new QWidget(centralWidget);
+    auto *sideLayout = new QVBoxLayout(sideContainer);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(4);
+    sideLayout->addWidget(m_sidebar, 1);   // sidebar takes all spare vertical space
+
+    m_folderArtLabel = new QLabel(sideContainer);
+    m_folderArtLabel->setAlignment(Qt::AlignCenter);
+    m_folderArtLabel->setContentsMargins(4, 4, 4, 4);
+    sideLayout->addWidget(m_folderArtLabel, 0);  // art stays at natural (image) height
+
+    splitter->addWidget(sideContainer);
     splitter->addWidget(m_panelStack);
 
     // Sidebar gets a fixed comfortable width, panels get the rest
@@ -1091,6 +1103,22 @@ void MainWindow::refreshNowPlaying()
         info.rating    = m_nowPlaying.ratingGroup.toInt();
         info.isPlaying = m_nowPlaying.isPlaying;
         m_trayIcon->updateTrackInfo(info);
+    }
+
+    // ── Update sidebar folder art ──
+    if (m_folderArtLabel) {
+        QString artPath = m_musicDisplayDir + QStringLiteral("/folder.jpg");
+        QPixmap pix(artPath);
+        if (!pix.isNull()) {
+            // Scale to slightly less than the current sidebar width;
+            // fall back to 148 px if the widget hasn't been shown yet.
+            int panelW = m_sidebar->width();
+            int artW   = (panelW > 20) ? (panelW - 12) : 148;
+            m_folderArtLabel->setPixmap(
+                pix.scaledToWidth(artW, Qt::SmoothTransformation));
+        } else {
+            m_folderArtLabel->clear();
+        }
     }
 }
 

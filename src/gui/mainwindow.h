@@ -197,6 +197,7 @@ private:
     // ── Layout widgets ──
     QListWidget    *m_sidebar;         ///< Left navigation panel
     QStackedWidget *m_panelStack;      ///< Stacked content panels
+    QLabel         *m_folderArtLabel = nullptr;  ///< Album art below sidebar tabs
 
     // ── Panels ──
     LibraryView      *m_libraryPanel;       ///< Library browser panel
