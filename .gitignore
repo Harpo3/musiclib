@@ -70,4 +70,4 @@ bin/*.shbak
 # ----- AUR packaging (lives in separate AUR git repos) -----
 pkg/
 docs/PKGBUILD_TESTING.md
-docs/AUR_RELEASE_MANAGEMENT.md
+AUR_RELEASE_MANAGEMENT.md
