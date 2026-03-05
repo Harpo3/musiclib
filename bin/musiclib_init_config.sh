@@ -833,8 +833,7 @@ if [ -n "$DEVICE_ID" ]; then
 fi
 
 echo ""
-echo "Next steps:"
-echo "  1. Install musiclib package if not already installed"
+echo "Note: If you did not install the GUI version, consider doing that now with musiclib package (KDE)."
 echo ""
 echo "To customize additional settings, edit:"
 echo "  $CONFIG_FILE"
