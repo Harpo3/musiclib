@@ -1,7 +1,7 @@
 # MusicLib User Manual
 
-**Version**: 0.1 Alpha  
-**Last Updated**: February 2026  
+**Version**: 1.1  
+**Last Updated**: March 2026  
 **For**: MusicLib on Linux with KDE Plasma 6
 
 ---
@@ -33,12 +33,14 @@ MusicLib is a personal music library **management hub** designed for KDE Plasma 
 Rather than juggling multiple applications, MusicLib brings everything together in one integrated experience:
 
 - **Rate and organize** your music collection
-- **Edit tags** directly (integrated with Kid3)
+- **Play and Queue** tracks/playlists directly via integration with Audacious
+- **Edit tags** via integration with Kid3
+- **Remove and Add** tracks/database entries
 - **Track playback** across devices
 - **Sync to mobile** (Android or iOS)
 - **Deep KDE integration** (system tray, shortcuts, file manager)
 
-It sits between you and Audacious (your audio player) and handles all the behind-the-scenes work: organizing metadata, rating songs, tracking what you listen to, and syncing playlists to your **Android or iOS device** via KDE Connect.
+It sits between you and the Audacious audio player, and handles all the behind-the-scenes work: organizing metadata, rating songs, tracking what you listen to, and syncing playlists to your **Android or iOS device** via KDE Connect. It adds significant features not available to the outstanding Audacious media player, yet integrates seamlessly with it and with the Kid3 tag editor.
 
 ### What MusicLib Does
 
@@ -64,7 +66,7 @@ It sits between you and Audacious (your audio player) and handles all the behind
 
 ### Cross-Distro Support
 
-MusicLib is **distro-agnostic**. The shell scripts and GUI work on any Linux distribution with KDE Plasma 6. You don't need Arch Linux — just KDE Plasma 6 and the required dependencies.
+MusicLib is Linux-based, but **distro-agnostic**. The shell scripts and GUI work on any Linux distribution with KDE Plasma 6 and the required dependencies.
 
 **Supported Distributions**:
 
@@ -81,8 +83,8 @@ MusicLib is **distro-agnostic**. The shell scripts and GUI work on any Linux dis
 Before installing MusicLib, ensure you have:
 
 1. **KDE Plasma 6** or later (run `plasmashell --version` to check)
-2. **Audacious** music player
-3. **kid3-common** (command-line tag editor — required)
+2. **Audacious** music player (audtool and song change utilities)
+3. **kid3-common/kid3-core** (command-line tag editor)
 4. **exiftool** (metadata processor)
 5. **KDE Connect** (for mobile sync)
 6. **Standard Unix tools** like `bash`, `bc`, `coreutils`, `grep`, `sed`
@@ -108,8 +110,9 @@ yay -S musiclib-cli
 # Install the GUI
 yay -S musiclib
 
-# Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
-yay -S kid3
+# Optional and strongly recommended: Install GUI tag editor (for integrated tag editing from MusicLib) and ReplayGain (loudness normalizer)
+pacman -S kid3
+yay -S rsgain
 ```
 
 All dependencies are automatically resolved.
@@ -120,7 +123,7 @@ All dependencies are automatically resolved.
 # Install dependencies
 sudo dnf install audacious kid3-common exiftool kdeconnect bc grep sed
 
-# For ReplayGain (optional, for Boost Album feature)
+# For ReplayGain (optional, loudness normalizer)
 sudo dnf install rsgain
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
@@ -155,14 +158,14 @@ sudo make install
 # Install dependencies
 sudo zypper install audacious kid3-common exiftool kdeconnect bc grep sed
 
-# For ReplayGain (optional)
+# For ReplayGain (optional, loudness normalizer)
 sudo zypper install rsgain
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
 sudo zypper install kid3
 
 # Clone and build from source
-git clone https://github.com/yourusername/musiclib.git
+git clone https://github.com/Harpo3/musiclib.git
 cd musiclib
 mkdir build && cd build
 cmake ..
@@ -176,7 +179,7 @@ sudo make install
 # Install dependencies
 sudo apt install audacious kid3-common exiftool kdeconnect bc
 
-# ReplayGain (if available)
+# Optional: ReplayGain (if available, loudness normalizer)
 sudo apt install rsgain
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
@@ -252,7 +255,7 @@ zypper search rsgain
 
 ## First-Time Setup
 
-The easiest way to set up MusicLib is to run the setup command in your terminal:
+The best way to set up MusicLib is to run the setup command in your terminal and build your music database (choice at end of setup):
 
 ```bash
 musiclib-cli setup
@@ -307,27 +310,31 @@ If Audacious is detected, the Song Change plugin and script is configured automa
 
 ### Step 7: Build Initial Database
 
-The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. 
+The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. Without a database file, this application has little use.
 
 ---
 
-### After Installation
+### After Installation and Setup
 
-Once installed and setup step completed, you can launch MusicLib from:
+#### Launch MusicLib GUI from:
 
 - **Application menu** → Search "MusicLib"
 - **Command line**: `musiclib`
-- **System tray** Go to GUI → Settings →  Advanced → GUI Behavior to set system tray behavior
+
+#### Launch Command Line Utilities from:
+
+- **Command line**: `musiclib-cli`
+- **Script of your choice**: bash, python, etc.
 
 ---
 
 ## Quick Start
 
-If you've just finished setup, here's how to get up and running in your first session. This walks through the three things most people want to do first: get their music into MusicLib, rate some tracks, and understand what's happening under the hood.
+If you've just finished setup, here's how to get up and running in your first session. This walks through the three things most people want to do first: get their music into MusicLib (if not already done using setup), rate some tracks, and understand what's happening under the hood.
 
 ### Step 1: Import Your Existing Music
 
-If your music files are already organized on disk, During setup, you choose to have MusicLib scan them and build a database in one step. If you skipped that step, all you need to do is open a terminal and run:
+If your music files are already organized on disk, during setup you choose to have MusicLib scan them and build a database in one step. If you skipped that step, all you need to do is open a terminal and run:
 
 ```bash
 musiclib-cli build
@@ -336,6 +343,60 @@ musiclib-cli build
 This scans your configured music directory, reads each file's tags, and creates the `musiclib.dsv` database. For large collections this can take a while — it's fine to let it run in the background.
 
 Once it finishes, launch MusicLib (`musiclib` from the terminal, or search for it in your application menu). You should see your tracks listed in the Library View.
+
+#### If Setup Warned You About Non-Conforming Files
+
+During setup, MusicLib scans your library and checks two things for every audio file: that it sits at the correct depth (`MUSIC_REPO/artist/album/track.ext`), and that its filename uses only lowercase letters, digits, underscores, hyphens, and periods — no spaces, no uppercase, no accented characters. Files that fail either check are flagged as non-conforming.
+
+If you saw a warning like this during setup:
+
+```
+⚠ WARNING: Non-conforming filenames detected in your music library.
+```
+
+you were given three choices:
+
+- **Option 1 — Continue anyway**: Setup proceeded, but the non-conforming files may cause problems later with mobile sync and path matching. The database will still build, but those files might not sync to your phone or may disappear from search results after a rebuild.
+- **Option 2 — Exit to fix filenames**: Setup exited with instructions to run `conform_musiclib.sh`. Once you've done that, re-run `musiclib-cli setup` to pick up where you left off.
+- **Option 3 — Cancel setup**: Nothing was changed.
+
+A full report listing every non-conforming file and the reason it was flagged is always saved to:
+
+```
+~/.local/share/musiclib/data/library_analysis_report.txt
+```
+
+**Fixing non-conforming files before building the database** is strongly recommended if you saw a high non-conforming count. If only a handful of files are flagged, a simpler option is to move them out of your music library to a temporary location, proceed with setup and database creation, then add them back properly using the `musiclib-cli new-tracks` utility — which will normalize their filenames and slot them into the correct directory structure automatically.
+
+For a larger number of non-conforming files, here's the full process:
+
+1. Make a backup of your music library — `conform_musiclib.sh` renames files in place, so a backup is your safety net.
+
+2. Run the conformance tool in dry-run mode (the default) to preview exactly what would be renamed:
+   ```bash
+   ~/.local/share/musiclib/utilities/conform_musiclib.sh /path/to/your/music
+   ```
+
+3. Review the output. If the proposed renames look right, apply them:
+   ```bash
+   ~/.local/share/musiclib/utilities/conform_musiclib.sh --execute /path/to/your/music
+   ```
+
+4. Re-run setup:
+   ```bash
+   musiclib-cli setup
+   ```
+   Setup will re-scan the library — if all files now pass, the conformance step will clear and setup will continue to the database build prompt.
+
+**If you already built the database with non-conforming files**, you can still fix things. Run `conform_musiclib.sh --execute` on your music directory, then rebuild:
+
+```bash
+musiclib-cli build
+```
+
+The old database is replaced on rebuild. Your ratings are safe as long as they were embedded in the audio file tags, which MusicLib does by default whenever you rate a track — the rating lives in both the database and the file itself.
+
+For full details on `conform_musiclib.sh` options and safety features, see the [Standalone Utilities](#standalone-utilities) section.
 
 ### Step 2: Rate Some Tracks
 
@@ -347,7 +408,7 @@ If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE Syst
 
 ### Step 3: Import a New Album
 
-**IMPORTANT:** When you download new music, use the **Add New Tracks** workflow rather than dropping files into your music library manually — this ensures filenames are normalized and the database stays in sync.
+**IMPORTANT:** When you download new music, use the **Add New Tracks** workflow rather than dropping files into your music library manually — this ensures filenames are normalized and the database stays in sync. Use only your chosen download directory from setup for staging each artist's files for the add process.
 
 Before importing, open the album in Kid3 and check that the Artist and Album tags are correct and consistently named (e.g., "Pink Floyd" not "pink floyd" or "The Pink Floyd"). MusicLib uses the Album tag to name the destination folder.
 

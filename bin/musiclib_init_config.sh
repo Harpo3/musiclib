@@ -136,6 +136,127 @@ create_dir() {
     fi
 }
 
+analyze_library() {
+    local music_repo="$1"
+    music_repo="${music_repo%/}"  # strip any trailing slash
+    local report_dir="${DATA_DIR}/data"
+    local temp_nonconforming
+    temp_nonconforming=$(mktemp)
+    local report_file="${report_dir}/library_analysis_report.txt"
+
+    local total=0
+    local conforming=0
+    local nonconforming=0
+
+    while IFS= read -r -d '' filepath; do
+        total=$(( total + 1 ))
+
+        # Get path relative to music_repo
+        local relpath="${filepath#$music_repo/}"
+
+        # Check structure: should be artist/album/filename.ext (exactly 2 slashes)
+        local depth
+        depth=$(echo "$relpath" | tr -cd '/' | wc -c)
+        local structure_ok=false
+        if [ "$depth" -eq 2 ]; then
+            structure_ok=true
+        fi
+
+        # Check filename: lowercase a-z, digits, underscore, hyphen, period only
+        local filename
+        filename=$(basename "$filepath")
+        local filename_ok=false
+        if echo "$filename" | grep -qE '^[a-z0-9_.-]+$'; then
+            filename_ok=true
+        fi
+
+        # Determine overall conformance
+        if [ "$structure_ok" = true ] && [ "$filename_ok" = true ]; then
+            conforming=$(( conforming + 1 ))
+        else
+            nonconforming=$(( nonconforming + 1 ))
+            # Build reason string
+            local reasons=""
+            if [ "$structure_ok" = false ]; then
+                reasons="structure"
+            fi
+            if [ "$filename_ok" = false ]; then
+                if [ -n "$reasons" ]; then
+                    reasons="$reasons, filename"
+                else
+                    reasons="filename"
+                fi
+            fi
+            # Write to temp file for report
+            echo "$filepath|$reasons" >> "$temp_nonconforming"
+        fi
+
+        # Progress indicator (every 500 files)
+        if [ $(( total % 500 )) -eq 0 ]; then
+            printf "\r  Scanned %d files..." "$total"
+        fi
+    done < <(find "$music_repo" -type f \( -iname '*.mp3' -o -iname '*.flac' -o -iname '*.m4a' -o -iname '*.ogg' \) -print0 2>/dev/null)
+
+    # Clear progress line
+    printf "\r                                        \r"
+
+    # Generate report file
+    {
+        echo "MusicLib Library Analysis Report"
+        echo "================================"
+        echo "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "Music Repository: $music_repo"
+        echo ""
+        echo "Summary"
+        echo "-------"
+        echo "Total files scanned: $total"
+        echo "Conforming files: $conforming ($(( conforming * 100 / (total > 0 ? total : 1) ))%)"
+        echo "Non-conforming files: $nonconforming ($(( nonconforming * 100 / (total > 0 ? total : 1) ))%)"
+        echo ""
+        echo "Expected Structure"
+        echo "------------------"
+        echo "Directory: MUSIC_REPO/artist/album/track.ext"
+        echo "Filename:  lowercase, underscores (no spaces), safe characters only"
+        echo "           Allowed: a-z, 0-9, underscore, hyphen, period"
+        echo ""
+        if [ "$nonconforming" -gt 0 ]; then
+            echo "Non-Conforming Files"
+            echo "--------------------"
+            echo ""
+            # Sort and output non-conforming files
+            sort "$temp_nonconforming" | while IFS='|' read -r path reason; do
+                echo "[$reason] $path"
+            done
+            echo ""
+            echo "Recommendation"
+            echo "--------------"
+            echo "Consider moving non-conforming files to a separate location,"
+            echo "then use 'musiclib-cli new-tracks' to import them properly."
+            echo "This will normalize filenames and organize them into the"
+            echo "correct artist/album directory structure."
+        fi
+    } > "$report_file"
+
+    # Generate plain filepath list for non-conforming files
+    local nonconforming_list="${report_dir}/nonconforming_files"
+    if [ "$nonconforming" -gt 0 ]; then
+        # Extract just the paths (strip the reason after the pipe)
+        sort "$temp_nonconforming" | cut -d'|' -f1 > "$nonconforming_list"
+    else
+        # Remove old list if no non-conforming files
+        rm -f "$nonconforming_list"
+    fi
+
+    # Cleanup
+    rm -f "$temp_nonconforming"
+
+    # Set global variables for caller
+    ANALYSIS_TOTAL=$total
+    ANALYSIS_CONFORMING=$conforming
+    ANALYSIS_NONCONFORMING=$nonconforming
+    ANALYSIS_REPORT_FILE="$report_file"
+}
+
 #############################################
 # Parse Command Line Arguments
 #############################################
@@ -155,8 +276,9 @@ This wizard will:
   4. Create XDG directory structure
   5. Generate minimal user configuration
   6. Auto-detect optional tools (rsgain, kid3 GUI) and write to config
-  7. Refresh playlists from Audacious (if installed)
-  8. Configure Audacious Song Change integration (if installed)
+  7. Scan library for file and directory conformance
+  8. Refresh playlists from Audacious (if installed)
+  9. Configure Audacious Song Change integration (if installed)
 
 The wizard writes ONLY user-specific values to ~/.config/musiclib/musiclib.conf
 All other settings use system defaults from /usr/lib/musiclib/config/musiclib.conf
@@ -467,6 +589,89 @@ print_success "Configuration saved to: $CONFIG_FILE"
 echo ""
 print_info "Configuration contains only your custom settings."
 print_info "All other defaults are loaded from system configuration."
+
+#############################################
+# Library Conformance Check
+#############################################
+
+print_header "Library Conformance Check"
+
+if [ "$file_count" -eq 0 ]; then
+    print_info "No audio files found in $MUSIC_REPO — skipping conformance check."
+else
+    print_info "Scanning library for file and directory conformance..."
+    echo ""
+
+    ANALYSIS_TOTAL=0
+    ANALYSIS_CONFORMING=0
+    ANALYSIS_NONCONFORMING=0
+    ANALYSIS_REPORT_FILE=""
+
+    analyze_library "$MUSIC_REPO"
+
+    echo "  Total files scanned: $ANALYSIS_TOTAL"
+    echo "  Conforming:          $ANALYSIS_CONFORMING"
+    echo "  Non-conforming:      $ANALYSIS_NONCONFORMING"
+    echo ""
+
+    if [ "$ANALYSIS_NONCONFORMING" -gt 0 ]; then
+        CONFORM_PCT=$(( ANALYSIS_NONCONFORMING * 100 / (ANALYSIS_TOTAL > 0 ? ANALYSIS_TOTAL : 1) ))
+        echo "⚠ WARNING: Non-conforming filenames detected in your music library."
+        echo ""
+        echo "Found $ANALYSIS_NONCONFORMING files ($CONFORM_PCT%) with:"
+        echo "  - Uppercase letters"
+        echo "  - Spaces"
+        echo "  - Special characters or incorrect directory depth"
+        echo ""
+        echo "MusicLib requires lowercase filenames with underscores for reliable"
+        echo "operation. Non-conforming files may cause issues with mobile sync"
+        echo "and path matching."
+        echo ""
+        echo "A full report has been saved to:"
+        echo "  $ANALYSIS_REPORT_FILE"
+        echo ""
+        echo "Options:"
+        echo "  1. Continue anyway (may cause issues with mobile sync and path matching)"
+        echo "  2. Exit and run conform_musiclib.sh to fix filenames"
+        echo "  3. Cancel setup"
+        echo ""
+
+        CONFORM_CHOICE=""
+        while true; do
+            read -p "Choice [1/2/3]: " CONFORM_CHOICE
+            case "$CONFORM_CHOICE" in
+                1)
+                    echo ""
+                    print_info "⚠ Continuing with non-conforming files. You can fix them later by running:"
+                    print_info "  ~/.local/share/musiclib/utilities/conform_musiclib.sh --execute $MUSIC_REPO"
+                    print_info "Then rebuild the database with: musiclib-cli build"
+                    echo ""
+                    break
+                    ;;
+                2)
+                    echo ""
+                    print_info "Exiting setup. To fix filenames, run:"
+                    echo ""
+                    echo "  ~/.local/share/musiclib/utilities/conform_musiclib.sh --execute $MUSIC_REPO"
+                    echo ""
+                    print_info "After the script completes, re-run setup: musiclib-cli setup"
+                    echo ""
+                    exit 0
+                    ;;
+                3)
+                    echo ""
+                    echo "Setup cancelled."
+                    exit 1
+                    ;;
+                *)
+                    echo "Please enter 1, 2, or 3."
+                    ;;
+            esac
+        done
+    else
+        print_success "All $ANALYSIS_TOTAL files conform to MusicLib naming standards."
+    fi
+fi
 
 #############################################
 # Database Check
