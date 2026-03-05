@@ -96,7 +96,9 @@ void ScriptRunner::onRateProcessFinished(int exitCode)
 //  Record removal — v2.1 addition
 // ===========================================================================
 
-void ScriptRunner::removeRecord(const QString &recordId, const QString &filePath)
+void ScriptRunner::removeRecord(const QString &recordId,
+                                const QString &filePath,
+                                bool deleteFile)
 {
     QString script = resolveScript("musiclib_remove_record.sh");
     if (script.isEmpty()) {
@@ -107,6 +109,7 @@ void ScriptRunner::removeRecord(const QString &recordId, const QString &filePath
 
     m_pendingRemoveId   = recordId;
     m_pendingRemovePath = filePath;
+    m_pendingDeleteFile = deleteFile;
 
     QProcess *process = new QProcess(this);
 
@@ -114,14 +117,16 @@ void ScriptRunner::removeRecord(const QString &recordId, const QString &filePath
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &ScriptRunner::onRemoveProcessFinished);
 
-    // Run: bash musiclib_remove_record.sh "<filepath>" [<recordId>]
+    // Run: bash musiclib_remove_record.sh "<filepath>" [<recordId>] [--delete-file]
     // Pass the record ID as the second argument when available so the script
     // can target the exact row (ID + path match) instead of all rows with
-    // this path.
+    // this path.  If the user also requested file deletion, append the flag.
     QStringList args;
     args << script << filePath;
     if (!recordId.isEmpty())
         args << recordId;
+    if (deleteFile)
+        args << QStringLiteral("--delete-file");
     process->start("bash", args);
 }
 
@@ -141,6 +146,50 @@ void ScriptRunner::onRemoveProcessFinished(int exitCode)
         if (errMsg.isEmpty())
             errMsg = QString("Script exited with code %1").arg(exitCode);
         emit removeError(m_pendingRemovePath, errMsg);
+    }
+}
+
+// ===========================================================================
+//  Field editing — v2.3 addition
+// ===========================================================================
+
+void ScriptRunner::editField(const QString &recordId,
+                             const QString &fieldName,
+                             const QString &newValue)
+{
+    QString script = resolveScript("musiclib_edit_field.sh");
+    if (script.isEmpty()) {
+        emit editError("musiclib_edit_field.sh not found in ~/musiclib/bin or /usr/lib/musiclib/bin");
+        return;
+    }
+
+    m_pendingEditField = fieldName;
+    m_pendingEditValue = newValue;
+
+    QProcess *process = new QProcess(this);
+
+    connect(process,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &ScriptRunner::onEditProcessFinished);
+
+    process->start("bash", QStringList() << script << recordId << fieldName << newValue);
+}
+
+void ScriptRunner::onEditProcessFinished(int exitCode)
+{
+    QProcess *process = qobject_cast<QProcess *>(sender());
+    if (process)
+        process->deleteLater();
+
+    if (exitCode == 0) {
+        emit editSuccess(m_pendingEditField, m_pendingEditValue);
+    } else {
+        QString errMsg;
+        if (process)
+            errMsg = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        if (errMsg.isEmpty())
+            errMsg = QString("Script exited with code %1").arg(exitCode);
+        emit editError(errMsg);
     }
 }
 

@@ -510,8 +510,8 @@ You can select individual entries and:
 
 - **Rate** — Click the stars to directly rate any track, playing or not
 - **Play** — Context menu: play or add selected track to Audacious play queue
-- **Edit** — Context menu: open the selected track in Kid3 to edit tag
-- **Remove** — Context menu: Remove selected record from the database (does not remove the file)
+- **Edit** — Context menu: open the selected track in Kid3 to edit tag; if editing fields for Artist, Album, Album Artist, Title, and Genre in kid3, after saving in kid3 you can double-click on the matching MusicLib database field and directly edit the record so it matches the kid3 tag change 
+- **Remove** — Context menu: Remove selected record from the database (optionally you can also remove the file)
 - **Open Music Library** — Context menu: Launches/activates the associated Dolphin music folder 
 
 ### Panels
@@ -712,7 +712,7 @@ The core functionality (uploading playlists, last-played accounting) works the s
 
 ### System Tray
 
-MusicLib runs in the system tray. Hovering over it displays the track and rating info
+MusicLib runs in the system tray. Hovering over it displays the track and rating info. Go to GUI → Settings →  Advanced → GUI Behavior to set system tray behavior.
 
 Right-click the icon for quick actions:
 

@@ -11,7 +11,11 @@
 #include <QHeaderView>
 #include <QSortFilterProxyModel>
 #include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QMap>
 #include <QMenu>
 #include <QProcess>
 #include <QDir>
@@ -184,6 +188,16 @@ LibraryView::LibraryView(QWidget *parent)
             this, &LibraryView::onTagRebuildOutput);
     connect(m_scriptRunner, &ScriptRunner::scriptFinished,
             this, &LibraryView::onTagRebuildFinished);
+
+    // Double-click to edit a field inline
+    connect(m_tableView, &QTableView::doubleClicked,
+            this, &LibraryView::onCellDoubleClicked);
+
+    // Field editing results
+    connect(m_scriptRunner, &ScriptRunner::editSuccess,
+            this, &LibraryView::onEditFieldSuccess);
+    connect(m_scriptRunner, &ScriptRunner::editError,
+            this, &LibraryView::onEditFieldError);
 
     // Exclude-unrated / exclude-rated checkboxes (mutually exclusive)
     connect(m_excludeUnratedCheckbox, &QCheckBox::toggled,
@@ -491,22 +505,46 @@ void LibraryView::showContextMenu(const QPoint &pos)
         if (!track.artist.isEmpty())
             display = track.artist + QStringLiteral(" — ") + track.songTitle;
 
-        int result = QMessageBox::question(
-            this,
-            tr("Remove Record"),
-            tr("Remove \"%1\" from the database?\n\n"
-               "The audio file itself will not be deleted.")
-                .arg(display),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No);
+        // Custom dialog so we can embed a "also delete file" checkbox
+        QDialog dlg(this);
+        dlg.setWindowTitle(tr("Remove Record"));
 
-        if (result == QMessageBox::Yes) {
+        QVBoxLayout *layout = new QVBoxLayout(&dlg);
+
+        QLabel *msgLabel = new QLabel(
+            tr("Remove \"%1\" from the database?").arg(display), &dlg);
+        msgLabel->setWordWrap(true);
+        layout->addWidget(msgLabel);
+
+        layout->addSpacing(6);
+
+        QCheckBox *deleteFileCheck = new QCheckBox(
+            tr("Also delete the audio file from disk"), &dlg);
+        deleteFileCheck->setChecked(false);   // safe default — file is kept
+        layout->addWidget(deleteFileCheck);
+
+        layout->addSpacing(4);
+
+        QDialogButtonBox *buttons = new QDialogButtonBox(
+            QDialogButtonBox::Yes | QDialogButtonBox::No, &dlg);
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        layout->addWidget(buttons);
+
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+
+        const bool deleteFile = deleteFileCheck->isChecked();
+
+        if (deleteFile)
+            emit statusMessage(tr("Removing record and file: %1...").arg(track.songTitle));
+        else
             emit statusMessage(tr("Removing record: %1...").arg(track.songTitle));
-            // Pass the record's ID alongside the path so the script can match
-            // on both fields — this ensures only this specific row is deleted
-            // even when duplicate path entries exist in the database.
-            m_scriptRunner->removeRecord(track.id, track.songPath);
-        }
+
+        // Pass the record's ID alongside the path so the script can match
+        // on both fields — this ensures only this specific row is deleted
+        // even when duplicate path entries exist in the database.
+        m_scriptRunner->removeRecord(track.id, track.songPath, deleteFile);
     });
 
     menu.exec(m_tableView->viewport()->mapToGlobal(pos));
@@ -562,4 +600,86 @@ void LibraryView::onTagRebuildFinished(const QString &operationId, int exitCode,
         emit statusMessage(msg);
         QMessageBox::warning(this, tr("Rebuild Tags"), msg);
     }
+}
+
+// ===========================================================================
+//  Double-click field editing (v2.3)
+// ===========================================================================
+
+// Maps TrackColumn enum values to the exact column names in the DSV header.
+// Only these five fields are user-editable; everything else is read-only.
+static const QMap<int, QString> EDITABLE_DSV_FIELDS = {
+    {static_cast<int>(TrackColumn::Artist),      QStringLiteral("Artist")},
+    {static_cast<int>(TrackColumn::Album),       QStringLiteral("Album")},
+    {static_cast<int>(TrackColumn::AlbumArtist), QStringLiteral("AlbumArtist")},
+    {static_cast<int>(TrackColumn::SongTitle),   QStringLiteral("SongTitle")},
+    {static_cast<int>(TrackColumn::Genre),       QStringLiteral("Genre")},
+};
+
+void LibraryView::onCellDoubleClicked(const QModelIndex &proxyIndex)
+{
+    if (!proxyIndex.isValid())
+        return;
+
+    int col = proxyIndex.column();
+    if (!EDITABLE_DSV_FIELDS.contains(col))
+        return;
+
+    // Map proxy index to the source model to get the actual TrackRecord
+    QModelIndex sourceIndex = m_proxyModel->mapToSource(proxyIndex);
+    TrackRecord track = m_model->trackAt(sourceIndex.row());
+    if (track.id.isEmpty())
+        return;
+
+    // Friendly name shown in the dialog title (from the model's header)
+    QString displayName = m_model->headerData(col, Qt::Horizontal).toString();
+    // DSV column name passed to the shell script
+    QString dsvFieldName = EDITABLE_DSV_FIELDS.value(col);
+
+    // Current raw value to pre-fill the input dialog
+    QString currentValue;
+    switch (static_cast<TrackColumn>(col)) {
+    case TrackColumn::Artist:      currentValue = track.artist;      break;
+    case TrackColumn::Album:       currentValue = track.album;       break;
+    case TrackColumn::AlbumArtist: currentValue = track.albumArtist; break;
+    case TrackColumn::SongTitle:   currentValue = track.songTitle;   break;
+    case TrackColumn::Genre:       currentValue = track.genre;       break;
+    default: return;
+    }
+
+    bool ok = false;
+    QString newValue = QInputDialog::getText(
+        this,
+        tr("Edit %1").arg(displayName),
+        tr("%1:").arg(displayName),
+        QLineEdit::Normal,
+        currentValue,
+        &ok);
+
+    // User cancelled or made no change
+    if (!ok || newValue == currentValue)
+        return;
+
+    if (newValue.contains(QLatin1Char('^'))) {
+        QMessageBox::warning(this, tr("Edit Failed"),
+            tr("The value cannot contain the ^ character (it is used as the database delimiter)."));
+        return;
+    }
+
+    emit statusMessage(tr("Updating %1...").arg(displayName));
+    m_scriptRunner->editField(track.id, dsvFieldName, newValue);
+}
+
+void LibraryView::onEditFieldSuccess(const QString &fieldName, const QString &newValue)
+{
+    Q_UNUSED(fieldName)
+    Q_UNUSED(newValue)
+    emit statusMessage(tr("Field updated successfully"));
+    // DSV watcher triggers automatic model reload — no manual refresh needed
+}
+
+void LibraryView::onEditFieldError(const QString &message)
+{
+    emit statusMessage(tr("Edit error: %1").arg(message));
+    QMessageBox::warning(this, tr("Edit Failed"), message);
 }

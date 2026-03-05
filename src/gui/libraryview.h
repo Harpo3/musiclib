@@ -47,6 +47,11 @@ private slots:
     void onTagRebuildFinished(const QString &operationId, int exitCode,
                               const QString &stderrContent);
 
+    // Double-click field editing (v2.3)
+    void onCellDoubleClicked(const QModelIndex &index);
+    void onEditFieldSuccess(const QString &fieldName, const QString &newValue);
+    void onEditFieldError(const QString &message);
+
 private:
     void setupColumns();
 

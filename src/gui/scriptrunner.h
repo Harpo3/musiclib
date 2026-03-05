@@ -9,7 +9,7 @@
 ///
 /// ScriptRunner — Async script executor for the MusicLib GUI.
 ///
-/// Provides three execution modes:
+/// Provides four execution modes:
 ///
 ///   1. rate()           — Dedicated method for musiclib_rate.sh (unchanged from v1).
 ///                         Emits rateSuccess / rateDeferred / rateError.
@@ -17,7 +17,10 @@
 ///   2. removeRecord()   — Dedicated method for musiclib_remove_record.sh.
 ///                         Emits removeSuccess / removeError.
 ///
-///   3. runScript()      — Generic method for any backend script.
+///   3. editField()      — Dedicated method for musiclib_edit_field.sh (v2.3).
+///                         Emits editSuccess / editError.
+///
+///   4. runScript()      — Generic method for any backend script.
 ///                         Emits scriptOutput (real-time, line-by-line stdout),
 ///                         scriptFinished (exit code + stderr on completion).
 ///                         Used by the Maintenance Operations Panel.
@@ -37,17 +40,34 @@ public:
     /// Invoke musiclib_rate.sh with filepath and star rating (0-5).
     void rate(const QString &filePath, int stars);
 
+    // --- Field editing (v2.3 addition) --------------------------------------
+
+    /// Invoke musiclib_edit_field.sh to update one metadata field in the DB.
+    /// Only the DSV record is changed; audio file tags are not touched.
+    ///
+    /// @param recordId   The ID field value from the DSV row (column 1).
+    /// @param fieldName  DSV column name: Artist, Album, AlbumArtist,
+    ///                   SongTitle, or Genre.
+    /// @param newValue   Replacement text (must not contain '^').
+    void editField(const QString &recordId,
+                   const QString &fieldName,
+                   const QString &newValue);
+
     // --- Record removal (v2.1 addition) -------------------------------------
 
     /// Invoke musiclib_remove_record.sh to delete a single DB row.
-    /// The audio file itself is NOT deleted — only the DSV record.
     ///
-    /// @param recordId  The ID field value from the DSV row (field 1).
-    ///                  When non-empty the script matches on BOTH id AND
-    ///                  filepath, ensuring exactly one duplicate row is
-    ///                  removed.  Pass an empty string to use the legacy
-    ///                  path-only search (for CLI / non-GUI callers).
-    void removeRecord(const QString &recordId, const QString &filePath);
+    /// @param recordId    The ID field value from the DSV row (field 1).
+    ///                    When non-empty the script matches on BOTH id AND
+    ///                    filepath, ensuring exactly one duplicate row is
+    ///                    removed.  Pass an empty string to use the legacy
+    ///                    path-only search (for CLI / non-GUI callers).
+    /// @param deleteFile  When true, the script also deletes the audio file
+    ///                    from disk after removing the DB record.  Defaults
+    ///                    to false (DB-only removal).
+    void removeRecord(const QString &recordId,
+                      const QString &filePath,
+                      bool deleteFile = false);
 
     // --- Generic script execution (v2 addition) -----------------------------
 
@@ -92,6 +112,10 @@ signals:
     void removeSuccess(const QString &filePath);
     void removeError(const QString &filePath, const QString &message);
 
+    // --- Field editing signals (v2.3 addition) ------------------------------
+    void editSuccess(const QString &fieldName, const QString &newValue);
+    void editError(const QString &message);
+
     // --- Generic script signals (v2 addition) -------------------------------
 
     /// Emitted for each line of stdout while the script runs.
@@ -110,6 +134,9 @@ private slots:
     // Record removal process handler (v2.1)
     void onRemoveProcessFinished(int exitCode);
 
+    // Field editing process handler (v2.3)
+    void onEditProcessFinished(int exitCode);
+
     // Generic process handlers (v2)
     void onScriptReadyRead();
     void onScriptProcessFinished(int exitCode, QProcess::ExitStatus status);
@@ -122,6 +149,11 @@ private:
     // --- Record removal state (v2.1) ----------------------------------------
     QString m_pendingRemoveId;
     QString m_pendingRemovePath;
+    bool    m_pendingDeleteFile = false;
+
+    // --- Field editing state (v2.3) -----------------------------------------
+    QString m_pendingEditField;
+    QString m_pendingEditValue;
 
     // --- Generic execution state (v2) ---------------------------------------
     QProcess *m_scriptProcess  = nullptr;
