@@ -1,6 +1,6 @@
 # MusicLib User Manual
 
-**Version**: 1.1  
+**Version**: 1.2  
 **Last Updated**: March 2026  
 **For**: MusicLib on Linux with KDE Plasma 6
 
