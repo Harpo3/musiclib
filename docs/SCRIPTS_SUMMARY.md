@@ -68,6 +68,18 @@ Repairs corrupted or malformed ID3 tags in MP3 files within a personal MusicLib 
 
 The script supports options for recursive directory scanning, dry-run previews, verbose logging, and custom backup directories, creating timestamped backups before modifications via the `rebuildtag` function from `musiclibutilstagfunctions.sh` (loaded dynamically). It skips non-database files non-fatally, tracks statistics on processed files, rebuilt tags, skips, and errors, and cleans up old backups older than a configurable age.
 
+**musiclib_remove_record.sh**
+
+Removes a single track record from `musiclib.dsv` by exact filepath match. It sources `musiclib_utils.sh`, acquires the database lock (up to three attempts with a short timeout), calls the `delete_record_by_path()` helper which locates exactly one matching row and rewrites the DSV without it, and emits a `kdialog` passive notification on success or failure. The duplicate-safety guard — refusing to act when the path matches more than one row — prevents accidental mass deletions from substring collisions and requires the user to resolve duplicate records manually before retrying.
+
+When invoked with the `--delete-file` flag the script also deletes the audio file from disk after a successful DB removal, making it the authoritative backend for the GUI's "Remove Record (and delete file)" context-menu action. Without the flag only the database row is removed and the audio file is left untouched. In both cases the script logs the operation and returns exit 0 on full success, exit 1 for user/validation errors (empty argument, record not found, multiple matches), and exit 2 for system errors such as lock timeouts or I/O failures during DSV rewrite.
+
+**musiclib_edit_field.sh**
+
+Updates a single metadata field in one `musiclib.dsv` row, identified by its numeric record ID. Accepted field names are Artist, Album, AlbumArtist, SongTitle, and Genre. The script validates that the new value does not contain the `^` field delimiter, acquires the database lock, reads the DSV header to locate the target column index, overwrites the relevant cell, and atomically rewrites the file. It emits a `kdialog` passive notification on success and returns exit 0, exit 1 for validation errors (bad field name, caret in value, record ID not found), or exit 2 for system errors.
+
+This script is the backend for the GUI's inline cell-editing feature — double-clicking an editable cell in the library view triggers a field edit via `ScriptRunner::editField()`, which calls this script. Only the DSV is updated; audio file tags are not touched. Users who want to propagate the change to file tags should follow up with `musiclib-cli tagrebuild` on the affected file.
+
 **musiclib_process_pending.sh**
 
 A deferred-execution handler that processes queued database operations created when lock contention prevents immediate writes during normal MusicLib workflows. When scripts like `musiclib_rate.sh` encounter a busy database, they write the pending operation (timestamp, script name, operation type, and arguments) to a `.pending_operations` queue file instead of failing, and then trigger this processor to retry them once the lock is released. The script can run automatically after database-writing operations complete, or be invoked manually or via a cron timer, making the rating/database system resilient to transient lock conflicts without user intervention.

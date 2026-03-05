@@ -222,15 +222,12 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
 
 - [Architecture](docs/ARCHITECTURE.md) – Component diagrams, data flow, technology stack
 - [Backend API](docs/BACKEND_API.md) – Script invocation reference, exit codes, JSON errors
-- [Project Plan](docs/PROJECT_PLAN.md) – Roadmap, phased execution, milestones
-- [User Guide](docs/USER_GUIDE.md) – Screenshots, walkthroughs
-- [Glossary](docs/GLOSSARY.md) – Conky, POPM, audtool, KDE Connect, DSV, flock
-
+- [User Manual](docs/MUSICLIB_USER_MANUAL.md) – Detailed operational information
 ---
 
 ## License
 
-GPLv3 or later (to be determined)
+GPLv3 or later 
 
 ---
 

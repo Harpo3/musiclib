@@ -1,8 +1,8 @@
 # MusicLib Development Guide
 
-**For**: Solo developers and contributors working on MusicLib  
-**Audience**: Casual coders with basic knowledge of bash, C++, and CMake  
-**Last Updated**: 2026-02-10
+**For**: Solo developers and contributors working on MusicLib
+**Audience**: Casual coders with basic knowledge of bash, C++, and CMake
+**Last Updated**: 2026-03-05
 
 ---
 
@@ -98,7 +98,7 @@ sudo pacman -S --needed \
 
 ### Optional Development Tools
 
-#### Option 1: Lightweight (Recommended for Phase 1)
+#### Option 1: Lightweight
 
 Use your existing editor with language server support:
 
@@ -106,21 +106,19 @@ Use your existing editor with language server support:
 sudo pacman -S clangd
 ```
 
-Configure your editor (Vim, Neovim, VS Code, etc.) to use `clangd` for C++ completion and diagnostics.
+Configure your editor (Vim, Neovim, VS Code, etc.) to use `clangd` for C++ completion and diagnostics. Works well for focused changes to CLI or shell script code.
 
-#### Option 2: QtCreator (Recommended for Phase 2+)
+#### Option 2: QtCreator (Recommended for GUI work)
 
-When you reach Phase 2 (GUI development), QtCreator becomes valuable:
+QtCreator is valuable when working on the GUI:
 
 ```bash
 sudo pacman -S qtcreator
 ```
 
-**Why wait until Phase 2?**
-- Phase 1 (CLI dispatcher) is mostly argument parsing and `QProcess` wrappers—straightforward code
-- Phase 2 (GUI) involves QTreeView hierarchies, custom delegates for star ratings, layout management—QtCreator's visual tools save time here
+The GUI involves QTreeView hierarchies, custom delegates for star ratings, KConfigXT-generated settings classes, and layout management — QtCreator's visual tools and integrated debugger save a lot of trial-and-error here.
 
-**Size**: ~200MB. Modest cost for a tool that eliminates trial-and-error with Qt layouts.
+**Size**: ~200MB. Worth it for GUI-heavy work.
 
 ### Runtime Dependencies (Shell Backend)
 
@@ -168,50 +166,45 @@ yay -S rsgain
    cd build
    ```
 
-### Phase 1: CLI Dispatcher Only
+### Standard Build (CLI + GUI)
 
-During Phase 1, you're building just the `musiclib-cli` dispatcher:
+Both the CLI dispatcher and GUI are built together by default:
 
 ```bash
 # Configure with CMake
 cmake .. \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_INSTALL_PREFIX=/usr \
-  -DBUILD_GUI=OFF
+  -DCMAKE_INSTALL_PREFIX=/usr
 
 # Build
 make -j$(nproc)
 
-# Optional: Run tests (once written)
+# Optional: Run tests
 make test
 ```
 
 **CMake Options Explained**:
-- `-DCMAKE_BUILD_TYPE=Debug` — includes debug symbols, no optimization (use `Release` for final builds)
+- `-DCMAKE_BUILD_TYPE=Debug` — includes debug symbols, no optimization (use `Release` for final/package builds)
 - `-DCMAKE_INSTALL_PREFIX=/usr` — matches Arch FHS (Filesystem Hierarchy Standard)
-- `-DBUILD_GUI=OFF` — skip GUI compilation (speeds up Phase 1 development)
 
 **Expected Outputs**:
-- `build/musiclib-cli` — the CLI dispatcher binary
+- `build/bin/musiclib-cli` — CLI dispatcher
+- `build/bin/musiclib` — Qt6/KDE GUI application
 
-### Phase 2+: CLI + GUI
+### CLI-Only Build (faster iteration on shell/CLI changes)
 
-Once GUI development begins:
+If you're only working on the CLI dispatcher or shell scripts and want a faster build cycle:
 
 ```bash
-# Configure with GUI enabled
 cmake .. \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_INSTALL_PREFIX=/usr \
-  -DBUILD_GUI=ON
+  -DBUILD_GUI=OFF
 
-# Build both CLI and GUI
 make -j$(nproc)
 ```
 
-**Expected Outputs**:
-- `build/musiclib-cli` — CLI dispatcher
-- `build/musiclib` — Qt6/KDE GUI application
+**Expected Output**: `build/bin/musiclib-cli` only.
 
 ### Installation
 
@@ -261,19 +254,20 @@ So you can develop C++ code without reinstalling scripts on every build.
 
 ### Typical Development Cycle
 
-#### Phase 1 (CLI Dispatcher)
+#### CLI or Shell Script Changes
 
 ```bash
-# 1. Edit CLI source code
+# 1. Edit CLI source or shell script
 vim src/cli/main.cpp
+# or: vim /usr/lib/musiclib/bin/musiclib_rate.sh
 
-# 2. Rebuild
+# 2. Rebuild (if C++ changed)
 cd build && make -j$(nproc)
 
-# 3. Test against existing shell script
-./musiclib-cli rate "/mnt/music/test.mp3" 4
+# 3. Test
+./bin/musiclib-cli rate "/mnt/music/test.mp3" 4
 
-# 4. Verify shell script was invoked correctly
+# 4. Verify in logs
 tail -f ~/.local/share/musiclib/logs/musiclib.log
 ```
 
@@ -284,7 +278,7 @@ tail -f ~/.local/share/musiclib/logs/musiclib.log
 - Exit code forwarding (does CLI return the script's exit code?)
 - Error JSON parsing (does CLI extract and display script errors?)
 
-#### Phase 2+ (GUI Development)
+#### GUI Changes
 
 ```bash
 # 1. Edit GUI source code
@@ -294,7 +288,7 @@ vim src/gui/mainwindow.cpp
 cd build && make -j$(nproc)
 
 # 3. Launch GUI
-./musiclib
+./bin/musiclib
 
 # 4. Interact with UI, check logs
 tail -f ~/.local/share/musiclib/logs/musiclib.log
@@ -305,6 +299,7 @@ tail -f ~/.local/share/musiclib/logs/musiclib.log
 - QProcess invocation (does GUI correctly invoke scripts?)
 - UI responsiveness (does progress dialog update during long operations?)
 - Error dialogs (does GUI correctly display script errors?)
+- KConfigXT settings sync (do SettingsDialog changes update musiclib.conf?)
 
 ### Debugging
 
@@ -335,30 +330,45 @@ set -x  # Enable tracing
 
 ```
 musiclib/
-├── CMakeLists.txt              # Root CMake config
-├── README.md                   # User-facing documentation
-├── ARCHITECTURE.md             # This file's companion (technical deep-dive)
-├── PROJECT_PLAN.md             # Phased execution roadmap
-├── BACKEND_API.md              # Shell script contract specification
+├── CMakeLists.txt              # Root CMake config (project version 1.2)
+├── README.md                   # User-facing overview
 │
 ├── src/
-│   ├── cli/                    # Phase 1: CLI dispatcher
+│   ├── cli/                    # CLI dispatcher
 │   │   ├── CMakeLists.txt
 │   │   ├── main.cpp            # Argument parser, script invoker
-│   │   └── ...
+│   │   ├── command_handler.cpp # Per-subcommand routing
+│   │   ├── cli_utils.cpp       # Shared CLI helpers
+│   │   └── output_streams.h   # stdout/stderr stream wrappers
 │   │
-│   ├── gui/                    # Phase 2+: Qt6/KDE GUI
+│   ├── gui/                    # Qt6/KDE GUI
 │   │   ├── CMakeLists.txt
 │   │   ├── main.cpp
-│   │   ├── mainwindow.cpp      # Main window, library view
-│   │   ├── ratingdelegate.cpp  # Star rating widget
-│   │   ├── dsvparser.cpp       # musiclib.dsv parser
-│   │   └── ...
+│   │   ├── mainwindow.cpp      # Main window with Dolphin-style sidebar
+│   │   ├── librarymodel.cpp    # DSV data model (QAbstractTableModel)
+│   │   ├── libraryview.cpp     # Library browser panel
+│   │   ├── ratingdelegate.cpp  # Inline star rating widget
+│   │   ├── maintenancepanel.cpp # Five maintenance operations panel
+│   │   ├── albumwindow.cpp     # Album detail child window
+│   │   ├── mobile_panel.cpp    # Mobile sync panel
+│   │   ├── settingsdialog.cpp  # KConfigDialog (3-tab settings)
+│   │   ├── configuretoolbarsdialog.cpp  # Toolbar customization dialog
+│   │   ├── confwriter.cpp      # musiclib.conf reader/writer
+│   │   ├── scriptrunner.cpp    # Async shell script executor
+│   │   ├── systemtrayicon.cpp  # System tray icon and popup
+│   │   └── musiclib.kcfg       # KConfigXT schema for GUI-only settings
 │   │
-│   └── common/                 # Shared utilities (if needed)
-│       └── ...
+│   └── common/                 # Shared utilities
+│       ├── config_loader.cpp
+│       ├── db_reader.cpp
+│       ├── json_parser.cpp
+│       ├── script_executor.cpp
+│       └── utils.cpp
 │
 ├── scripts/                    # Shell script backend
+│   ├── build.sh                # Convenience build wrapper
+│   ├── clean.sh                # Remove build artifacts
+│   ├── install-deps.sh         # Install build + runtime dependencies
 │   ├── musiclib_utils.sh       # Core functions (config, locking, helpers)
 │   ├── musiclib_utils_tag_functions.sh  # Tag repair/normalize functions
 │   ├── musiclib_rate.sh        # Rating operation
@@ -368,27 +378,29 @@ musiclib/
 │   ├── musiclib_tagclean.sh    # Tag cleaning
 │   ├── musiclib_tagrebuild.sh  # Tag repair from DB
 │   ├── musiclib_new_tracks.sh  # Import pipeline
+│   ├── musiclib_remove_record.sh  # Remove a DB record (with optional file delete)
+│   ├── musiclib_edit_field.sh  # Edit a single metadata field in the DB
 │   ├── musiclib_init_config.sh       # Setup wizard
-│   ├── musiclib_audacious_setup.sh   # Helper: Audacious plugin instructions (called by setup)
-│   ├── musiclib_audacious_test.sh    # Helper: Audacious integration verification (called by setup)
-│   ├── musiclib_process_pending.sh   # Deferred operation retry
-│   ├── boost_album.sh          # ReplayGain loudness
-│   └── audpl_scanner.sh        # Playlist cross-reference
+│   ├── musiclib_audacious_setup.sh   # Helper: Audacious plugin instructions
+│   ├── musiclib_audacious_test.sh    # Helper: Audacious integration verification
+│   ├── musiclib_process_pending.sh   # Deferred operation retry (exit code 3 handler)
+│   ├── musiclib_status.sh      # Read-only status/diagnostics
+│   ├── musiclib_lock_inspector.sh    # Lock contention diagnostics
+│   ├── musiclib_conky_refresh.sh     # Regenerate Conky display files on demand
+│   ├── boost_album.sh          # ReplayGain loudness targeting
+│   └── audpl_scanner.sh        # Playlist cross-reference CSV
 │
-├── config/                     # Reference configuration files
-│   ├── musiclib.conf.example
-│   ├── tag_excludes.conf
-│   ├── ID3v2_frame_excludes.txt
-│   └── ID3v2_frames.txt
+├── docs/                       # Documentation
+│   ├── ARCHITECTURE.md
+│   ├── BACKEND_API.md          # Shell script contract (this doc's companion)
+│   ├── DEVELOPMENT.md          # This file
+│   ├── MUSICLIB_USER_MANUAL.md
+│   ├── SCRIPTS_SUMMARY.md
+│   └── reference/              # Supporting reference material
 │
 ├── tests/                      # Test suite
 │   ├── test_lock_contention.sh
 │   ├── test_tag_rebuild.sh
-│   └── ...
-│
-├── docs/                       # Additional documentation
-│   ├── GLOSSARY.md
-│   ├── USER_GUIDE.md
 │   └── ...
 │
 └── desktop/                    # Desktop integration files
@@ -401,9 +413,15 @@ musiclib/
 
 **For C++ Development**:
 - `src/cli/main.cpp` — CLI argument parsing, script path resolution, QProcess invocation
-- `src/gui/mainwindow.cpp` — Main GUI window, system tray, global shortcuts
-- `src/gui/dsvparser.cpp` — Parses `musiclib.dsv` into QAbstractTableModel
+- `src/gui/mainwindow.cpp` — Main window with Dolphin-style sidebar, toolbar, status bar, now-playing polling
+- `src/gui/librarymodel.cpp` — Parses `musiclib.dsv` into a `QAbstractTableModel`
+- `src/gui/libraryview.cpp` — Library browser panel; filtering, context menu, inline cell editing
 - `src/gui/ratingdelegate.cpp` — Custom item delegate for inline star rating
+- `src/gui/scriptrunner.cpp` — Async `QProcess` wrapper for all backend scripts
+- `src/gui/settingsdialog.cpp` — KConfigDialog that syncs GUI settings to `musiclib.conf`
+- `src/gui/mobile_panel.cpp` — Full mobile sync panel (device scan, preview, upload, accounting)
+- `src/gui/albumwindow.cpp` — Album detail child window (artwork, tracklist, last-played dates)
+- `src/gui/systemtrayicon.cpp` — System tray icon, left-click popup, right-click menu
 
 **For Shell Script Backend**:
 - `scripts/musiclib_utils.sh` — **Source this first**. Contains config loading, locking helpers, error handling
@@ -427,57 +445,72 @@ MusicLib's hybrid architecture allows **layered testing**:
 3. **C++ GUI** — Test UI interactions, QProcess invocation
 4. **Integration** — Test full workflows (GUI → script → external tool → file tag)
 
-### Phase 1: CLI Dispatcher Testing
+### CLI Dispatcher Testing
 
 **Manual Testing**:
 ```bash
-# Build CLI
+# Build
 cd build && make -j$(nproc)
 
 # Test each subcommand
-./musiclib-cli --help
-./musiclib-cli rate --help
-./musiclib-cli rate "/mnt/music/test.mp3" 4
+./bin/musiclib-cli --help
+./bin/musiclib-cli rate --help
+./bin/musiclib-cli rate "/mnt/music/test.mp3" 4
 echo $?  # Should be 0 on success
 
 # Test setup wizard
-./musiclib-cli setup --force
+./bin/musiclib-cli setup --force
 echo $?  # Should be 0 on success
 
 # Test new-tracks (dry run)
-./musiclib-cli new-tracks "test_artist" --dry-run
+./bin/musiclib-cli new-tracks "test_artist" --dry-run
 echo $?
 
 # Test tagrebuild (dry run)
-./musiclib-cli tagrebuild "/mnt/music/test_dir" --dry-run
+./bin/musiclib-cli tagrebuild "/mnt/music/test_dir" --dry-run
+echo $?
+
+# Test remove-record
+./bin/musiclib-cli remove-record "/mnt/music/test.mp3"
+echo $?  # 0 if record existed, 1 if not found
+
+# Test edit-field
+./bin/musiclib-cli edit-field 42 Artist "New Artist Name"
 echo $?
 
 # Test error handling
-./musiclib-cli rate "/nonexistent.mp3" 4
+./bin/musiclib-cli rate "/nonexistent.mp3" 4
 echo $?  # Should be 1 (user error)
 ```
 
-**Automated Testing** (once test framework is set up):
+**Automated Testing**:
 ```bash
 cd build
 make test
 ```
 
-### Phase 2+: GUI Testing
+### GUI Testing
 
 **Manual Testing**:
 ```bash
 # Launch GUI
-./musiclib
+./bin/musiclib
 
 # Test workflows:
-# 1. Library view loads DSV correctly
-# 2. Star rating delegate works (click stars)
-# 3. Maintenance panel invokes scripts
-# 4. Error dialogs display script errors
+# 1. Library view loads DSV and displays tracks correctly
+# 2. Star rating delegate works (click stars in table)
+# 3. Double-click cell for inline field editing
+# 4. Right-click → Remove Record (with and without "Delete file")
+# 5. Toolbar: Now Playing label updates, star buttons rate current track
+# 6. Album button opens AlbumWindow with artwork and tracklist
+# 7. Maintenance panel Preview/Execute buttons invoke scripts
+# 8. Mobile panel: device scan, playlist selection, upload workflow
+# 9. Settings dialog: changes sync to musiclib.conf
+# 10. System tray: popup shows track, stars clickable, right-click menu works
+# 11. Error dialogs display script error JSON correctly
 ```
 
-**Qt Test Framework** (when implemented):
+**Qt Test Framework**:
 ```bash
 cd build
 make test
@@ -550,7 +583,7 @@ Example: Adding `musiclib-cli validate` to check DB integrity.
 
 ### Adding a GUI Panel
 
-Example: Adding a "Statistics" panel in Phase 3+.
+Example: Adding a "Statistics" panel.
 
 1. **Create panel widget**:
    ```cpp
@@ -737,7 +770,7 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug
 make -j$(nproc)
 
-# CLI only (Phase 1)
+# CLI only (faster for shell/CLI work)
 cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_GUI=OFF
 make -j$(nproc)
 
@@ -785,41 +818,32 @@ cd build && make test
 
 ---
 
-## Next Steps
+## Getting Oriented
 
-Now that your build environment is set up:
+If you're new to the codebase, a good reading order:
 
-1. **Familiarize yourself with the codebase**:
-   - Read `ARCHITECTURE.md` for the big picture
-   - Read `PROJECT_PLAN.md` for the phased roadmap
-   - Read `BACKEND_API.md` for the shell script contract
+1. `docs/ARCHITECTURE.md` — big picture, component diagrams, data flow
+2. `docs/BACKEND_API.md` — shell script contract (exit codes, JSON errors, config variables)
+3. `src/gui/mainwindow.h` — main window layout and signal/slot map
+4. `src/gui/scriptrunner.h` — how C++ calls backend scripts
+5. `scripts/musiclib_utils.sh` — the shared utility library all scripts rely on
 
-2. **Start Phase 1 development**:
-   - Create `src/cli/` directory
-   - Implement argument parser (subcommands: `setup`, `rate`, `build`, `new-tracks`, `tagclean`, `tagrebuild`, `mobile`, `boost`, `scan`, `audacious-hook`, `process-pending`)
-   - Implement script path resolution
-   - Implement QProcess invocation with stdout/stderr capture
-   - Test against existing shell scripts
-
-3. **As you work**:
-   - Update this document if you discover better workflows
-   - Document any build issues you encounter (for future you or contributors)
-   - Keep `BACKEND_API.md` updated if you modify script contracts
+**As you work**:
+- Keep `BACKEND_API.md` updated if you add or change script invocation signatures
+- If you add a new configurable setting, decide whether it belongs in `musiclib.conf` (shell-accessible) or KConfig only (GUI-only). See BACKEND_API.md section 1.5.
+- Shell script changes take effect immediately without recompilation — run the script directly to test first, then verify the C++ layer picks it up correctly
 
 ---
 
 ## Contributing
 
-This is currently a solo project, but if you're reading this as a potential contributor:
-
 1. **Read the docs**: Start with `README.md` → `ARCHITECTURE.md` → this file
-2. **Check the project plan**: See `PROJECT_PLAN.md` to understand what phase we're in
-3. **Follow the existing patterns**: C++ code invokes scripts, scripts do the real work
-4. **Test your changes**: Manual testing is fine for now, automated tests will come later
-5. **Update documentation**: If you add features, update relevant `.md` files
+2. **Follow the existing patterns**: C++ code invokes scripts, scripts do the real work
+3. **Test your changes**: Manual testing as described above, plus the test suite
+4. **Update documentation**: If you add features, update `BACKEND_API.md` and `SCRIPTS_SUMMARY.md`
 
 ---
 
-**Document Version**: 1.1  
-**Last Updated**: 2026-02-14  
-**Status**: Updated for Phase 0 CLI argument parser resolution
+**Document Version**: 1.2
+**Last Updated**: 2026-03-05
+**Status**: Current — reflects MusicLib v1.2

@@ -1,4 +1,4 @@
-# MusicLib Backend API Contract v1.0
+# MusicLib Backend API Contract v1.2
 
 ## Document Purpose
 
@@ -21,7 +21,7 @@ All MusicLib backend scripts use a standardized exit code contract:
 | **2** | System/Operational Error | Config missing, tool unavailable, I/O failure, lock timeout | `kid3-cli` not installed, DB file unreadable, permissions denied, `flock` timeout >5s |
 | **3** | Deferred | Operation queued for retry due to lock contention | Lock timeout → operation added to pending queue, success notification delayed |
 
-**Current Status**: Exit code 3 (deferred operations) is **proposed design, not yet implemented**. Currently, lock timeouts return exit code 2.
+**Current Status**: Exit code 3 (deferred operations) is **implemented** via `musiclib_process_pending.sh`. When `musiclib_rate.sh` encounters a lock timeout, it writes the pending operation to `.pending_operations` and exits 3. The process pending script retries these automatically.
 
 **Usage Rules**:
 1. **Exit 0 only on complete success** -- All required side effects must be applied (file tags, DB updates, notifications, Conky artifacts). Partial success is exit 2.
@@ -101,7 +101,7 @@ On exit codes 1, 2, or 3, scripts must output valid JSON to stderr:
 
 MusicLib uses file-based locking via `flock` to serialize concurrent writes and prevent corruption.
 
-**Status**: Deferred operations queue (exit code 3) is **proposed, not yet implemented**. Currently, lock timeouts return exit 2.
+**Status**: Deferred operations queue (exit code 3) is **implemented** via `musiclib_process_pending.sh`. Lock timeouts in `musiclib_rate.sh` write to `.pending_operations` and exit 3; the pending processor retries them automatically.
 
 #### 1.3.1 Utility Functions (Primary Interface)
 
@@ -206,9 +206,16 @@ MUSIC_REPO           # Root music directory
 CONKY_OUTPUT_DIR     # Conky artifacts output
 DEVICE_ID            # KDE Connect device ID
 DEFAULT_RATING       # Default rating for new tracks (0-5)
+DEFAULT_GROUP_DESC   # Default group descriptor index for new tracks (0-5)
 BACKUP_RETENTION     # Backup retention period (days)
+BACKUP_AGE_DAYS      # Maximum age for tag backups before pruning (days)
+TAG_BACKUP_DIR       # Directory for tag backups before modifications
 LOCK_TIMEOUT         # Lock timeout (seconds)
 LOGFILE              # Main log file path
+AUDACIOUS_PLAYLISTS_DIR  # Audacious playlists directory (~/.config/audacious/playlists)
+SCROBBLE_THRESHOLD_PCT   # Percent of track played before scrobbling (default: 50)
+MOBILE_WINDOW_DAYS       # Maximum mobile accounting window in days (default: 40)
+MIN_PLAY_WINDOW          # Minimum accounting window in seconds (default: 3600)
 ```
 
 **External Dependencies**:
@@ -223,6 +230,8 @@ KDECONNECT_CMD       # Path/command for kdeconnect-cli
 RSGAIN_INSTALLED     # true/false - RSGain loudness tool availability
 KID3_GUI_INSTALLED   # "kid3"/"kid3-qt"/"none" - Kid3 GUI variant detection
 ```
+
+**Note**: GUI-only preferences (poll interval, system tray close/minimize behavior, start minimized) are stored in KConfig (`~/.config/musiclibrc`) rather than `musiclib.conf`, since they have no meaning to shell scripts.
 
 These optional dependency flags are detected during `musiclib-cli setup` and used by the GUI to gracefully disable features when tools are unavailable. See Section 2.10 for setup wizard behavior.
 
@@ -1020,7 +1029,7 @@ musiclib-cli setup
 musiclib-cli setup --force
 ```
 
-**Equivalent GUI**: First-run wizard dialog in `musiclib` (Phase 2+)
+**Equivalent GUI**: Settings dialog → Advanced tab → re-run setup, or launch `musiclib` for the first time with no config present
 
 **Configuration File Generated**:
 ```bash
@@ -1034,7 +1043,7 @@ EXIFTOOL_CMD="exiftool"
 KID3_CMD="kid3-cli"
 KDECONNECT_CMD="kdeconnect-cli"
 
-# Optional dependency detection (new in Phase 2)
+# Optional dependency detection
 RSGAIN_INSTALLED=true
 KID3_GUI_INSTALLED="kid3-qt"
 
@@ -1056,15 +1065,18 @@ AUDACIOUS_PATH="/usr/bin/audacious"
 
 ### 2.11 `musiclib-cli remove-record` → `musiclib_remove_record.sh`
 
-**Purpose**: Remove a single track record from the database by file path. The audio file itself is **not** deleted — only the DSV row is removed.
+**Purpose**: Remove a single track record from the database by file path. Optionally deletes the audio file from disk as well.
 
 **Invocation**:
 ```bash
-musiclib_remove_record.sh FILEPATH
+musiclib_remove_record.sh FILEPATH [--delete-file]
 ```
 
 **Parameters**:
 - `FILEPATH`: Absolute path to the audio file whose database record should be removed. The file does not need to exist on disk (allows removal of orphaned records).
+
+**Flags**:
+- `--delete-file`: Also delete the audio file from disk after removing the DB record. Default is DB-only removal.
 
 **Workflow**:
 1. Source `musiclib_utils.sh`, load config
@@ -1075,13 +1087,16 @@ musiclib_remove_record.sh FILEPATH
    - If zero matches: returns 1 (track not found)
    - If multiple matches: returns 1 (duplicate safety guard)
    - If exactly one match: rewrites DSV without the target row
-5. On lock timeout after all retries: exit 2
-6. Log removal and show KDE notification on success
+5. If `--delete-file` specified and DB removal succeeded: delete the audio file from disk
+6. On lock timeout after all retries: exit 2
+7. Log removal and show KDE notification on success
 
 **Side Effects**:
 - Removes one row from `musiclib.dsv`
+- Optionally deletes the audio file from disk (only with `--delete-file`)
 - Logs to `musiclib.log`
 - Shows `kdialog` passive popup notification (success or failure)
+- `QFileSystemWatcher` on `musiclib.dsv` triggers automatic model refresh in the GUI
 
 **Exit Codes**:
 - 0: Success (record removed)
@@ -1090,22 +1105,80 @@ musiclib_remove_record.sh FILEPATH
 
 **Examples**:
 ```bash
-# Remove a specific track's database record
+# Remove only the database record (file stays on disk)
 musiclib-cli remove-record "/mnt/music/Pink Floyd/Dark Side/Money.mp3"
+
+# Remove database record and delete the audio file
+musiclib-cli remove-record "/mnt/music/Pink Floyd/Dark Side/Money.mp3" --delete-file
 
 # Remove an orphaned record (file was already deleted from disk)
 musiclib_remove_record.sh "/mnt/music/deleted/old_track.mp3"
 ```
 
-**Equivalent GUI**: Library view → right-click track row → "Remove Record" → confirm dialog
+**Equivalent GUI**: Library view → right-click track row → "Remove Record" → confirm dialog (with optional "Delete file" checkbox)
 
 **Safety Notes**:
 - `delete_record_by_path()` refuses to act if the path matches more than one row (prevents accidental mass deletion from substring matches). The user must resolve duplicates manually before retrying.
-- The audio file is never touched. To also delete the file, the user must do so separately via their file manager.
+- Without `--delete-file`, the audio file is never touched.
 - The `QFileSystemWatcher` on `musiclib.dsv` will automatically trigger a model refresh in the GUI after the DSV is rewritten, so the removed row disappears from the table view without a manual reload.
 
 **Dependencies**:
 - `musiclib_utils.sh` (provides `load_config`, `with_db_lock`, `delete_record_by_path`, `error_exit`, `log_message`)
+- `kdialog` (optional, for desktop notifications)
+
+---
+
+### 2.12 `musiclib-cli edit-field` → `musiclib_edit_field.sh`
+
+**Purpose**: Update a single metadata field (Artist, Album, AlbumArtist, SongTitle, or Genre) in the database for a specified track record. Only the DSV row is changed; audio file tags are not touched.
+
+**Invocation**:
+```bash
+musiclib_edit_field.sh RECORD_ID FIELD_NAME NEW_VALUE
+```
+
+**Parameters**:
+- `RECORD_ID`: The `ID` field value from the DSV row (column 1). Used to identify the exact record to update.
+- `FIELD_NAME`: The DSV column name to update. Must be one of: `Artist`, `Album`, `AlbumArtist`, `SongTitle`, `Genre`.
+- `NEW_VALUE`: Replacement text. Must not contain the `^` delimiter character.
+
+**Workflow**:
+1. Source `musiclib_utils.sh`, load config
+2. Validate arguments (non-empty record ID, allowed field name, caret-free new value)
+3. Acquire database lock via `with_db_lock`
+4. Locate the row in `musiclib.dsv` where column 1 matches `RECORD_ID`
+5. Identify the column index for `FIELD_NAME` from the DSV header
+6. Overwrite that cell in-place, rewrite the DSV atomically
+7. Log the change and show a `kdialog` notification on success
+
+**Side Effects**:
+- Updates one field in one row of `musiclib.dsv`
+- Logs to `musiclib.log`
+- Shows `kdialog` passive popup notification (success or failure)
+- `QFileSystemWatcher` on `musiclib.dsv` triggers automatic model refresh in the GUI
+
+**Exit Codes**:
+- 0: Success (field updated)
+- 1: User/validation error — missing arguments, unsupported field name, new value contains `^`, record ID not found
+- 2: System error — config load failure, DB file not found, lock timeout, I/O error during rewrite
+
+**Examples**:
+```bash
+# Fix a misspelled artist name (record ID 142)
+musiclib-cli edit-field 142 Artist "Pink Floyd"
+
+# Update album title for record ID 87
+musiclib-cli edit-field 87 Album "The Wall (Remaster)"
+```
+
+**Equivalent GUI**: Library view → double-click a cell in the Artist, Album, AlbumArtist, Title, or Genre column → inline editor → press Enter to confirm
+
+**Notes**:
+- Only DSV metadata is updated. To also synchronize the change to file tags, run `musiclib-cli tagrebuild` on the affected file afterward.
+- The `^` delimiter cannot appear in field values; the script exits 1 if `NEW_VALUE` contains one.
+
+**Dependencies**:
+- `musiclib_utils.sh` (provides `load_config`, `with_db_lock`, `error_exit`, `log_message`)
 - `kdialog` (optional, for desktop notifications)
 
 ---
@@ -1200,6 +1273,8 @@ int main(int argc, char* argv[]) {
         return execScript("/usr/lib/musiclib/bin/musiclib_init_config.sh", argc - 2, argv + 2);
     } else if (subcommand == "remove-record") {
         return execScript("/usr/lib/musiclib/bin/musiclib_remove_record.sh", argc - 2, argv + 2);
+    } else if (subcommand == "edit-field") {
+        return execScript("/usr/lib/musiclib/bin/musiclib_edit_field.sh", argc - 2, argv + 2);
     } else {
         std::cerr << "Unknown subcommand: " << subcommand << "\n";
         return 1;
@@ -1288,13 +1363,13 @@ Test files should live in `tests/fixtures/`:
 
 Scripts indicate API version via internal variable:
 ```bash
-BACKEND_API_VERSION="1.0"
+BACKEND_API_VERSION="1.2"
 ```
 
 GUI/CLI check this on startup:
 ```cpp
 QString apiVersion = getScriptVersion("/usr/lib/musiclib/bin/musiclib_utils.sh");
-if (apiVersion != "1.0") {
+if (apiVersion != "1.2") {
     qWarning() << "Backend API version mismatch:" << apiVersion;
     // Show warning dialog
 }
@@ -1400,6 +1475,7 @@ mv musiclib.dsv.new musiclib.dsv
 /usr/lib/musiclib/bin/musiclib_new_tracks.sh
 /usr/lib/musiclib/bin/musiclib_audacious.sh
 /usr/lib/musiclib/bin/musiclib_remove_record.sh
+/usr/lib/musiclib/bin/musiclib_edit_field.sh
 /usr/lib/musiclib/bin/musiclib_utils.sh
 /usr/lib/musiclib/bin/musiclib_utils_tag_functions.sh
 ```
@@ -1478,6 +1554,6 @@ They exist for specific pre-setup or maintenance scenarios where the user runs t
 
 **Warning**: This script modifies your files. Make backups first. Use solely at your own risk.
 
-**Document Version**: 1.0  
-**Last Updated**: 2026-02-25  
-**Status**: Implementation-Ready
+**Document Version**: 1.2
+**Last Updated**: 2026-03-05
+**Status**: Current — reflects MusicLib v1.2
