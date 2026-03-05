@@ -522,6 +522,36 @@ create_dir "$DATA_DIR/logs/mobile"
 
 print_header "Generating configuration"
 
+# Capture any non-wizard, non-comment lines from existing config before overwriting
+CUSTOM_LINES=""
+RETAIN_CUSTOM=false
+if [ -f "$CONFIG_FILE" ]; then
+    WIZARD_KEYS="^(MUSIC_REPO|NEW_DOWNLOAD_DIR|DEVICE_ID|RSGAIN_INSTALLED|KID3_GUI_INSTALLED)="
+    while IFS= read -r line; do
+        # Skip blank lines and comment lines
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        # Skip wizard-managed and auto-detected keys
+        [[ "$line" =~ $WIZARD_KEYS ]] && continue
+        # Accumulate remaining custom lines
+        if [ -z "$CUSTOM_LINES" ]; then
+            CUSTOM_LINES="$line"
+        else
+            CUSTOM_LINES="$CUSTOM_LINES"$'\n'"$line"
+        fi
+    done < "$CONFIG_FILE"
+
+    if [ -n "$CUSTOM_LINES" ]; then
+        echo "Other custom settings found:"
+        echo ""
+        echo "$CUSTOM_LINES"
+        echo ""
+        if prompt_yn "Retain these settings?" "y"; then
+            RETAIN_CUSTOM=true
+        fi
+        echo ""
+    fi
+fi
+
 # Write user-specific overrides after backing up existing
 if [ -f "$CONFIG_FILE" ]; then
     cp "$CONFIG_FILE" "${CONFIG_FILE}.bak.$(date +%Y%m%d_%H%M%S)"
@@ -589,6 +619,19 @@ print_success "Configuration saved to: $CONFIG_FILE"
 echo ""
 print_info "Configuration contains only your custom settings."
 print_info "All other defaults are loaded from system configuration."
+
+# Append retained custom settings
+if [ "$RETAIN_CUSTOM" = true ]; then
+    {
+        printf '\n'
+        printf '#############################################\n'
+        printf '# RETAINED CUSTOM SETTINGS\n'
+        printf '#############################################\n'
+        printf '\n'
+        printf '%s\n' "$CUSTOM_LINES"
+    } >> "$CONFIG_FILE"
+    print_success "Custom settings retained."
+fi
 
 #############################################
 # Library Conformance Check
