@@ -1,8 +1,8 @@
 # MusicLib
 
-**A KDE-native music library control plane for Arch Linux power users.**
+**KDE-native or console-based music library control for Linux users.**
 
-MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, and desktop telemetry via Conky.
+MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, and data elements for desktop use (like conky).
 
 See [MUSICLIB_USER_MANUAL.md](docs/MUSICLIB_USER_MANUAL.md) for detailed features and information.
 

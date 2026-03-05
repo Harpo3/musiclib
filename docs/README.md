@@ -1,8 +1,10 @@
 # MusicLib
 
-**A KDE-native music library control plane for Arch Linux power users.**
+**KDE-native or console-based music library control for Linux users.**
 
-MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, and desktop telemetry via Conky.
+MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, and data elements for desktop use (like conky).
+
+See [MUSICLIB_USER_MANUAL.md](docs/MUSICLIB_USER_MANUAL.md) for detailed features and information.
 
 ---
 
@@ -26,22 +28,21 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component diagrams.
 
 ## Installation
 
-### AUR Packages (Recommended)
+### AUR Packages 
 
-```bash
-# Install backend + CLI
-yay -S musiclib
+- musiclib (KDE GUI)
+- musiclib-cli (console only)
 
-# Install GUI (depends on musiclib)
-yay -S musiclib
-```
 
 ### Manual Build
 
 **Dependencies**:
 - Qt 6.5+, KDE Frameworks 6 (KConfig, KNotifications, KIO, KGlobalAccel, KXmlGui)
-- kid3-cli, exiftool, rsgain, audacious, kdeconnect-cli, bc
+- kid3-common, exiftool, audacious, kdeconnect-cli, bc
 - CMake 3.20+, GCC 11+ or Clang 14+
+
+**Optional and recommended**:
+rsgain, kid3 (KDE) or kid3-qt
 
 **Build**:
 ```bash
@@ -63,9 +64,7 @@ sudo make install
 ```bash
 musiclib-cli setup
 ```
-The setup wizard detects your system (Audacious, music directories, KDE Connect), creates the local configuration file, provides Audacious Song Change plugin instructions if applicable, and optionally builds the initial database. For large libraries, this can take a long time, as in hours. The build script will provide a time estimate. Run `musiclib-cli setup --force` to reconfigure later.
-
-**GUI**: Launch `musiclib` and follow the setup wizard (Phase 2+).
+The setup wizard detects your system (Audacious, music directories, KDE Connect, Kid3, and rsgain), creates the local configuration file, configures Audacious integration, and prompts to build the library database if one is not detected. Can be re-run. 
 
 ---
 
@@ -76,10 +75,9 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect)
 **Launch**: `musiclib` or via application menu (MusicLib)
 
 **Features**:
-- **Library View**: Browse, filter, sort tracks; inline star rating
+- **Library View**: Browse, filter, sort tracks; inline star rating, remove records, edit tags via kid3, play tracks via audacious
 - **Maintenance Panel**: Rebuild DB, clean tags, boost loudness, scan playlists
 - **Mobile Panel**: Upload playlists to Android via KDE Connect
-- **Conky Panel**: Preview Conky config, view generated assets
 - **Settings**: Configure paths, device ID, global shortcuts
 - **System Tray**: Quick-rate current track (0–5 stars), open to maintenance
 
@@ -91,19 +89,9 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect)
 
 ### CLI Interface
 
-**Available Subcommands**:
+**Subcommands**:
 
 ```bash
-  build             Full database build/rebuild from filesystem scan
-  mobile            Mobile sync and Audacious playlist management
-  new-tracks        Import new tracks from a directory
-  process-pending   Process deferred operations (queued ratings, etc.)
-  rate              Set star rating for a track (0-5 stars)
-  tagclean          Clean and normalize audio file tags
-  tagrebuild        Repair track tags from database values
-
-# Usage Examples
-
 # First-time setup (auto-detects Audacious, music dirs, etc.)
 musiclib-cli setup
 
@@ -151,21 +139,13 @@ musiclib-cli help rate
 ```bash
 MUSICDB="~/.local/share/musiclib/data/musiclib.dsv"
 MUSIC_REPO="/mnt/music"
-CONKY_OUTPUT_DIR="~/.local/share/musiclib/data/conky_output"
 DEVICE_ID="abc123def456"  # KDE Connect device (from kdeconnect-cli -l)
-DEFAULT_RATING=3
-LOCK_TIMEOUT=5
 ```
 
 **Audacious Hook** (for Conky updates):
-Configured automatically during `musiclib-cli setup`. To set up manually:
-1. Open Audacious → File → Settings → Plugins
-2. Enable "Song Change" (General section)
-3. Click "Settings" next to Song Change
-4. Set command to: `/usr/lib/musiclib/bin/musiclib_audacious.sh`
-5. Click OK and close Settings
+Configured automatically during `musiclib-cli setup`. Run Audacious at least one time before running MusicLib setup so its plugins are initialized.
 
-**Conky Integration**:
+**Conky Integration (optional)**:
 - Point Conky config to `~/.local/share/musiclib/data/conky_output/`
 - Example: `${cat ~/.local/share/musiclib/data/conky_output/artist.txt}`
 - See `conky_example.conf` in `/usr/share/musiclib/`
