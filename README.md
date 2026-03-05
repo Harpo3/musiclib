@@ -4,6 +4,8 @@
 
 MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, and desktop telemetry via Conky.
 
+See [MUSICLIB_USER_MANUAL.md](docs/MUSICLIB_USER_MANUAL.md) for detailed features and information.
+
 ---
 
 ## Architecture
@@ -28,8 +30,8 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed component diagrams.
 
 ### AUR Packages 
 
-musiclib (KDE GUI)
-musiclib-cli (console only)
+- musiclib (KDE GUI)
+- musiclib-cli (console only)
 
 
 ### Manual Build
@@ -73,10 +75,9 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect,
 **Launch**: `musiclib` or via application menu (MusicLib)
 
 **Features**:
-- **Library View**: Browse, filter, sort tracks; inline star rating
+- **Library View**: Browse, filter, sort tracks; inline star rating, remove records, edit tags via kid3, play tracks via audacious
 - **Maintenance Panel**: Rebuild DB, clean tags, boost loudness, scan playlists
 - **Mobile Panel**: Upload playlists to Android via KDE Connect
-- **Conky Panel**: Preview Conky config, view generated assets
 - **Settings**: Configure paths, device ID, global shortcuts
 - **System Tray**: Quick-rate current track (0–5 stars), open to maintenance
 
