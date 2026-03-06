@@ -282,7 +282,7 @@ It shows you what it finds and lets you select which directories to include in y
 
 ### Step 3: Set Download Directory
 
-Configure where new music downloads should be placed. This is used when you import new tracks into MusicLib.
+Configure where new music downloads should be placed, separate from where your music library is stored. This acts as a staging location to import new tracks simultaneously into the music library and the MusicLib database.
 
 ### Step 4: Detect Optional Dependencies
 
