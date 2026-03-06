@@ -398,9 +398,9 @@ The old database is replaced on rebuild. Your ratings are safe as long as they w
 
 For full details on `conform_musiclib.sh` options and safety features, see the [Standalone Utilities](#standalone-utilities) section.
 
-### Step 2: Rate Some Tracks
+### Step 2: Play and Rate Some Tracks
 
-Open MusicLib and play a track in Audacious. In the MusicLib toolbar at the top you'll see the track name and a row of stars. Click a star to set the rating — it saves instantly to both the database and the audio file itself.
+Open MusicLib (default panel is LibraryView) and play a track in Audacious. You can search for any track in your library, right click and play/queue in Audacious, or select an Audacious playlist from the toolbar. The toolbar has an Audacious button to launch it (or activate if already open), and you will also see the track name (if playing) and a row of stars. Click a star to set the rating — it saves instantly to both the database and the audio file itself.
 
 You can also rate tracks without playing them: find a track in the Library View, click its star column directly, and the rating is set.
 
