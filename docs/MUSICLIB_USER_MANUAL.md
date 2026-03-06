@@ -83,7 +83,7 @@ MusicLib is Linux-based, but **distro-agnostic**. The shell scripts and GUI work
 Before installing MusicLib, ensure you have:
 
 1. **KDE Plasma 6** or later (run `plasmashell --version` to check)
-2. **Audacious** music player (audtool and song change utilities)
+2. **Audacious** music player (audtool and song change plug-in features)
 3. **kid3-common/kid3-core** (command-line tag editor)
 4. **exiftool** (metadata processor)
 5. **KDE Connect** (for mobile sync)
@@ -394,7 +394,7 @@ For a larger number of non-conforming files, here's the full process:
 musiclib-cli build
 ```
 
-The old database is replaced on rebuild. Your ratings are safe as long as they were embedded in the audio file tags, which MusicLib does by default whenever you rate a track — the rating lives in both the database and the file itself.
+The old database is replaced on rebuild. Your ratings are safe as long as they were embedded in the audio file tags by your previous app (this is stored in the POPM frame). MusicLib will do it going forward by default whenever you rate a track — the rating lives in both the database and the file itself.
 
 For full details on `conform_musiclib.sh` options and safety features, see the [Standalone Utilities](#standalone-utilities) section.
 
