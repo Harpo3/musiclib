@@ -262,6 +262,39 @@ format_song_length() {
     echo "${seconds}000"
 }
 
+# Sanitize a tag value for safe storage in the DSV database.
+# Removes/transliterates characters that break kid3-cli command quoting,
+# corrupt filenames, or cause display/parsing inconsistencies:
+#   - Accented/non-ASCII characters are transliterated to their closest ASCII
+#     equivalent (é→e, ü→u, ñ→n, etc.) so values are consistent across paths
+#   - Single quotes (') break kid3-cli's command-string quoting
+#   - Commas (,) cause inconsistent display in the library UI
+# Usage: sanitize_tag_value "value"
+# Returns: sanitized value safe for the DSV database and kid3-cli commands
+sanitize_tag_value() {
+    local value
+    # Transliterate accented/non-ASCII to ASCII; fall back to original on error
+    value=$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT//IGNORE 2>/dev/null) || value="$1"
+    printf '%s' "$value" | tr -d "',"
+}
+
+# Validate that a DSV entry has the correct number of fields before writing.
+# The musiclib DSV schema has 15 fields (13 named + 2 trailing empty),
+# separated by 14 caret (^) delimiters.
+# Usage: validate_entry_fields "entry_string"
+# Returns: 0 if field count is correct, 1 if wrong (prints error to stderr)
+validate_entry_fields() {
+    local entry="$1"
+    local expected_delimiters=14   # 15 fields = 14 ^ separators
+    local actual_delimiters
+    actual_delimiters=$(printf '%s' "$entry" | tr -cd '^' | wc -c)
+    if [ "$actual_delimiters" -ne "$expected_delimiters" ]; then
+        echo "ERROR: DB entry has wrong field count (expected 15 fields / 14 delimiters, got $((actual_delimiters + 1)) fields): $entry" >&2
+        return 1
+    fi
+    return 0
+}
+
 # Extract metadata from audio file
 extract_metadata() {
     local filepath="$1"
@@ -281,6 +314,13 @@ extract_metadata() {
     if [ -z "$title" ]; then
         title=$(basename "$filepath" | sed 's/\.[^.]*$//')
     fi
+
+    # Sanitize values before writing to the DSV database
+    artist="$(sanitize_tag_value "$artist")"
+    album="$(sanitize_tag_value "$album")"
+    albumartist="$(sanitize_tag_value "$albumartist")"
+    title="$(sanitize_tag_value "$title")"
+    genre="$(sanitize_tag_value "$genre")"
 
     # Output as delimited string for easy parsing
     echo "${artist}^${album}^${albumartist}^${title}^${genre}"

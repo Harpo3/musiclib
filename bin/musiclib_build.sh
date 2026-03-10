@@ -439,8 +439,22 @@ while IFS= read -r filepath; do
         IDALBUM=""
     fi
 
+    # Sanitize text fields before writing to DSV database
+    ARTIST="$(sanitize_tag_value "$ARTIST")"
+    ALBUM="$(sanitize_tag_value "$ALBUM")"
+    ALBUMARTIST="$(sanitize_tag_value "$ALBUMARTIST")"
+    TITLE="$(sanitize_tag_value "$TITLE")"
+    GENRE="$(sanitize_tag_value "$GENRE")"
+
     # Build database entry
     ENTRY="${CURRENT_ID}^${ARTIST}^${IDALBUM}^${ALBUM}^${ALBUMARTIST}^${TITLE}^${filepath}^${GENRE}^${SONGLENGTH}^${RATING}^${CUSTOM2}^${GROUPDESC}^0.000000^^"
+
+    if ! validate_entry_fields "$ENTRY"; then
+        PROCESSING_ERRORS=$((PROCESSING_ERRORS + 1))
+        [ "$QUIET" = false ] && echo "  Warning: Skipped malformed entry for: $(basename "$filepath")" >&2
+        CURRENT_ID=$((CURRENT_ID - 1))  # Don't burn an ID on a skipped entry
+        continue
+    fi
 
     if ! echo "$ENTRY" >> "$WORKING_FILE" 2>/dev/null; then
         PROCESSING_ERRORS=$((PROCESSING_ERRORS + 1))

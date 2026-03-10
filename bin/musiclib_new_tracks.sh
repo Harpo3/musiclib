@@ -249,6 +249,12 @@ add_track_to_database() {
     # Build the new entry line
     local new_entry="${next_id}^${artist}^${idalbum}^${album}^${albumartist}^${title}^${filepath}^${genre}^${songlength}^${DEFAULT_RATING}^${CUSTOM2:-}^${DEFAULT_GROUPDESC}^${lastplayed}^^"
 
+    # Validate field count before attempting any write
+    if ! validate_entry_fields "$new_entry"; then
+        log_message "ERROR: Rejecting malformed DB entry for: $filepath"
+        return 1
+    fi
+
     # Inner function to perform the actual database write
     db_write_entry() {
         echo "$new_entry" >> "$MUSICDB"

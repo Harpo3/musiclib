@@ -90,15 +90,22 @@ load_default_excludes() {
 }
 
 #############################################
-# Strip single quotes from a tag value for safe use in kid3-cli commands.
-# Single quotes embedded in values break kid3-cli's command-string quoting
-# (e.g. "set Title 'Rollin''" is mis-parsed, leaving the title blank).
-# The protocol for this library is to remove them outright.
+# Strip characters from a tag value that break kid3-cli command-string quoting
+# or are otherwise unwanted in filenames and the DSV database.
+# - Accented/non-ASCII characters are transliterated to their closest ASCII
+#   equivalent (é→e, ü→u, ñ→n, etc.) via iconv so filenames stay clean.
+# - Single quotes (') break kid3-cli's quoted argument parsing
+#   (e.g. "set Title 'Rollin''" is mis-parsed, leaving the title blank)
+# - Commas (,) cause inconsistent display in the library UI
+# The protocol for this library is to remove/transliterate them outright.
 # Usage: sanitize_for_kid3 "value"
-# Returns: value with all single quotes removed
+# Returns: sanitized value safe for kid3-cli commands and filenames
 #############################################
 sanitize_for_kid3() {
-    printf '%s' "$1" | tr -d "'"
+    local value
+    # Transliterate accented/non-ASCII to ASCII; fall back to original on error
+    value=$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT//IGNORE 2>/dev/null) || value="$1"
+    printf '%s' "$value" | tr -d "',"
 }
 
 #############################################
@@ -296,7 +303,22 @@ rebuild_tag() {
     local comment=$(get_extracted_value "Comment")
     comment="$(sanitize_for_kid3 "$comment")"
     local track_num=$(get_extracted_value "Track")
-    [ -n "$track_num" ] && track_num=$(printf "%02d" "${track_num%%/*}")
+    [ -n "$track_num" ] && track_num=$(printf "%02d" "$((10#${track_num%%/*}))")
+    # Fallback: if no track number tag, try to extract it from the filename.
+    # Library files are named NN_-_artist_-_title.mp3 where NN is the track number.
+    # If neither source has a track number, default to "00" so the tag and
+    # filename always carry a track number and maintain consistent format.
+    # Note: 10# forces bash to parse the number as base-10, preventing printf
+    # from misinterpreting leading-zero values (e.g. "08") as invalid octal.
+    if [ -z "$track_num" ]; then
+        local fname_noext
+        fname_noext=$(basename "$filepath" .mp3)
+        if [[ "$fname_noext" =~ ^([0-9]+)_ ]]; then
+            track_num=$(printf "%02d" "$((10#${BASH_REMATCH[1]}))")
+        else
+            track_num="00"
+        fi
+    fi
     local disc_num=$(get_extracted_value "DiscNumber")
     local bpm=$(get_extracted_value "BPM")
 
@@ -542,7 +564,22 @@ normalize_new_track_tags() {
     local comment=$(get_value "Comment")
     comment="$(sanitize_for_kid3 "$comment")"
     local track_num=$(get_value "Track")
-    [ -n "$track_num" ] && track_num=$(printf "%02d" "${track_num%%/*}")
+    [ -n "$track_num" ] && track_num=$(printf "%02d" "$((10#${track_num%%/*}))")
+    # Fallback: if no track number tag, try to extract it from the filename.
+    # New tracks are named NN_-_artist_-_title.mp3 where NN is the track number.
+    # If neither source has a track number, default to "00" so the tag and
+    # filename always carry a track number and maintain consistent format.
+    # Note: 10# forces bash to parse the number as base-10, preventing printf
+    # from misinterpreting leading-zero values (e.g. "08") as invalid octal.
+    if [ -z "$track_num" ]; then
+        local fname_noext
+        fname_noext=$(basename "$filepath" .mp3)
+        if [[ "$fname_noext" =~ ^([0-9]+)_ ]]; then
+            track_num=$(printf "%02d" "$((10#${BASH_REMATCH[1]}))")
+        else
+            track_num="00"
+        fi
+    fi
     local disc_num=$(get_value "DiscNumber")
     local bpm=$(get_value "BPM")
 
