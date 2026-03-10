@@ -712,7 +712,8 @@ The core functionality (uploading playlists, last-played accounting) works the s
 
 ### System Tray
 
-MusicLib runs in the system tray. Hovering over it displays the track and rating info. Go to GUI → Settings →  Advanced → GUI Behavior to set system tray behavior.
+- MusicLib runs in the system tray. Hovering over it displays the track and rating info. 
+- **System Tray Settings:** Go to Settings →  Advanced → GUI Behavior to set system tray behavior.
 
 Right-click the icon for quick actions:
 

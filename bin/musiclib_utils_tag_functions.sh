@@ -26,8 +26,8 @@ load_frame_excludes() {
     config_dir="$(get_config_dir)"
     fi
 
-    local custom_file="${MUSICLIB_ROOT}/config/tag_excludes.conf"
-    local default_file="${MUSICLIB_ROOT}/config/ID3v2_frame_excludes.txt"
+    local custom_file="${config_dir}/tag_excludes.conf"
+    local default_file="${config_dir}/ID3v2_frame_excludes.txt"
     local exclude_file=""
 
     # Priority: custom config > default file > built-in defaults
@@ -87,6 +87,18 @@ load_default_excludes() {
     done
 
     log_message "Loaded ${#defaults[@]} default excluded frames"
+}
+
+#############################################
+# Strip single quotes from a tag value for safe use in kid3-cli commands.
+# Single quotes embedded in values break kid3-cli's command-string quoting
+# (e.g. "set Title 'Rollin''" is mis-parsed, leaving the title blank).
+# The protocol for this library is to remove them outright.
+# Usage: sanitize_for_kid3 "value"
+# Returns: value with all single quotes removed
+#############################################
+sanitize_for_kid3() {
+    printf '%s' "$1" | tr -d "'"
 }
 
 #############################################
@@ -282,7 +294,9 @@ rebuild_tag() {
     # Temporal/Extended Metadata (preserve from extracted, check if allowed)
     local year=$(get_extracted_value "Year")
     local comment=$(get_extracted_value "Comment")
+    comment="$(sanitize_for_kid3 "$comment")"
     local track_num=$(get_extracted_value "Track")
+    [ -n "$track_num" ] && track_num=$(printf "%02d" "${track_num%%/*}")
     local disc_num=$(get_extracted_value "DiscNumber")
     local bpm=$(get_extracted_value "BPM")
 
@@ -292,6 +306,13 @@ rebuild_tag() {
     local albumartist="${db_albumartist:-$(get_extracted_value "AlbumArtist")}"
     local title="${db_title:-$(get_extracted_value "Title")}"
     local genre="${db_genre:-$(get_extracted_value "Genre")}"
+
+    # Sanitize text tag values: single quotes break kid3-cli command quoting
+    artist="$(sanitize_for_kid3 "$artist")"
+    album="$(sanitize_for_kid3 "$album")"
+    albumartist="$(sanitize_for_kid3 "$albumartist")"
+    title="$(sanitize_for_kid3 "$title")"
+    genre="$(sanitize_for_kid3 "$genre")"
 
     # Always write core tags (these are never excluded)
     [ -n "$artist" ] && $KID3_CMD -c "set Artist '$artist'" "$filepath" 2>/dev/null
@@ -492,6 +513,13 @@ normalize_new_track_tags() {
     local title=$(get_value "Title")
     local genre=$(get_value "Genre")
 
+    # Sanitize text tag values: single quotes break kid3-cli command quoting
+    artist="$(sanitize_for_kid3 "$artist")"
+    album="$(sanitize_for_kid3 "$album")"
+    albumartist="$(sanitize_for_kid3 "$albumartist")"
+    title="$(sanitize_for_kid3 "$title")"
+    genre="$(sanitize_for_kid3 "$genre")"
+
     [ -n "$artist" ] && $KID3_CMD -c "set Artist '$artist'" "$filepath" 2>/dev/null
     [ -n "$album" ] && $KID3_CMD -c "set Album '$album'" "$filepath" 2>/dev/null
     [ -n "$albumartist" ] && $KID3_CMD -c "set AlbumArtist '$albumartist'" "$filepath" 2>/dev/null
@@ -512,7 +540,9 @@ normalize_new_track_tags() {
     # Extended metadata (check if allowed)
     local year=$(get_value "Year")
     local comment=$(get_value "Comment")
+    comment="$(sanitize_for_kid3 "$comment")"
     local track_num=$(get_value "Track")
+    [ -n "$track_num" ] && track_num=$(printf "%02d" "${track_num%%/*}")
     local disc_num=$(get_value "DiscNumber")
     local bpm=$(get_value "BPM")
 
