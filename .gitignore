@@ -16,6 +16,13 @@ build/
 *.a
 *.dylib
 
+# ------ Claude artifacts ------------
+CLAUDE.md
+CLAUDE.MD
+
+# ----- Deliverables (non-essential project docs) -----
+deliverables/
+
 # CMake generated files (safety net for
 # out-of-tree cmake runs outside build/)
 CMakeCache.txt
@@ -41,13 +48,6 @@ config/*.confbak
 # ----- Test output -----
 Testing/
 
-# ----- Binary documents (not source code) -----
-*.pdf
-*.odt
-
-# ----- Script backups -----
-bin/*.shbak
-
 # ----- IDE and editor metadata -----
 .vscode/
 .idea/
@@ -69,5 +69,3 @@ bin/*.shbak
 
 # ----- AUR packaging (lives in separate AUR git repos) -----
 pkg/
-docs/PKGBUILD_TESTING.md
-AUR_RELEASE_MANAGEMENT.md
