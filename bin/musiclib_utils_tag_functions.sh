@@ -27,16 +27,16 @@ load_frame_excludes() {
     fi
 
     local custom_file="${config_dir}/tag_excludes.conf"
-    local default_file="${config_dir}/ID3v2_frame_excludes.txt"
+    local system_file="/usr/lib/musiclib/config/tag_excludes.conf"
     local exclude_file=""
 
-    # Priority: custom config > default file > built-in defaults
+    # Priority: user override > system default > built-in defaults
     if [ -f "$custom_file" ]; then
         exclude_file="$custom_file"
         log_message "Loading frame excludes from: $custom_file"
-    elif [ -f "$default_file" ]; then
-        exclude_file="$default_file"
-        log_message "Loading frame excludes from: $default_file"
+    elif [ -f "$system_file" ]; then
+        exclude_file="$system_file"
+        log_message "Loading frame excludes from: $system_file"
     else
         log_message "No frame exclude list found, using built-in defaults"
         load_default_excludes

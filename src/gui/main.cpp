@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
     KAboutData aboutData(
         QStringLiteral("musiclib"),               // component name (internal)
         i18n("MusicLib"),                         // display name
-        QStringLiteral("1.31"),                  // version
+        QStringLiteral("1.4"),                  // version
         i18n("Music library manager for KDE"),    // short description
         KAboutLicense::GPL_V3,                    // license
         i18n("© 2026"),                           // copyright

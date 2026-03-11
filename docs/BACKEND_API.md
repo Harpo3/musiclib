@@ -229,6 +229,8 @@ KDECONNECT_CMD       # Path/command for kdeconnect-cli
 ```bash
 RSGAIN_INSTALLED     # true/false - RSGain loudness tool availability
 KID3_GUI_INSTALLED   # "kid3"/"kid3-qt"/"none" - Kid3 GUI variant detection
+K3B_INSTALLED        # true/false - K3b CD ripper availability
+K3B_ENCODER_FORMAT   # "mp3"/"ogg"/"flac" - rip output format (auto-detected from library; omitted when mp3, the system default)
 ```
 
 **Note**: GUI-only preferences (poll interval, system tray close/minimize behavior, start minimized) are stored in KConfig (`~/.config/musiclibrc`) rather than `musiclib.conf`, since they have no meaning to shell scripts.
@@ -997,11 +999,13 @@ musiclib_init_config.sh [--force]
 5. Prompt for download directory (default: `~/Downloads`)
 6. Create XDG directory structure (`~/.config/musiclib/`, `~/.local/share/musiclib/`)
 7. **Detect optional dependencies**:
-   a. Check for RSGain installation (`rsgain` command availability)
-   b. Detect Kid3 GUI variants (`kid3` for KDE version, `kid3-qt` for standalone Qt version)
-   c. Prompt user with installation instructions if optional dependencies are missing
-   d. Set configuration flags: `RSGAIN_INSTALLED` (true/false), `KID3_GUI_INSTALLED` ("kid3"/"kid3-qt"/"none")
+   a. Check for RSGain installation (`rsgain` command availability) → sets `RSGAIN_INSTALLED`
+   b. Detect Kid3 GUI variants (`kid3` for KDE version, `kid3-qt` for standalone Qt version) → sets `KID3_GUI_INSTALLED`
+   c. Check for K3b installation (`k3b` command availability) → sets `K3B_INSTALLED`
+   d. If K3b detected: scan `MUSIC_REPO` for predominant audio format (mp3/ogg/flac) → sets `K3B_ENCODER_FORMAT` if non-default
+   e. Set all detected flags in `musiclib.conf`
 8. Generate `musiclib.conf` with detected values
+8a. If K3b detected: generate `~/.config/musiclib/k3brc` via `generate_k3brc` — prompts user whether to use existing `~/.config/k3brc` as baseline or system template, then patches all musiclib-managed keys via `patch_k3brc`
 9. If Audacious detected:
    a. Display step-by-step Song Change plugin setup instructions
    b. Optionally verify integration (check Audacious running, test hook, validate Conky output)
@@ -1011,6 +1015,7 @@ musiclib_init_config.sh [--force]
 **Side Effects**:
 - Creates `~/.config/musiclib/musiclib.conf`
 - Creates `~/.local/share/musiclib/` directory tree (data, logs, playlists)
+- If K3b detected: creates `~/.config/musiclib/k3brc` (musiclib's managed K3b config); backs up any pre-existing copy to `~/.config/musiclib/backups/k3brc_bak_MMDDYYYY_N`
 - Optionally invokes `musiclib_build.sh` for initial database creation
 
 **Exit Codes**:
@@ -1046,19 +1051,23 @@ KDECONNECT_CMD="kdeconnect-cli"
 # Optional dependency detection
 RSGAIN_INSTALLED=true
 KID3_GUI_INSTALLED="kid3-qt"
+K3B_INSTALLED=true
+K3B_ENCODER_FORMAT=flac    # written only when non-default (library was predominantly FLAC)
 
 # Audacious integration
 AUDACIOUS_INSTALLED=true
 AUDACIOUS_PATH="/usr/bin/audacious"
 ```
 
-**GUI Impact**: The GUI reads `RSGAIN_INSTALLED` and `KID3_GUI_INSTALLED` from the configuration to gracefully disable features when optional tools are unavailable:
+**GUI Impact**: The GUI reads `RSGAIN_INSTALLED`, `KID3_GUI_INSTALLED`, and `K3B_INSTALLED` from the configuration to gracefully disable features when optional tools are unavailable:
 - If `RSGAIN_INSTALLED=false`: Boost Album section in Maintenance panel is grayed out with tooltip explaining RSGain is required
 - If `KID3_GUI_INSTALLED="none"`: Kid3 toolbar button is disabled with tooltip explaining which package to install
+- If `K3B_INSTALLED=false`: CD Ripping panel is grayed out and toolbar Rip CD action is disabled with tooltip explaining K3b is required
 
 **Dependency Detection Details**:
 - **RSGain**: Checks for `rsgain` command in PATH. Used for album loudness normalization (Boost Album feature).
 - **Kid3 GUI**: Checks for `kid3` (KDE-integrated) and `kid3-qt` (standalone Qt) executables. Note that `kid3-common` (CLI) is a required dependency and always checked separately.
+- **K3b**: Checks for `k3b` command in PATH. When detected, also scans `MUSIC_REPO` to determine the predominant audio format among mp3/ogg/flac files, writes `K3B_ENCODER_FORMAT` if the result differs from the system default (mp3), and calls `generate_k3brc` to create `~/.config/musiclib/k3brc`. If `~/.config/k3brc` already exists, prompts the user whether to use it as the baseline.
 - Missing dependencies trigger user-friendly installation prompts with package names for major distributions (Arch, Debian/Ubuntu, Fedora).
 
 ---

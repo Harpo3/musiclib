@@ -96,6 +96,7 @@ Before installing MusicLib, ensure you have:
 
 - **kid3 (KDE) or kid3-qt (QT)** (GUI-based tag editor) — Opens directly from MusicLib for detailed metadata editing. Provides a full-featured interface for ID3 tags, album art, and more, and includes kid3-common.
 - **rsgain** (ReplayGain analyzer) — Required for the Boost Album feature. May need to be compiled from source on some distros.
+- **k3b** (CD ripper) — Required for the CD Ripping panel and Rip CD toolbar action. When detected by setup, MusicLib manages K3b's rip configuration (output format, bitrate, error correction) and deploys it to K3b before each rip session.
 
 ## Installation
 
@@ -113,6 +114,9 @@ yay -S musiclib
 # Optional and strongly recommended: Install GUI tag editor (for integrated tag editing from MusicLib) and ReplayGain (loudness normalizer)
 pacman -S kid3
 yay -S rsgain
+
+# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
+pacman -S k3b
 ```
 
 All dependencies are automatically resolved.
@@ -128,6 +132,9 @@ sudo dnf install rsgain
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
 sudo dnf install kid3
+
+# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
+sudo dnf install k3b
 ```
 
 ### Ubuntu/Kubuntu/KDE Neon (apt)
@@ -142,6 +149,9 @@ sudo apt install rsgain
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
 sudo apt install kid3
+
+# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
+sudo apt install k3b
 
 # Clone and build from source
 git clone https://github.com/yourusername/musiclib.git
@@ -164,6 +174,9 @@ sudo zypper install rsgain
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
 sudo zypper install kid3
 
+# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
+sudo zypper install k3b
+
 # Clone and build from source
 git clone https://github.com/Harpo3/musiclib.git
 cd musiclib
@@ -184,6 +197,9 @@ sudo apt install rsgain
 
 # Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
 sudo apt install kid3
+
+# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
+sudo apt install k3b
 
 # Clone and build from source
 git clone https://github.com/yourusername/musiclib.git
@@ -290,8 +306,11 @@ The setup wizard detects which optional tools are installed on your system:
 
 - **RSGain** (`rsgain` command) — Required for the Boost Album feature
 - **Kid3 GUI** (`kid3` or `kid3-qt` executable) — For integrated tag editing
+- **K3b** (`k3b` command) — Required for the CD Ripping panel and Rip CD toolbar action
 
-If these tools are missing, the wizard displays package names for your distribution. The GUI will gracefully disable features when optional tools are unavailable (with helpful tooltips explaining what's needed).
+When K3b is found, the wizard scans your music library to determine the predominant audio format (MP3, Ogg Vorbis, or FLAC) and seeds the default rip output format accordingly. It then generates `~/.config/musiclib/k3brc` — musiclib's managed copy of K3b's configuration. If you have already configured K3b and run it before, the wizard asks whether to use your existing K3b settings as the starting point or replace them with the musiclib system defaults.
+
+If these tools are missing, the wizard notes it in the summary. The GUI will gracefully disable features when optional tools are unavailable (with helpful tooltips explaining what's needed and how to re-run setup after installing).
 
 ### Step 5: Create XDG Directory Structure
 

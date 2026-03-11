@@ -51,6 +51,11 @@ elif command -v kid3-qt &>/dev/null; then
     KID3_GUI_DETECTED="kid3-qt"
 fi
 
+K3B_DETECTED=false
+if command -v k3b &>/dev/null; then
+    K3B_DETECTED=true
+fi
+
 #############################################
 # Helper Functions
 #############################################
@@ -121,6 +126,196 @@ prompt_input() {
 count_audio_files() {
     local dir="$1"
     find "$dir" -type f \( -iname "*.mp3" -o -iname "*.flac" -o -iname "*.ogg" -o -iname "*.m4a" \) 2>/dev/null | wc -l
+}
+
+# Read a single key=value from a config file (strips quotes).
+# Usage: read_conf_key KEY FILE
+read_conf_key() {
+    local key="$1"
+    local file="$2"
+    grep "^${key}=" "$file" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"'
+}
+
+# Return the predominant K3b-supported format (mp3/ogg/flac) found in MUSIC_REPO.
+# Falls back to "mp3" when the library is empty or has no supported formats.
+detect_library_format() {
+    local music_repo="$1"
+    local mp3_count ogg_count flac_count
+    mp3_count=$(find "$music_repo" -type f -iname "*.mp3" 2>/dev/null | wc -l)
+    ogg_count=$(find  "$music_repo" -type f -iname "*.ogg"  2>/dev/null | wc -l)
+    flac_count=$(find "$music_repo" -type f -iname "*.flac" 2>/dev/null | wc -l)
+
+    if [ "$mp3_count" -eq 0 ] && [ "$ogg_count" -eq 0 ] && [ "$flac_count" -eq 0 ]; then
+        echo "mp3"
+        return
+    fi
+
+    if [ "$mp3_count" -ge "$ogg_count" ] && [ "$mp3_count" -ge "$flac_count" ]; then
+        echo "mp3"
+    elif [ "$ogg_count" -ge "$flac_count" ]; then
+        echo "ogg"
+    else
+        echo "flac"
+    fi
+}
+
+# Create a dated backup of a k3brc file in ~/.config/musiclib/backups/.
+# Naming: k3brc_bak_MMDDYYYY_N (increments N if the slot is taken).
+backup_k3brc() {
+    local source="$1"
+    local backup_dir="${CONFIG_DIR}/backups"
+    mkdir -p "$backup_dir"
+
+    local today n dest
+    today=$(date +%m%d%Y)
+    n=1
+    while true; do
+        dest="${backup_dir}/k3brc_bak_${today}_${n}"
+        [ ! -f "$dest" ] && break
+        n=$(( n + 1 ))
+    done
+
+    cp "$source" "$dest"
+    print_info "Backed up existing k3brc → $dest"
+}
+
+# Patch all musiclib-managed keys in a k3brc file in-place.
+# Reads K3B_* values from the user config (overrides) then system config (defaults).
+# Uses DOWNLOAD_DIR (set by Step 2) as the rip output directory.
+# Usage: patch_k3brc TARGET_FILE
+patch_k3brc() {
+    local target="$1"
+    local system_conf="/usr/lib/musiclib/config/musiclib.conf"
+
+    # Load K3B_* values — user config overrides system defaults
+    local enc_format mp3_mode mp3_bitrate mp3_vbr mp3_abr ogg_qual paranoia retries
+
+    enc_format=$(read_conf_key K3B_ENCODER_FORMAT "$CONFIG_FILE")
+    [ -z "$enc_format" ] && enc_format=$(read_conf_key K3B_ENCODER_FORMAT "$system_conf")
+    enc_format="${enc_format:-mp3}"
+
+    mp3_mode=$(read_conf_key K3B_MP3_MODE "$CONFIG_FILE")
+    [ -z "$mp3_mode" ] && mp3_mode=$(read_conf_key K3B_MP3_MODE "$system_conf")
+    mp3_mode="${mp3_mode:-cbr}"
+
+    mp3_bitrate=$(read_conf_key K3B_MP3_BITRATE "$CONFIG_FILE")
+    [ -z "$mp3_bitrate" ] && mp3_bitrate=$(read_conf_key K3B_MP3_BITRATE "$system_conf")
+    mp3_bitrate="${mp3_bitrate:-320}"
+
+    mp3_vbr=$(read_conf_key K3B_MP3_VBR_QUALITY "$CONFIG_FILE")
+    [ -z "$mp3_vbr" ] && mp3_vbr=$(read_conf_key K3B_MP3_VBR_QUALITY "$system_conf")
+    mp3_vbr="${mp3_vbr:-2}"
+
+    mp3_abr=$(read_conf_key K3B_MP3_ABR_TARGET "$CONFIG_FILE")
+    [ -z "$mp3_abr" ] && mp3_abr=$(read_conf_key K3B_MP3_ABR_TARGET "$system_conf")
+    mp3_abr="${mp3_abr:-192}"
+
+    ogg_qual=$(read_conf_key K3B_OGG_QUALITY "$CONFIG_FILE")
+    [ -z "$ogg_qual" ] && ogg_qual=$(read_conf_key K3B_OGG_QUALITY "$system_conf")
+    ogg_qual="${ogg_qual:-6}"
+
+    paranoia=$(read_conf_key K3B_PARANOIA_MODE "$CONFIG_FILE")
+    [ -z "$paranoia" ] && paranoia=$(read_conf_key K3B_PARANOIA_MODE "$system_conf")
+    paranoia="${paranoia:-0}"
+
+    retries=$(read_conf_key K3B_READ_RETRIES "$CONFIG_FILE")
+    [ -z "$retries" ] && retries=$(read_conf_key K3B_READ_RETRIES "$system_conf")
+    retries="${retries:-5}"
+
+    # Rip output directory — use DOWNLOAD_DIR (in-session) or fall back to config
+    local rip_dir_raw rip_dir
+    rip_dir_raw="${DOWNLOAD_DIR:-$(read_conf_key NEW_DOWNLOAD_DIR "$CONFIG_FILE")}"
+    rip_dir_raw="${rip_dir_raw%/}"  # strip trailing slash
+
+    # Convert absolute home path to $HOME placeholder for KDE config portability
+    rip_dir="${rip_dir_raw/#$HOME/\$HOME}"
+
+    # Encoder plugin name — ogg uses its own plugin; mp3 and flac use external
+    local encoder_plugin
+    case "$enc_format" in
+        ogg) encoder_plugin="k3boggvorbisencoder" ;;
+        *)   encoder_plugin="k3bexternalencoder"  ;;
+    esac
+
+    # Assemble LAME command based on MP3 mode
+    local lame_base lame_meta lame_cmd
+    lame_base="lame -r --bitwidth 16 --little-endian -s 44.1 -h"
+    lame_meta="--tt %t --ta %a --tl %m --ty %y --tc %c --tn %n - %f"
+    case "$mp3_mode" in
+        vbr) lame_cmd="${lame_base} --vbr-new -V ${mp3_vbr} ${lame_meta}"  ;;
+        abr) lame_cmd="${lame_base} --abr ${mp3_abr} ${lame_meta}"          ;;
+        *)   lame_cmd="${lame_base} -b ${mp3_bitrate} ${lame_meta}"         ;;
+    esac
+
+    # Remove erroneous Temp Dir (Issue #4) — safe no-op if already absent
+    sed -i '/^Temp Dir=/d' "$target"
+
+    # --- [Audio Ripping] and [last used Audio Ripping] ---
+    # Global replace hits both sections, keeping them in lock-step.
+    #
+    # Escaping note for [$e] keys:
+    #   In bash double-quotes: \\[ -> \[  and  \$e -> $e (literal $)  and  \\] -> \]
+    #   sed receives the pattern \[$e\] which matches the literal string [$e].
+    #   In the replacement, [\$e] -> bash sends [$e] -> sed outputs [$e].
+
+    sed -i "s|^last ripping directory\\[\$e\\]=.*|last ripping directory[\$e]=file:${rip_dir}/|" "$target"
+    sed -i "s|^encoder=.*|encoder=${encoder_plugin}|" "$target"
+    sed -i "s|^filetype=.*|filetype=${enc_format}|"   "$target"
+    sed -i "s|^paranoia_mode=.*|paranoia_mode=${paranoia}|" "$target"
+    sed -i "s|^read_retries=.*|read_retries=${retries}|"    "$target"
+
+    # --- [file view] ---
+    sed -i "s|^last url\\[\$e\\]=.*|last url[\$e]=${rip_dir}/|" "$target"
+
+    # --- [K3bExternalEncoderPlugin] ---
+    # Full entry format: DisplayName,extension,shell_command
+    sed -i "s|^command_Mp3 (Lame)=.*|command_Mp3 (Lame)=Mp3 (Lame),mp3,${lame_cmd}|" "$target"
+
+    # --- [K3bOggVorbisEncoderPlugin] ---
+    # quality= only appears in this section; global replace is safe.
+    sed -i "s|^quality=.*|quality=${ogg_qual}|" "$target"
+}
+
+# Generate ~/.config/musiclib/k3brc.
+# If ~/.config/k3brc already exists, prompt whether to retain it as the
+# baseline (preserving other K3b customisations). Otherwise uses the system
+# template. Either way, patch_k3brc is always called to update all
+# musiclib-managed keys.
+generate_k3brc() {
+    local system_template="/usr/lib/musiclib/config/k3brc"
+    local live_k3brc="${HOME}/.config/k3brc"
+    local target="${CONFIG_DIR}/k3brc"
+
+    if [ ! -f "$system_template" ]; then
+        print_error "System k3brc template not found at $system_template — skipping k3brc generation."
+        return 1
+    fi
+
+    # Backup any existing musiclib k3brc (re-run case)
+    if [ -f "$target" ]; then
+        backup_k3brc "$target"
+    fi
+
+    # Choose baseline
+    if [ -f "$live_k3brc" ]; then
+        echo ""
+        print_info "An existing K3b configuration was found at ~/.config/k3brc."
+        if prompt_yn "Did you already configure K3b and want to keep those settings?" "n"; then
+            # Copy existing k3brc as baseline; Temp Dir is stripped by patch_k3brc below
+            cp "$live_k3brc" "$target"
+            print_success "Existing K3b settings captured as baseline."
+        else
+            cp "$system_template" "$target"
+            print_info "Using system default K3b profile as baseline."
+        fi
+    else
+        cp "$system_template" "$target"
+        print_info "No existing K3b config found — using system default profile."
+    fi
+
+    # Always patch all musiclib-managed keys (rip dir, format, encoder, etc.)
+    patch_k3brc "$target"
+    print_success "K3b profile written to: $target"
 }
 
 create_dir() {
@@ -526,7 +721,7 @@ print_header "Generating configuration"
 CUSTOM_LINES=""
 RETAIN_CUSTOM=false
 if [ -f "$CONFIG_FILE" ]; then
-    WIZARD_KEYS="^(MUSIC_REPO|NEW_DOWNLOAD_DIR|DEVICE_ID|RSGAIN_INSTALLED|KID3_GUI_INSTALLED)="
+    WIZARD_KEYS="^(MUSIC_REPO|NEW_DOWNLOAD_DIR|DEVICE_ID|RSGAIN_INSTALLED|KID3_GUI_INSTALLED|K3B_INSTALLED|K3B_ENCODER_FORMAT)="
     while IFS= read -r line; do
         # Skip blank lines and comment lines
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
@@ -592,7 +787,7 @@ EOF
 fi
 
 # Write optional dependency overrides only when detected (differ from system defaults)
-if [ "$RSGAIN_DETECTED" = true ] || [ "$KID3_GUI_DETECTED" != "none" ]; then
+if [ "$RSGAIN_DETECTED" = true ] || [ "$KID3_GUI_DETECTED" != "none" ] || [ "$K3B_DETECTED" = true ]; then
     cat >> "$CONFIG_FILE" << EOF
 #############################################
 # OPTIONAL DEPENDENCIES (auto-detected by setup)
@@ -612,6 +807,30 @@ EOF
 KID3_GUI_INSTALLED="$KID3_GUI_DETECTED"
 
 EOF
+    fi
+    if [ "$K3B_DETECTED" = true ]; then
+        # Detect the predominant audio format in the library to seed the rip format default.
+        # Only write K3B_ENCODER_FORMAT when it differs from the system default (mp3).
+        print_info "Scanning library for predominant audio format..."
+        K3B_DETECTED_FORMAT=$(detect_library_format "$MUSIC_REPO")
+        print_success "Library format detected: $K3B_DETECTED_FORMAT"
+
+        cat >> "$CONFIG_FILE" << 'EOF'
+# k3b detected - CD ripping panel enabled
+K3B_INSTALLED=true
+
+EOF
+        if [ "$K3B_DETECTED_FORMAT" != "mp3" ]; then
+            cat >> "$CONFIG_FILE" << EOF
+# Rip output format auto-detected from library
+K3B_ENCODER_FORMAT=$K3B_DETECTED_FORMAT
+
+EOF
+        fi
+
+        # Generate ~/.config/musiclib/k3brc (prompts user if ~/.config/k3brc exists)
+        generate_k3brc
+        K3B_SETUP_DONE=true
     fi
 fi
 
@@ -873,6 +1092,17 @@ echo "Download directory: $DOWNLOAD_DIR"
 
 if [ -n "$DEVICE_ID" ]; then
     echo "Mobile device:      $DEVICE_ID"
+fi
+
+if [ "${K3B_SETUP_DONE:-false}" = true ]; then
+    echo ""
+    print_success "K3b detected — CD ripping panel enabled. Rip profile written to ~/.config/musiclib/k3brc."
+    print_info   "Rip output format set to: ${K3B_DETECTED_FORMAT:-mp3}"
+    print_info   "Settings can be adjusted in the CD Ripping panel. ~/.config/k3brc is updated on each launch."
+else
+    echo ""
+    print_info "K3b not found — CD ripping panel will be disabled."
+    print_info "Install k3b and re-run setup to enable."
 fi
 
 echo ""

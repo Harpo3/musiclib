@@ -16,7 +16,7 @@ QTextStream cout(stdout);
 QTextStream cerr(stderr);
 
 void showVersion() {
-    cout << "musiclib-cli version 1.31" << Qt::endl;
+    cout << "musiclib-cli version 1.4" << Qt::endl;
     cout << "Music library management CLI dispatcher" << Qt::endl;
     cout << "Backend API Version: 1.1" << Qt::endl;
     cout << "Copyright (c) 2025-2026 - Licensed under MIT" << Qt::endl;
@@ -56,7 +56,7 @@ void showGlobalHelp() {
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("musiclib-cli");
-    QCoreApplication::setApplicationVersion("1.31");
+    QCoreApplication::setApplicationVersion("1.4");
     
     // Initialize command registry early so help can display available commands
     CommandHandler::registerCommands();

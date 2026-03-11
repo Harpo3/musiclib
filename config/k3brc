@@ -1,0 +1,127 @@
+[Audio Ripping]
+blank replace string=_
+create_playlist=false
+encoder=k3bexternalencoder
+filename pattern=%n - %a - %t
+filetype=mp3
+last ripping directory[$e]=file:$HOME/Downloads/newmusic/
+never_skip=true
+paranoia_mode=0
+playlist pattern=
+read_retries=5
+relative_path_in_playlist=false
+replace blanks=true
+single_file=false
+use_index0=false
+write_cue_file=false
+
+[Devices]
+PIONEER BD-RW   BDR-XD05=4233,4234
+
+[External Programs]
+cdrdao default=/usr/bin/cdrdao
+cdrdao last seen newest version=1.2.6
+cdrdao user parameters=
+cdrecord default=/usr/bin/cdrecord
+cdrecord last seen newest version=3.2a09
+cdrecord user parameters=
+cdrskin default=/usr/bin/cdrskin
+cdrskin last seen newest version=1.5.6
+cdrskin user parameters=
+dvd+rw-format user parameters=
+eMovix user parameters=
+growisofs user parameters=
+mkisofs default=/usr/bin/mkisofs
+mkisofs last seen newest version=3.2a09
+mkisofs user parameters=
+normalize user parameters=
+readcd default=/usr/bin/readcd
+readcd last seen newest version=3.2a09
+readcd user parameters=
+search path[$e]=/usr/bin/,/usr/local/bin/,/usr/sbin/,/usr/local/sbin/,/sbin
+sox user parameters=
+vcdxbuild user parameters=
+vcdxminfo user parameters=
+vcdxrip user parameters=
+
+[General Options]
+Allow overburning=false
+Fifo buffer=4
+Force unsafe operations=false
+Last system check version=25.12.3
+Manual buffer size=false
+Navigator breadcrumb mode=true
+No cd eject=false
+Show Document Header=true
+Show advanced GUI=false
+Show progress OSD=false
+Show splash=true
+action dialog startup settings=2
+ask_for_saving_changes_on_exit=true
+auto rewritable erasing=false
+burnfree=true
+check system config=true
+config version=25.12.3
+current theme=quant
+hide main window while writing=false
+keep action dialogs open=false
+
+[K3bExternalEncoderPlugin]
+command_Flac=Flac,flac,flac -V -o %f --force-raw-format --endian=little --channels=2 --sample-rate=44100 --sign=signed --bps=16 -T ARTIST=%a -T TITLE=%t -T TRACKNUMBER=%n -T DATE=%y -T ALBUM=%m -
+command_Mp3 (Lame)=Mp3 (Lame),mp3,lame -r --bitwidth 16 --little-endian -s 44.1 -h -b 320 --tt %t --ta %a --tl %m --ty %y --tc %c --tn %n - %f
+commands=Mp3 (Lame),Flac
+
+[K3bLameEncoderPlugin]
+Average Bitrate=128
+Constant Bitrate=320
+Copyright=false
+Encoder Quality=9
+Error Protection=false
+ISO compliance=false
+Manual Bitrate Settings=true
+Maximum Bitrate=224
+Minimum Bitrate=32
+Mode=stereo
+Original=true
+Quality Level=9
+Use Average Bitrate=true
+Use Maximum Bitrate=false
+Use Minimum Bitrate=false
+VBR=false
+
+[K3bOggVorbisEncoderPlugin]
+quality=6
+
+[Welcome Widget]
+welcome_actions=file_new_data,file_new_audio,tools_copy_medium
+
+[file view]
+Allow Expansion=false
+Decoration position=2
+Show Inline Previews=true
+Show Preview=false
+Show hidden files=false
+Sort by=Name
+Sort directories first=true
+Sort hidden files last=false
+Sort reversed=false
+View Style=DetailTree
+last url[$e]=$HOME/Downloads/newmusic/
+show bookmarks=false
+
+[last used Audio Ripping]
+blank replace string=_
+create_playlist=false
+encoder=k3bexternalencoder
+filename pattern=%n - %a - %t
+filetype=mp3
+last ripping directory[$e]=file:$HOME/Downloads/newmusic/
+never_skip=true
+paranoia_mode=0
+playlist pattern=
+read_retries=5
+relative_path_in_playlist=false
+replace blanks=true
+single_file=false
+use_index0=false
+write_cue_file=false
