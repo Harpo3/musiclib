@@ -68,6 +68,14 @@ Repairs corrupted or malformed ID3 tags in MP3 files within a personal MusicLib 
 
 The script supports options for recursive directory scanning, dry-run previews, verbose logging, and custom backup directories, creating timestamped backups before modifications via the `rebuildtag` function from `musiclibutilstagfunctions.sh` (loaded dynamically). It skips non-database files non-fatally, tracks statistics on processed files, rebuilt tags, skips, and errors, and cleans up old backups older than a configurable age.
 
+**musiclib_boost.sh**
+
+Applies ReplayGain loudness normalization to all `.mp3` files directly inside a specified album directory. It takes two positional arguments — the album directory path and a positive integer representing the target loudness level (e.g., `16` = -16 LUFS; higher is quieter, lower is louder). It checks that both `kid3-cli` and `rsgain` are available before proceeding, failing fast with a clear error if either is missing.
+
+The script first removes any existing ReplayGain tags (`REPLAYGAIN_TRACK_GAIN`, `REPLAYGAIN_TRACK_PEAK`, `REPLAYGAIN_ALBUM_GAIN`, `REPLAYGAIN_ALBUM_PEAK`) from every `.mp3` file in the directory using `kid3-cli`, then re-scans and re-tags all files using `rsgain custom` in album mode (`-a`) with the requested loudness target. Only `.mp3` files directly inside `ALBUM_DIR` are processed — the script is not recursive.
+
+This script is exposed as `musiclib-cli boost ALBUM_DIR LOUDNESS` via the CLI dispatcher and as the Boost Album section of the Maintenance panel in the GUI. Both the CLI and the GUI gate this feature on the `RSGAIN_INSTALLED=true` setting in `musiclib.conf`, which is written by `musiclib_init_config.sh` when rsgain is detected during setup.
+
 **musiclib_remove_record.sh**
 
 Removes a single track record from `musiclib.dsv` by exact filepath match. It sources `musiclib_utils.sh`, acquires the database lock (up to three attempts with a short timeout), calls the `delete_record_by_path()` helper which locates exactly one matching row and rewrites the DSV without it, and emits a `kdialog` passive notification on success or failure. The duplicate-safety guard — refusing to act when the path matches more than one row — prevents accidental mass deletions from substring collisions and requires the user to resolve duplicate records manually before retrying.

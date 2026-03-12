@@ -178,6 +178,42 @@ void CLIUtils::displayScriptError(const QString& jsonOutput) {
     }
 }
 
+QString CLIUtils::readConfigValue(const QString& key) {
+    QStringList configPaths;
+
+    // 1. Explicit override from environment (set by --config flag in main.cpp)
+    QByteArray envConf = qgetenv("MUSICLIB_CONFIG");
+    if (!envConf.isEmpty())
+        configPaths << QString::fromUtf8(envConf);
+
+    // 2. Standard locations (same order as the GUI)
+    configPaths << QDir::homePath() + "/.config/musiclib/musiclib.conf";
+    configPaths << QDir::homePath() + "/musiclib/config/musiclib.conf";
+
+    for (const QString& path : configPaths) {
+        if (!QFileInfo::exists(path))
+            continue;
+
+        QProcess proc;
+        proc.setProcessChannelMode(QProcess::MergedChannels);
+
+        QString cmd = QStringLiteral("source \"%1\" 2>/dev/null && echo \"$%2\"")
+                          .arg(path, key);
+        proc.start("bash", QStringList() << "-c" << cmd);
+
+        if (!proc.waitForFinished(3000))
+            continue;
+        if (proc.exitCode() != 0)
+            continue;
+
+        QString value = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        if (!value.isEmpty())
+            return value;
+    }
+
+    return QString();
+}
+
 bool CLIUtils::isAudioFile(const QString& filepath) {
     QFileInfo fileInfo(filepath);
     

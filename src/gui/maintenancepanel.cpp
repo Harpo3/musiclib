@@ -355,7 +355,7 @@ QGroupBox *MaintenancePanel::createTagRebuildGroup()
 // ---------------------------------------------------------------------------
 QGroupBox *MaintenancePanel::createBoostGroup()
 {
-    auto *group  = new QGroupBox("Boost Album — boost_album.sh");
+    auto *group  = new QGroupBox("Boost Album — musiclib_boost.sh");
     auto *layout = new QVBoxLayout(group);
 
     // Check if RSGain is installed
@@ -479,7 +479,7 @@ QGroupBox *MaintenancePanel::createBoostGroup()
         m_boostValueLabel->setText(QString("-%1 LUFS").arg(value));
     });
 
-    // Buttons (no dry-run for boost_album.sh)
+    // Buttons (no dry-run for musiclib_boost.sh)
     auto *btnRow = new QHBoxLayout;
     m_boostExecuteBtn = new QPushButton("Execute");
     btnRow->addStretch();
@@ -601,7 +601,7 @@ void MaintenancePanel::launchBoost()
     args << QString::number(m_boostSlider->value());
 
     setButtonsEnabled(false);
-    m_runner->runScript("boost", "boost_album.sh", args);
+    m_runner->runScript("boost", "musiclib_boost.sh", args);
 }
 
 // ---------------------------------------------------------------------------

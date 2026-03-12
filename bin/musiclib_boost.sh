@@ -2,7 +2,7 @@
 set -u
 set -o pipefail
 
-# Usage: boost_album.sh [/path/to/album_dir] [12] higher number for quieter, lower for louder
+# Usage: musiclib_boost.sh [/path/to/album_dir] [12] higher number for quieter, lower for louder
 # Meaning: target loudness = -12 LUFS
 # Usually 12 or 13 will boost the level you want
 

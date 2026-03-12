@@ -387,7 +387,7 @@ musiclib/
 │   ├── musiclib_status.sh      # Read-only status/diagnostics
 │   ├── musiclib_lock_inspector.sh    # Lock contention diagnostics
 │   ├── musiclib_conky_refresh.sh     # Regenerate Conky display files on demand
-│   ├── boost_album.sh          # ReplayGain loudness targeting
+│   ├── musiclib_boost.sh       # ReplayGain loudness targeting
 │   └── audpl_scanner.sh        # Playlist cross-reference CSV
 │
 ├── docs/                       # Documentation

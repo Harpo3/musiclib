@@ -964,7 +964,7 @@ else
 fi
 
 #############################################
-# Audacious Integration (Optional)
+# Audacious Integration
 #############################################
 
 if [ "$AUDACIOUS_DETECTED" = true ]; then
@@ -973,75 +973,70 @@ if [ "$AUDACIOUS_DETECTED" = true ]; then
     print_success "Audacious is installed"
     echo ""
     print_info "MusicLib hooks into Audacious via the Song Change plugin"
-    print_info "to update Conky display data whenever the track changes."
+    print_info "to update Conky display data whenever the track changes, and "
+    print_info "to update the database and file tags with last-played date."
     echo ""
 
-    if prompt_yn "Configure Audacious Song Change integration now?" "y"; then
-        echo ""
+    # Determine hook script path: installed location first, dev/sibling fallback
+    HOOK_SCRIPT="/usr/lib/musiclib/bin/musiclib_audacious.sh"
+    if [ ! -f "$HOOK_SCRIPT" ]; then
+        HOOK_SCRIPT="$(dirname "$(readlink -f "$0")")/musiclib_audacious.sh"
+    fi
 
-        # Determine hook script path: installed location first, dev/sibling fallback
-        HOOK_SCRIPT="/usr/lib/musiclib/bin/musiclib_audacious.sh"
-        if [ ! -f "$HOOK_SCRIPT" ]; then
-            HOOK_SCRIPT="$(dirname "$(readlink -f "$0")")/musiclib_audacious.sh"
-        fi
+    if [ ! -f "$HOOK_SCRIPT" ]; then
+        print_error "Hook script not found at either installed or development path"
+        print_info "Expected: /usr/lib/musiclib/bin/musiclib_audacious.sh"
+        print_info "Re-run setup after installing the musiclib package."
+    else
+        AUDACIOUS_CONFIG="$HOME/.config/audacious/config"
+        PLUGIN_REGISTRY="$HOME/.config/audacious/plugin-registry"
+        SONG_CHANGE_SO="/usr/lib/audacious/General/song_change.so"
 
-        if [ ! -f "$HOOK_SCRIPT" ]; then
-            print_error "Hook script not found at either installed or development path"
-            print_info "Expected: /usr/lib/musiclib/bin/musiclib_audacious.sh"
-            print_info "Re-run setup after installing the musiclib package."
+        # Audacious overwrites its config on exit, so it must be closed first
+        if pgrep -x audacious >/dev/null 2>&1; then
+            print_error "Audacious is currently running"
+            print_info "Close Audacious and re-run setup to configure integration."
+            print_info "Or configure manually - see: musiclib-cli audacious-setup"
+        elif [ "$AUDACIOUS_REGISTRY_READY" = false ]; then
+            print_info "Song Change plugin entry not found in plugin-registry"
+            print_info "Open and close Audacious once, then re-run setup."
         else
-            AUDACIOUS_CONFIG="$HOME/.config/audacious/config"
-            PLUGIN_REGISTRY="$HOME/.config/audacious/plugin-registry"
-            SONG_CHANGE_SO="/usr/lib/audacious/General/song_change.so"
+            # Flip enabled 0 -> enabled 1 within the song_change.so block only
+            awk -v so="general $SONG_CHANGE_SO" '
+                $0 == so        { in_block=1 }
+                in_block && /^enabled 0$/ { sub(/^enabled 0$/, "enabled 1"); in_block=0 }
+                { print }
+            ' "$PLUGIN_REGISTRY" > "${PLUGIN_REGISTRY}.tmp" \
+                && mv "${PLUGIN_REGISTRY}.tmp" "$PLUGIN_REGISTRY"
+            print_success "Song Change plugin enabled in plugin-registry"
 
-            # Audacious overwrites its config on exit, so it must be closed first
-            if pgrep -x audacious >/dev/null 2>&1; then
-                print_error "Audacious is currently running"
-                print_info "Close Audacious and re-run setup to configure integration."
-                print_info "Or configure manually - see: musiclib-cli audacious-setup"
-            elif [ "$AUDACIOUS_REGISTRY_READY" = false ]; then
-                print_info "Song Change plugin entry not found in plugin-registry"
-                print_info "Open and close Audacious once, then re-run setup."
-            else
-                # Flip enabled 0 -> enabled 1 within the song_change.so block only
-                awk -v so="general $SONG_CHANGE_SO" '
-                    $0 == so        { in_block=1 }
-                    in_block && /^enabled 0$/ { sub(/^enabled 0$/, "enabled 1"); in_block=0 }
-                    { print }
-                ' "$PLUGIN_REGISTRY" > "${PLUGIN_REGISTRY}.tmp" \
-                    && mv "${PLUGIN_REGISTRY}.tmp" "$PLUGIN_REGISTRY"
-                print_success "Song Change plugin enabled in plugin-registry"
-
-                # --- Step 2: Write cmd_line to audacious config ---
-                if [ ! -f "$AUDACIOUS_CONFIG" ]; then
-                    # Config file does not exist - create it with the section
-                    mkdir -p "$(dirname "$AUDACIOUS_CONFIG")"
-                    printf '\n[song_change]\ncmd_line=%s\n' "$HOOK_SCRIPT" \
-                        > "$AUDACIOUS_CONFIG"
-                    print_success "Created Audacious config with Song Change hook"
-                elif grep -q "^\[song_change\]" "$AUDACIOUS_CONFIG"; then
-                    # Section exists - update or insert cmd_line
-                    if grep -q "^cmd_line=" "$AUDACIOUS_CONFIG"; then
-                        sed -i "s|^cmd_line=.*|cmd_line=$HOOK_SCRIPT|" \
-                            "$AUDACIOUS_CONFIG"
-                        print_success "Updated Song Change cmd_line in Audacious config"
-                    else
-                        sed -i "/^\[song_change\]/a cmd_line=$HOOK_SCRIPT" \
-                            "$AUDACIOUS_CONFIG"
-                        print_success "Added Song Change cmd_line to Audacious config"
-                    fi
+            # --- Step 2: Write cmd_line to audacious config ---
+            if [ ! -f "$AUDACIOUS_CONFIG" ]; then
+                # Config file does not exist - create it with the section
+                mkdir -p "$(dirname "$AUDACIOUS_CONFIG")"
+                printf '\n[song_change]\ncmd_line=%s\n' "$HOOK_SCRIPT" \
+                    > "$AUDACIOUS_CONFIG"
+                print_success "Created Audacious config with Song Change hook"
+            elif grep -q "^\[song_change\]" "$AUDACIOUS_CONFIG"; then
+                # Section exists - update or insert cmd_line
+                if grep -q "^cmd_line=" "$AUDACIOUS_CONFIG"; then
+                    sed -i "s|^cmd_line=.*|cmd_line=$HOOK_SCRIPT|" \
+                        "$AUDACIOUS_CONFIG"
+                    print_success "Updated Song Change cmd_line in Audacious config"
                 else
-                    # Section absent - append it
-                    printf '\n[song_change]\ncmd_line=%s\n' "$HOOK_SCRIPT" \
-                        >> "$AUDACIOUS_CONFIG"
-                    print_success "Added [song_change] section to Audacious config"
+                    sed -i "/^\[song_change\]/a cmd_line=$HOOK_SCRIPT" \
+                        "$AUDACIOUS_CONFIG"
+                    print_success "Added Song Change cmd_line to Audacious config"
                 fi
+            else
+                # Section absent - append it
+                printf '\n[song_change]\ncmd_line=%s\n' "$HOOK_SCRIPT" \
+                    >> "$AUDACIOUS_CONFIG"
+                print_success "Added [song_change] section to Audacious config"
             fi
         fi
-        echo ""
-    else
-        print_info "Skipped: Run 'musiclib-cli audacious-setup' at any time to configure."
     fi
+    echo ""
 fi
 
 #############################################

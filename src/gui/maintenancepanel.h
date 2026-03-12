@@ -21,7 +21,7 @@ class ScriptRunner;
 ///   1. Build Library      (musiclib_build.sh)       — full DB rebuild
 ///   2. Clean Tags         (musiclib_tagclean.sh)    — ID3 merge/strip/embed-art
 ///   3. Rebuild Tags       (musiclib_tagrebuild.sh)  — repair corrupted tags from DB
-///   4. Boost Album        (boost_album.sh)          — ReplayGain loudness targeting
+///   4. Boost Album        (musiclib_boost.sh)       — ReplayGain loudness targeting
 ///   5. Add New Tracks     (musiclib_new_tracks.sh)  — import downloads into library
 ///
 /// Each operation has a Preview button (--dry-run where supported) and an

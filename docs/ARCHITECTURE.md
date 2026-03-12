@@ -52,7 +52,7 @@ MusicLib is a hybrid architecture combining a battle-tested shell script backend
 │   • musiclib_rebuild.sh        (full DB rebuild from scan)   │
 │   • musiclib_tagrebuild.sh     (repair tags from DB)         │
 │   • musiclib_tagclean.sh       (ID3v1→v2, APE removal, art)  │
-│   • boost_album.sh             (ReplayGain loudness)         │
+│   • musiclib_boost.sh          (ReplayGain loudness)         │
 │   • audpl_scanner.sh           (playlist cross-reference)    │
 └────────────────────────┬─────────────────────────────────────┘
                          ▼
@@ -268,7 +268,7 @@ musiclib_new_tracks.sh               # Import pipeline
 musiclib_rebuild.sh                  # Full DB rebuild from filesystem
 musiclib_tagrebuild.sh               # Repair corrupted tags from DB
 musiclib_tagclean.sh                 # ID3v1→v2 merge, APE removal, art embed
-boost_album.sh                       # ReplayGain loudness targeting
+musiclib_boost.sh                    # ReplayGain loudness targeting
 audpl_scanner.sh                     # Playlist cross-reference CSV generator
 ```
 
@@ -946,7 +946,7 @@ void TestLibraryModel::testDSVParsing() {
 │  • musiclib_rebuild.sh                  │
 │  • musiclib_tagclean.sh                 │
 │  • musiclib_tagrebuild.sh               │
-│  • boost_album.sh                       │
+│  • musiclib_boost.sh                    │
 │  • audpl_scanner.sh                     │
 │  (Invoke libmusiclib for DB access)     │
 └─────────────────────────────────────────┘

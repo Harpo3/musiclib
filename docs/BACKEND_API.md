@@ -776,41 +776,38 @@ musiclib-cli tagrebuild "/mnt/music/corrupted/song.mp3"
 
 ---
 
-### 2.6 `musiclib-cli boost` → `boost_album.sh`
+### 2.6 `musiclib-cli boost` → `musiclib_boost.sh`
 
 **Purpose**: Apply ReplayGain loudness targeting to album (via `rsgain`).
 
 **Invocation**:
 ```bash
-boost_album.sh ALBUM_DIR [--target TARGET_LUFS]
+musiclib_boost.sh ALBUM_DIR LOUDNESS
 ```
 
 **Parameters**:
-- `ALBUM_DIR`: Directory containing album tracks
-- `--target TARGET_LUFS`: Target loudness in LUFS (default: -18)
+- `ALBUM_DIR`: Directory containing album `.mp3` files
+- `LOUDNESS`: Target loudness as a positive integer (e.g. `16` = -16 LUFS). Higher = quieter, lower = louder. Do not pass a negative value.
 
 **Workflow**:
-1. Scan all tracks in `ALBUM_DIR` with `rsgain -a`
-2. Apply album-level ReplayGain tags
-3. Optionally apply track-level gain
+1. Remove existing ReplayGain tags from all `.mp3` files in `ALBUM_DIR` via `kid3-cli`
+2. Re-scan and re-tag with `rsgain` at the requested target loudness (album + track level)
 
 **Side Effects**:
-- Adds ReplayGain tags to files
-- Logs to `musiclib.log`
+- Rewrites ReplayGain tags in all `.mp3` files directly inside `ALBUM_DIR` (non-recursive)
 
 **Exit Codes**:
 - 0: Success
-- 1: Invalid directory, no audio files found
-- 2: `rsgain` unavailable
+- 1: Missing arguments or `kid3-cli`/`rsgain` not found
 
 **Example**:
 ```bash
-musiclib-cli boost "/mnt/music/Pink Floyd/The Wall" --target -16
+musiclib-cli boost "/mnt/music/Pink Floyd/The Wall" 16
 ```
 
-**Equivalent GUI**: Maintenance panel → Loudness Operations → Boost Album → Select directory
+**Equivalent GUI**: Maintenance panel → Boost Album → Select directory
 
-**Optional Dependency**: This command requires `rsgain` to be installed. If `RSGAIN_INSTALLED=false` in `musiclib.conf`, the GUI will disable the Boost Album feature with an informative tooltip. See Section 1.5 and Section 2.10 for dependency detection.
+**Optional Dependency**: This command requires `rsgain` to be installed. If `RSGAIN_INSTALLED=false` in `musiclib.conf`, both the GUI Boost Album section and the CLI `boost` command are disabled. See Section 1.5 and Section 2.10 for dependency detection.
 
 ---
 
@@ -1531,7 +1528,7 @@ mv musiclib.dsv.new musiclib.dsv
 /usr/lib/musiclib/bin/musiclib_rebuild.sh
 /usr/lib/musiclib/bin/musiclib_tagclean.sh
 /usr/lib/musiclib/bin/musiclib_tagrebuild.sh
-/usr/lib/musiclib/bin/boost_album.sh
+/usr/lib/musiclib/bin/musiclib_boost.sh
 /usr/lib/musiclib/bin/audpl_scanner.sh
 /usr/lib/musiclib/bin/musiclib_new_tracks.sh
 /usr/lib/musiclib/bin/musiclib_audacious.sh

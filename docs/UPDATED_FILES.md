@@ -184,8 +184,7 @@ bin/musiclib_tagclean.sh
   ✓ Add JSON error output
   ✓ No DB locking needed (tag-only operations)
 
-bin/boost_album.sh
-  ✓ Add --target flag for LUFS
+bin/musiclib_boost.sh
   ✓ Add JSON error output
   ✓ No DB locking needed (tag-only operations)
 
@@ -252,7 +251,7 @@ scripts/
   musiclib_audacious_setup.sh         # Setup helper for Audacious (new)
   musiclib_audacious_test.sh          # Setup helper for testing (new)
   musiclib_process_pending.sh         # Process pending operations (new)
-  boost_album.sh                      # ReplayGain loudness targeting
+  musiclib_boost.sh                   # ReplayGain loudness targeting
   audpl_scanner.sh                    # Playlist scanning utility
 ```
 
@@ -464,7 +463,7 @@ All CLI commands use kebab-case (hyphens) while script and C++ file names use sn
 | `musiclib-cli audacious-hook` | `audacious_hook.cpp` | `musiclib_audacious.sh` |
 | `musiclib-cli setup` | `setup.cpp` | `musiclib_init_config.sh` |
 | `musiclib-cli process-pending` | `process_pending.cpp` | `musiclib_process_pending.sh` |
-| `musiclib-cli boost` | `boost.cpp` | `boost_album.sh` |
+| `musiclib-cli boost` | `boost.cpp` | `musiclib_boost.sh` |
 | `musiclib-cli scan` | `scan.cpp` | `audpl_scanner.sh` |
 | `musiclib-cli mobile` | `mobile.cpp` | `musiclib_mobile.sh` |
 

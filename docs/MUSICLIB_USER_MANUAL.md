@@ -1399,58 +1399,52 @@ musiclib-cli boost /mnt/music/radiohead/ok_computer 19
 **Usage**:
 
 ```bash
-musiclib-cli remove-record FILEPATH
+musiclib-cli remove-record FILEPATH [options]
 ```
 
 **Parameters**:
 
 - `FILEPATH` — Absolute path to audio file
 
-**What it does**:
-Removes the database row for the specified file. The audio file itself is not deleted from disk.
+**Options**:
 
-**Example**:
+- `--help` — Display this help
+- `--delete-file` - also removes the audio file at FILEPATH 
+
+**What it does**:
+Removes the database row for the specified file. The audio file itself is not deleted from disk unless the delete-file parameter is used.
+
+**Examples**:
 
 ```bash
 # Remove a track's database record
 musiclib-cli remove-record "/mnt/music/deleted/old_track.mp3"
+# Remove a track's database record and underlying audio file
+musiclib-cli remove-record "/mnt/music/deleted/old_track.mp3" --delete-file
 ```
 
 ---
 
-#### `musiclib-cli help`
+#### `musiclib-cli --help`
 
 **Purpose**: Display help information.
 
 **Usage**:
 
 ```bash
-musiclib-cli help [command]
 musiclib-cli --help
 musiclib-cli <command> --help
 ```
 
-**Examples**:
-
-```bash
-# Show all commands
-musiclib-cli help
-
-# Show help for specific command
-musiclib-cli help rate
-musiclib-cli rate --help
-```
-
 ---
 
-#### `musiclib-cli version`
+#### `musiclib-cli --version`
 
 **Purpose**: Display version information.
 
 **Usage**:
 
 ```bash
-musiclib-cli version
 musiclib-cli --version
 ```
 

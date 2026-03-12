@@ -67,6 +67,17 @@ public:
      * @return List of extensions (without dots)
      */
     static QStringList audioExtensions();
+
+    /**
+     * @brief Read a single key value from the musiclib config file
+     * @param key Config key to look up (e.g., "RSGAIN_INSTALLED")
+     * @return The value string, or empty string if not found
+     *
+     * Sources the config file via bash and echoes the variable, matching
+     * the same lookup order used by the GUI: ~/.config/musiclib/musiclib.conf,
+     * then ~/musiclib/config/musiclib.conf, then $MUSICLIB_CONFIG if set.
+     */
+    static QString readConfigValue(const QString& key);
 };
 
 #endif // CLI_UTILS_H

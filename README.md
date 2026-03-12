@@ -118,7 +118,7 @@ musiclib-cli mobile upload /path/to/playlist.m3u
 musiclib-cli mobile status
 
 # Apply ReplayGain loudness targeting
-musiclib-cli boost "/mnt/music/Artist/Album/" --target -16
+musiclib-cli boost "/mnt/music/Artist/Album/" 16
 
 # Scan playlists and generate cross-reference CSV
 musiclib-cli scan --output playlist_report.csv
@@ -126,8 +126,8 @@ musiclib-cli scan --output playlist_report.csv
 
 **Help**:
 ```bash
-musiclib-cli help
-musiclib-cli help rate
+musiclib-cli --help
+musiclib-cli rate --help
 ```
 
 ---
@@ -143,13 +143,12 @@ MUSIC_REPO="/mnt/music"
 DEVICE_ID="abc123def456"  # KDE Connect device (from kdeconnect-cli -l)
 ```
 
-**Audacious Hook** (for Conky updates):
+**Audacious Hook** (for Conky, database and tag updates):
 Configured automatically during `musiclib-cli setup`. Run Audacious at least one time before running MusicLib setup so its plugins are initialized.
 
-**Conky Integration (optional)**:
-- Point Conky config to `~/.local/share/musiclib/data/conky_output/`
+**Conky Integration**:
+- If you use Conky as a desktop panel, you can configure it to display your library elements, like cover art, and other track information while playing music with Audacious. Musiclib place the data elements at `~/.local/share/musiclib/data/conky_output/` for this use.
 - Example: `${cat ~/.local/share/musiclib/data/conky_output/artist.txt}`
-- See `conky_example.conf` in `/usr/share/musiclib/`
 
 ---
 

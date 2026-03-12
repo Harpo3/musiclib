@@ -86,7 +86,16 @@ void CommandHandler::registerCommands() {
         "musiclib_init_config.sh",
         handleSetup
     };
-    
+
+    // Register: boost
+    commands_["boost"] = {
+        "boost",
+        "Apply ReplayGain loudness targeting to an album",
+        "<ALBUM_DIR> <LOUDNESS>",
+        "musiclib_boost.sh",
+        handleBoost
+    };
+
     registered_ = true;
 }
 
@@ -236,6 +245,25 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
         cout << "  musiclib-cli process-pending" << Qt::endl;
+    }
+    else if (cmd == "boost") {
+        cout << "Arguments:" << Qt::endl;
+        cout << "  <ALBUM_DIR>  Path to the directory containing the album's MP3 files" << Qt::endl;
+        cout << "  <LOUDNESS>   Target loudness as a positive integer (e.g. 12 = -12 LUFS)." << Qt::endl;
+        cout << "               Higher number = quieter; lower number = louder." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Description:" << Qt::endl;
+        cout << "  Removes existing ReplayGain tags from all .mp3 files in ALBUM_DIR," << Qt::endl;
+        cout << "  then rescans with rsgain at the requested target loudness." << Qt::endl;
+        cout << "  Only processes .mp3 files directly inside ALBUM_DIR (not recursive)." << Qt::endl;
+        cout << "  Requires both kid3-cli and rsgain to be installed." << Qt::endl;
+        cout << Qt::endl;
+        cout << "  NOTE: pass a positive integer even though LUFS is normally shown as" << Qt::endl;
+        cout << "  negative. To target -16 LUFS, pass 16." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Examples:" << Qt::endl;
+        cout << "  musiclib-cli boost /mnt/music/pink_floyd/the_wall 12    # Target -12 LUFS" << Qt::endl;
+        cout << "  musiclib-cli boost /mnt/music/radiohead/ok_computer 19  # Target -19 LUFS" << Qt::endl;
     }
     else if (cmd == "setup") {
         cout << "Options:" << Qt::endl;
@@ -404,4 +432,41 @@ int CommandHandler::handleSetup(const QStringList& args) {
     // needs direct access to the terminal's stdin/stdout/stderr.
     return CLIUtils::executeScript("musiclib_init_config.sh", args,
                                    /*interactive=*/true);
+}
+
+int CommandHandler::handleBoost(const QStringList& args) {
+    // Check that rsgain is available (as recorded by the setup wizard)
+    QString rsgainInstalled = CLIUtils::readConfigValue("RSGAIN_INSTALLED");
+    if (rsgainInstalled != "true") {
+        cerr << "Error: The 'boost' command requires rsgain, which is not installed." << Qt::endl;
+        cerr << "       Install rsgain and re-run 'musiclib-cli setup' to enable this feature." << Qt::endl;
+        return 1;
+    }
+
+    // boost requires exactly 2 positional arguments: ALBUM_DIR and LOUDNESS
+    if (args.size() != 2) {
+        cerr << "Error: 'boost' requires exactly 2 arguments: ALBUM_DIR and LOUDNESS" << Qt::endl;
+        showHelp("boost");
+        return 1;
+    }
+
+    QString albumDir    = args[0];
+    QString loudnessStr = args[1];
+
+    // Validate directory exists
+    if (!QFileInfo::exists(albumDir) || !QFileInfo(albumDir).isDir()) {
+        cerr << "Error: Album directory not found: " << albumDir << Qt::endl;
+        return 1;
+    }
+
+    // Validate loudness is a positive integer
+    bool ok;
+    int loudness = loudnessStr.toInt(&ok);
+    if (!ok || loudness <= 0) {
+        cerr << "Error: LOUDNESS must be a positive integer (e.g. 16 for -16 LUFS)" << Qt::endl;
+        cerr << "       Do not pass a negative value." << Qt::endl;
+        return 1;
+    }
+
+    return CLIUtils::executeScript("musiclib_boost.sh", args);
 }
