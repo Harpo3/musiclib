@@ -79,6 +79,7 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect,
 - **Maintenance Panel**: Rebuild DB, clean tags, boost loudness, scan playlists
 - **Mobile Panel**: Upload playlists to Android via KDE Connect
 - **Settings**: Configure paths, device ID, global shortcuts
+- **CD Ripping**: Configure and launch k3b CD Ripper 
 - **System Tray**: Quick-rate current track (0–5 stars), open to maintenance
 
 **Global Shortcuts** (configurable in Settings):
