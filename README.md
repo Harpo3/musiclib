@@ -58,11 +58,11 @@ sudo make install
 
 ## Quick Start
 
-### First-Run Setup
+### REQUIRED: First-Run Setup - both GUI and CLI versions
 
-**CLI**:
+**Console**:
 ```bash
-musiclib-cli setup
+musiclib-cli setup  # This command also completes setup for the GUI version.
 ```
 The setup wizard detects your system (Audacious, music directories, KDE Connect, Kid3, and rsgain), creates the local configuration file, configures Audacious integration, and prompts to build the library database if one is not detected. Can be re-run. 
 
