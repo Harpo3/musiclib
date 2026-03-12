@@ -11,6 +11,7 @@ set(GUI_SOURCES
     configuretoolbarsdialog.cpp
     confwriter.cpp
     mobile_panel.cpp
+    cdrippingpanel.cpp
     systemtrayicon.cpp
 )
 

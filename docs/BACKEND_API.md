@@ -1,4 +1,4 @@
-# MusicLib Backend API Contract v1.2
+# MusicLib Backend API Contract v1.3
 
 ## Document Purpose
 
@@ -193,6 +193,15 @@ release_db_lock
 - Symbolic links are **resolved to real paths** before DB insertion (`readlink -f`)
 - Paths are **URL-decoded** if sourced from `.audpl` files (`uri=file://...`)
 
+**K3b-specific paths** (written by the GUI, not by shell scripts):
+
+| File | Purpose |
+|---|---|
+| `~/.config/musiclib/k3brc` | MusicLib's managed K3b configuration. Written by `generate_k3brc` at setup; patched on every panel control change. |
+| `~/.config/k3brc` | K3b's live config. Deployed from `~/.config/musiclib/k3brc` by `deployK3brc()` before each K3b launch. Never written by setup directly. |
+| `~/.config/musiclib/k3b.pid` | PID of the K3b process last launched by MusicLib. Written at launch, cleared on exit detection or PID mismatch at startup. |
+| `~/.config/musiclib/backups/k3brc_bak_MMDDYYYY_N` | Dated backups of `~/.config/musiclib/k3brc` created on setup re-run. |
+
 ---
 
 ### 1.5 Configuration Reading
@@ -230,8 +239,22 @@ KDECONNECT_CMD       # Path/command for kdeconnect-cli
 RSGAIN_INSTALLED     # true/false - RSGain loudness tool availability
 KID3_GUI_INSTALLED   # "kid3"/"kid3-qt"/"none" - Kid3 GUI variant detection
 K3B_INSTALLED        # true/false - K3b CD ripper availability
-K3B_ENCODER_FORMAT   # "mp3"/"ogg"/"flac" - rip output format (auto-detected from library; omitted when mp3, the system default)
 ```
+
+**CD Ripping Settings** (K3b integration; managed by the CD Ripping panel and setup wizard):
+```bash
+K3B_CMD              # k3b command/path (default: "k3b")
+K3B_ENCODER_FORMAT   # "mp3"/"ogg"/"flac" - rip output format (auto-detected from library; omitted when mp3, the system default)
+K3B_MP3_MODE         # "cbr"/"vbr"/"abr" - MP3 encoding mode (default: cbr)
+K3B_MP3_BITRATE      # CBR bitrate in kbps (default: 320; used when K3B_MP3_MODE=cbr)
+K3B_MP3_VBR_QUALITY  # VBR quality 0-9, 0=best (default: 2; used when K3B_MP3_MODE=vbr)
+K3B_MP3_ABR_TARGET   # ABR target bitrate in kbps (default: 192; used when K3B_MP3_MODE=abr)
+K3B_OGG_QUALITY      # Ogg Vorbis quality 0-10, 10=best (default: 6; used when K3B_ENCODER_FORMAT=ogg)
+K3B_PARANOIA_MODE    # cdparanoia mode: 0=off, 1=overlap, 2=never skip, 3=full paranoia (default: 0)
+K3B_READ_RETRIES     # Sector read retry count before giving up (default: 5)
+```
+
+These keys are written to `~/.config/musiclib/musiclib.conf` (user overrides layer) by the CD Ripping panel when controls change. System defaults live in `/usr/lib/musiclib/config/musiclib.conf`. Shell scripts do not read or write these keys directly — they are read by `patch_k3brc()` in `musiclib_init_config.sh` and by the C++ `CDRippingPanel` class.
 
 **Note**: GUI-only preferences (poll interval, system tray close/minimize behavior, start minimized) are stored in KConfig (`~/.config/musiclibrc`) rather than `musiclib.conf`, since they have no meaning to shell scripts.
 
@@ -1054,6 +1077,16 @@ KID3_GUI_INSTALLED="kid3-qt"
 K3B_INSTALLED=true
 K3B_ENCODER_FORMAT=flac    # written only when non-default (library was predominantly FLAC)
 
+# CD Ripping settings — written only when changed from system defaults by the panel
+# (System defaults in /usr/lib/musiclib/config/musiclib.conf take effect if absent here)
+# K3B_MP3_MODE=cbr
+# K3B_MP3_BITRATE=320
+# K3B_MP3_VBR_QUALITY=2
+# K3B_MP3_ABR_TARGET=192
+# K3B_OGG_QUALITY=6
+# K3B_PARANOIA_MODE=0
+# K3B_READ_RETRIES=5
+
 # Audacious integration
 AUDACIOUS_INSTALLED=true
 AUDACIOUS_PATH="/usr/bin/audacious"
@@ -1255,6 +1288,25 @@ connect(watcher, &QFileSystemWatcher::fileChanged, this, [=]() {
 ```
 
 **Caveat**: Watcher fires on lock file changes too. Use debounce timer (500ms) to avoid redundant reloads.
+
+### 3.4 CDRippingPanel Public Interface
+
+`CDRippingPanel` exposes three members used by `MainWindow` for the Rip CD toolbar action:
+
+| Member | Type | Purpose |
+|---|---|---|
+| `runDriftDetection()` | `bool` (public slot) | Compares managed keys between `~/.config/k3brc` and `~/.config/musiclib/k3brc`. Returns `true` if drift was detected (banner shown). Called by MainWindow before deciding whether to launch K3b. |
+| `patchAndDeployK3brc()` | `void` (public method) | Patches `~/.config/musiclib/k3brc` with current ConfWriter values, then copies it to `~/.config/k3brc`. Called by MainWindow immediately before launching K3b (Scenario A: no drift). |
+| `k3bExited()` | `Q_SIGNAL` | Emitted when the poll timer detects the K3b running→not-running transition. MainWindow connects to this to call `clearK3bPid()` and clean up `~/.config/musiclib/k3b.pid`. |
+
+**Toolbar action launch scenarios:**
+
+| Scenario | Condition | Behaviour |
+|---|---|---|
+| A — Fresh launch | K3b not running | Run drift check. If drift: show banner, return (user resolves via panel). If no drift: `patchAndDeployK3brc()`, launch K3b, write PID file. |
+| B — Already running (ours) | PID file exists and matches running process | Raise K3b window via `raiseWindowByClass("k3b")`. No deploy. |
+| C — Already running (external) | No PID file or PID mismatch | Raise K3b window. No deploy. Panel shows dimmed state via its own poll timer. |
+| D — Startup with K3b open | Detected at MainWindow init | PID match: treat as Scenario B. PID mismatch: clear stale PID file, no dialog. |
 
 ---
 

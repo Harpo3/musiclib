@@ -1,7 +1,7 @@
 # MusicLib User Manual
 
-**Version**: 1.2  
-**Last Updated**: March 2026  
+**Version**: 1.3
+**Last Updated**: March 2026
 **For**: MusicLib on Linux with KDE Plasma 6
 
 ---
@@ -17,12 +17,13 @@
 7. [Using the GUI](#using-the-gui)
 8. [Library Management Tasks](#library-management-tasks)
 9. [Mobile Sync](#mobile-sync)
-10. [Desktop Integration](#desktop-integration)
-11. [Command-Line Reference](#command-line-reference)
-12. [Standalone Utilities](#standalone-utilities)
-13. [FAQ](#frequently-asked-questions)
-14. [Troubleshooting](#troubleshooting)
-15. [Tips & Tricks](#tips--tricks)
+10. [CD Ripping](#cd-ripping)
+11. [Desktop Integration](#desktop-integration)
+12. [Command-Line Reference](#command-line-reference)
+13. [Standalone Utilities](#standalone-utilities)
+14. [FAQ](#frequently-asked-questions)
+15. [Troubleshooting](#troubleshooting)
+16. [Tips & Tricks](#tips--tricks)
 
 ---
 
@@ -48,6 +49,7 @@ It sits between you and the Audacious audio player, and handles all the behind-t
 - **Rates and Organizes**: Star-rate songs and see your ratings everywhere
 - **Tracks Playback**: Records last-played history across devices—desktop (Audacious) and remote (mobile phone)
 - **Syncs to Mobile**: Pushes playlists/files to Android or iOS devices via KDE Connect, and captures the last-played data from the old playlist when the new one is replaced. Logs actual played timestamps for tracks played from the desktop, and logs synthesized dates for playlists played on mobile
+- **Rips CDs**: Manages K3b's rip configuration (format, bitrate, error correction) and deploys it before each session, so K3b is always ready with the settings you want
 - **Integrates with KDE**: Works seamlessly with Plasma, Dolphin file manager, and system shortcuts
 - **Manages Metadata**: Repairs and normalizes song tags automatically
 
@@ -541,6 +543,8 @@ Select from the Side Panel on the left to access the other panels:
 
 **Maintenance Panel** — Perform database and tag maintenance operations like rebuilding the database, cleaning tags, or importing new music.
 
+**CD Ripping Panel** — Configure K3b CD ripping settings (output format, bitrate/quality, error correction) and manage the ripping profile. Only available when K3b is installed and detected by setup. See the [CD Ripping](#cd-ripping) section for details.
+
 **Settings** — (Opens new Window) Configure MusicLib paths, device IDs, and behavior options.
 
 ### Toolbar Elements (Top)
@@ -557,6 +561,8 @@ Select from the Side Panel on the left to access the other panels:
 **Audacious** — Launches/activates Audacious
 
 **Kid3** — Launches/activates Kid3 for currently playing track
+
+**Rip CD** — Launches K3b to rip a CD using MusicLib's managed rip profile. If K3b is already open, raises its window instead. Disabled when K3b is not installed (tooltip explains how to enable it). See the [CD Ripping](#cd-ripping) section for full behavior.
 
 **Dolphin** — Launches/activates Dolphin music folder for currently playing track
 
@@ -724,6 +730,65 @@ The core functionality (uploading playlists, last-played accounting) works the s
 1. Make sure you upload the playlist you intended
 2. Verify the previous playlist metadata files exist
 3. Check the time between uploads is at least 1 hour
+
+---
+
+## CD Ripping
+
+MusicLib integrates with **K3b** to manage your CD ripping workflow. When K3b is installed and detected during setup, MusicLib takes ownership of K3b's rip configuration — setting the output format, encoder settings, rip directory, and error correction mode — and deploys that profile to K3b before each session. You control everything from within MusicLib, so K3b is ready to rip the moment it opens.
+
+**Supported output formats:** MP3, Ogg Vorbis, and FLAC.
+
+### Setup
+
+K3b must be installed before running `musiclib-cli setup` (or re-run setup with `--force` after installing it). 
+
+During setup, the wizard:
+
+1. Detects the `k3b` command and sets `K3B_INSTALLED=true` in your config.
+2. Scans your music library to determine the predominant format (MP3/Ogg/FLAC) and seeds `K3B_ENCODER_FORMAT` accordingly.
+3. Generates `~/.config/musiclib/k3brc` — MusicLib's managed copy of K3b's configuration. If you already have K3b settings at `~/.config/k3brc`, the wizard asks whether to use them as the starting point or replace them with the system defaults.
+
+If K3b is not installed, the CD Ripping panel is grayed out and the Rip CD toolbar button is disabled. A tooltip on both explains what to install and how to re-run setup.
+
+### Ripping a CD
+
+1. Insert a CD.
+2. Click **Rip CD** in the toolbar (or select it via Configure Toolbars if not visible).
+3. MusicLib patches K3b's configuration with your current rip profile and launches K3b.
+4. Rip and eject the disc in K3b as normal. Output lands in your configured download directory.
+5. Import the ripped files into MusicLib using **Add New Tracks** in the Maintenance Panel.
+
+If K3b is already open (launched by MusicLib or opened separately), clicking Rip CD simply raises its window — no settings are re-deployed while K3b is running.
+
+### CD Ripping Panel
+
+Open the CD Ripping Panel from the Side Panel tab to configure the rip profile. All changes write to your `musiclib.conf` and are immediately applied to `~/.config/musiclib/k3brc`.
+
+**Output format** — Choose MP3, Ogg Vorbis, or FLAC. The secondary controls change depending on your selection:
+
+- **MP3** — Choose CBR (constant bitrate: 128/192/256/320 kbps), VBR (variable quality 0–9, where 0 is best), or ABR (average bitrate in kbps).
+- **Ogg Vorbis** — Quality slider 0–10 (10 is best).
+- **FLAC** — No sub-controls; FLAC is always lossless.
+
+**Error correction** — Controls `cdparanoia` behavior: Off, Overlap, Never Skip, or Full Paranoia. Higher levels are slower but handle scratched discs better.
+
+**Sector retry count** — How many times K3b retries a failed sector read before giving up.
+
+**Rip output directory** — Shown as a read-only label sourced from your configured download directory. Change it via Settings.
+
+**Reset to defaults** — Removes all CD ripping overrides from your user config so the system defaults take effect immediately.
+
+The panel is dimmed while K3b is running. It re-enables automatically when K3b closes.
+
+### Drift Detection
+
+If you adjust rip settings directly inside K3b (rather than via the MusicLib panel), those changes live in `~/.config/k3brc` but not in MusicLib's managed copy. When MusicLib detects this mismatch — on panel open or when K3b closes — a banner appears with two options:
+
+- **Keep K3b changes** — Imports K3b's settings back into MusicLib so the panel reflects what K3b was using.
+- **Restore MusicLib profile** — Overwrites K3b's settings with MusicLib's current profile, discarding the in-K3b changes.
+
+Resolving drift before launching a new rip session ensures K3b always starts with the settings you intend.
 
 ---
 
@@ -1636,6 +1701,24 @@ A: The database stores absolute paths. If you move files, run `musiclib-cli buil
 - Kill stuck processes: `pkill -f musiclib`
 - Check database lock file: `ls ~/.local/share/musiclib/data/musiclib.dsv.lock`
 
+**Rip CD button is disabled**
+
+1. Verify K3b is installed: `which k3b`
+2. If not installed, install it (see Installation section) then re-run `musiclib-cli setup`
+3. Confirm `K3B_INSTALLED=true` is in your config: `grep K3B_INSTALLED ~/.config/musiclib/musiclib.conf`
+
+**CD Ripping panel shows "K3b is not installed"**
+
+Re-run setup after installing K3b: `musiclib-cli setup --force` (your existing config settings are preserved where possible).
+
+**K3b opens with wrong rip settings**
+
+MusicLib deploys its managed profile to `~/.config/k3brc` before each launch. If K3b shows unexpected settings on first open, close K3b, then check the CD Ripping panel for a drift banner. Use "Restore MusicLib profile" to push MusicLib's settings back to K3b, then try again.
+
+**CD Ripping panel shows drift banner**
+
+Settings were changed in K3b directly. Use **Keep K3b changes** to import them into MusicLib, or **Restore MusicLib profile** to discard the K3b changes and re-apply MusicLib's profile.
+
 ### KDE Connect Issues
 
 **Devices won't pair**
@@ -1779,7 +1862,7 @@ If you find a bug:
 ## Version History
 
 - **v0.1 Alpha** (Feb 2026) — Initial release with GUI core, ratings, and mobile sync
-- Future versions will add KRunner, Plasma widgets, and advanced features
+- **v1.3** (Mar 2026) — K3b CD ripping integration: CD Ripping Panel, Rip CD toolbar action, drift detection, setup wizard K3b detection and k3brc generation
 
 ---
 

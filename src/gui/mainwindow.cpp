@@ -13,6 +13,7 @@
 #include "settingsdialog.h"
 #include "configuretoolbarsdialog.h"
 #include "mobile_panel.h"
+#include "cdrippingpanel.h"
 #include "systemtrayicon.h"
 #include "musiclib.h"   // KConfigXT-generated MusicLibSettings singleton
 
@@ -64,6 +65,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_libraryPanel(nullptr)
     , m_maintenancePanel(nullptr)
     , m_mobilePanel(nullptr)
+    , m_cdRippingPanel(nullptr)
     , m_nowPlayingLabel(nullptr)
     , m_playlistDropdown(nullptr)
     , m_statusLabel(nullptr)
@@ -377,6 +379,7 @@ void MainWindow::setupSidebar()
     addItem(i18n("Library"),     QStringLiteral("folder-music"));
     addItem(i18n("Maintenance"), QStringLiteral("configure"));
     addItem(i18n("Mobile"),      QStringLiteral("smartphone"));
+    addItem(i18n("CD Ripping"),  QStringLiteral("media-optical-audio"));
     addItem(i18n("Settings"),    QStringLiteral("preferences-system"));
 
     connect(m_sidebar, &QListWidget::currentRowChanged,
@@ -415,6 +418,44 @@ void MainWindow::setupPanels()
         statusBar()->showMessage(
             i18n("Uploaded %1 (%2 tracks)", playlistName, trackCount), 5000);
     });
+
+    // ── CD Ripping panel ──
+    m_cdRippingPanel = new CDRippingPanel(m_confWriter, this);
+    m_panelStack->addWidget(m_cdRippingPanel);   // index 3
+
+    // ── K3b startup detection (Scenario D) ──
+    // Check whether K3b is already running when musiclib starts.
+    // If so, compare the running PID against the stored PID file:
+    //   PID matches  → musiclib previously launched this K3b session (treat as
+    //                  Scenario B on next toolbar click; PID file already correct).
+    //   No match / no PID file → independently launched K3b; clear any stale PID
+    //                  file so Scenario C logic applies on the first toolbar click.
+    // No dialog or notification is shown at startup — the CD Ripping panel's own
+    // polling timer will display the dimmed state if the user opens that panel.
+    {
+        QString k3bCmd = m_confWriter->value(
+            QStringLiteral("K3B_CMD"), QStringLiteral("k3b"));
+        if (isProcessRunning(k3bCmd)) {
+            qint64 storedPid = readK3bPid();
+            if (storedPid > 0 && !isProcessRunningByPid(storedPid)) {
+                // Stale PID file from a previous run — K3b was restarted independently.
+                clearK3bPid();
+            }
+            // If storedPid matches a live process, the file is correct — leave it.
+        } else {
+            // K3b is not running at startup — any leftover PID file is stale.
+            clearK3bPid();
+        }
+    }
+
+    // ── Wire K3b exit signal to PID file cleanup ──
+    // CDRippingPanel emits k3bExited() on every running→not-running transition.
+    // We use that to delete the PID file so the next toolbar click knows K3b
+    // is no longer our process.
+    if (m_cdRippingPanel) {
+        connect(m_cdRippingPanel, &CDRippingPanel::k3bExited,
+                this, &MainWindow::clearK3bPid);
+    }
 
     // ── Settings ──
     // No stacked widget entry for Settings.  The sidebar "Settings" row
@@ -468,7 +509,7 @@ void MainWindow::setupToolbar()
 
     // Album
     m_albumAction = new QAction(
-        QIcon::fromTheme(QStringLiteral("media-optical-audio")),
+        QIcon::fromTheme(QStringLiteral("media-album-cover")),
         i18n("Album"), this);
     m_albumAction->setToolTip(i18n("Show album details for current track"));
     connect(m_albumAction, &QAction::triggered, this, &MainWindow::showAlbumWindow);
@@ -529,6 +570,26 @@ void MainWindow::setupToolbar()
         i18n("Open the folder containing the current track in Dolphin"));
     connect(m_dolphinAction, &QAction::triggered,
             this, &MainWindow::onOpenDolphin);
+
+    // Rip CD — enabled only when K3b is installed
+    const bool hasK3b = (m_confWriter->value(
+        QStringLiteral("K3B_INSTALLED")) == QStringLiteral("true"));
+
+    m_ripCdAction = new QAction(
+        QIcon::fromTheme(QStringLiteral("k3b")),
+        i18n("Rip CD"), this);
+
+    if (hasK3b) {
+        m_ripCdAction->setToolTip(
+            i18n("Launch K3b CD ripper with the current musiclib profile, "
+                 "or raise K3b if it is already open"));
+        connect(m_ripCdAction, &QAction::triggered,
+                this, &MainWindow::onRipCdTriggered);
+    } else {
+        m_ripCdAction->setEnabled(false);
+        m_ripCdAction->setToolTip(
+            i18n("K3b is not installed. Install k3b and run setup again to enable CD ripping."));
+    }
 
     // ── Place configurable items according to saved (or default) config ──
     rebuildToolbar(loadToolbarConfig());
@@ -624,6 +685,9 @@ void MainWindow::rebuildToolbar(const QList<ToolbarItemId> &order)
             break;
         case ToolbarItemId::Dolphin:
             m_toolbar->addAction(m_dolphinAction);
+            break;
+        case ToolbarItemId::RipCD:
+            m_toolbar->addAction(m_ripCdAction);
             break;
         }
     }
@@ -745,6 +809,10 @@ void MainWindow::onSidebarItemChanged(int currentRow)
     if (currentRow >= 0 && currentRow < m_panelStack->count()) {
         m_panelStack->setCurrentIndex(currentRow);
         m_lastSidebarIndex = currentRow;
+
+        // Run drift detection whenever the CD Ripping panel is brought into view.
+        if (currentRow == PanelCDRipping && m_cdRippingPanel)
+            m_cdRippingPanel->runDriftDetection();
     }
 }
 
@@ -800,11 +868,12 @@ void MainWindow::showConfigureToolbarsDialog()
     //   4. Handle the new id in the switch in rebuildToolbar().
     //
     const QList<ToolbarItem> allItems = {
-        { ToolbarItemId::Album,     i18n("Album"),     QStringLiteral("media-optical-audio")  },
+        { ToolbarItemId::Album,     i18n("Album"),     QStringLiteral("media-album-cover")    },
         { ToolbarItemId::Playlist,  i18n("Playlist"),  QStringLiteral("view-media-playlist")  },
         { ToolbarItemId::Audacious, i18n("Audacious"), QStringLiteral("audacious")            },
         { ToolbarItemId::Kid3,      i18n("Kid3"),      QStringLiteral("kid3-qt")              },
         { ToolbarItemId::Dolphin,   i18n("Dolphin"),   QStringLiteral("system-file-manager")  },
+        { ToolbarItemId::RipCD,     i18n("Rip CD"),    QStringLiteral("k3b")                  },
     };
 
     // ── Load the saved order and split into current / available ──
@@ -1280,6 +1349,115 @@ void MainWindow::onOpenDolphin()
     QString folder = QFileInfo(m_nowPlaying.songPath).absolutePath();
     if (!QProcess::startDetached(QStringLiteral("dolphin"), {folder}))
         statusBar()->showMessage(i18n("Failed to launch Dolphin"), 3000);
+}
+
+// ═════════════════════════════════════════════════════════════
+// External app: K3b — launch with musiclib profile or raise if running
+// ═════════════════════════════════════════════════════════════
+
+// Toolbar Rip CD action — covers Scenarios A-D from K3b_Config_Assessment §5.
+//
+//  Scenario B: K3b running, was launched by musiclib (PID file matches).
+//              → raise window, no config deploy.
+//  Scenario C: K3b running, not launched by musiclib (no PID file / mismatch).
+//              → raise window, no config deploy.
+//              The CD Ripping panel will show the dimmed state automatically.
+//  Scenario A: K3b not running.
+//              → run drift detection; if drift, open panel so user can resolve;
+//                patch + deploy musiclib profile → k3brc; launch K3b; save PID.
+//
+// (Scenario D — startup detection — is handled in setupPanels() at init time.)
+void MainWindow::onRipCdTriggered()
+{
+    const QString k3bCmd = m_confWriter->value(
+        QStringLiteral("K3B_CMD"), QStringLiteral("k3b"));
+
+    // ── Scenario B: K3b running, launched by musiclib ──
+    const qint64 storedPid = readK3bPid();
+    if (storedPid > 0 && isProcessRunningByPid(storedPid)) {
+        raiseWindowByClass(k3bCmd);
+        return;
+    }
+
+    // ── Scenario C: K3b running, not launched by musiclib ──
+    if (isProcessRunning(k3bCmd)) {
+        raiseWindowByClass(k3bCmd);
+        // Any stale PID file (mismatch case) is cleaned up here.
+        if (storedPid > 0)
+            clearK3bPid();
+        return;
+    }
+
+    // ── Scenario A: K3b not running ──
+
+    // Run drift detection.  If drift is found, switch to the CD Ripping panel
+    // (which will show the resolution banner) and wait for the user to resolve
+    // before launching K3b.  The user re-clicks Rip CD after resolving.
+    if (m_cdRippingPanel) {
+        const bool hasDrift = m_cdRippingPanel->runDriftDetection();
+        if (hasDrift) {
+            switchToPanel(PanelCDRipping);
+            statusBar()->showMessage(
+                i18n("K3b settings differ from the musiclib profile — "
+                     "please resolve the settings drift before ripping."),
+                10000);
+            return;
+        }
+
+        // No drift — patch and deploy the current musiclib profile so K3b
+        // reads the correct settings on startup.
+        m_cdRippingPanel->patchAndDeployK3brc();
+    }
+
+    // Launch K3b and record its PID.
+    qint64 pid = 0;
+    if (QProcess::startDetached(k3bCmd, {}, QString(), &pid)) {
+        writeK3bPid(pid);
+    } else {
+        statusBar()->showMessage(
+            i18n("Failed to launch K3b. Is '%1' installed and on your PATH?",
+                 k3bCmd),
+            6000);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+// PID file helpers — K3b process tracking
+// ═════════════════════════════════════════════════════════════
+
+void MainWindow::writeK3bPid(qint64 pid)
+{
+    const QString path = QDir::homePath()
+        + QStringLiteral("/.config/musiclib/k3b.pid");
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        QTextStream(&f) << pid << "\n";
+    }
+}
+
+qint64 MainWindow::readK3bPid() const
+{
+    const QString path = QDir::homePath()
+        + QStringLiteral("/.config/musiclib/k3b.pid");
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return 0;
+    bool ok = false;
+    const qint64 pid = QString::fromUtf8(f.readAll()).trimmed().toLongLong(&ok);
+    return ok ? pid : 0;
+}
+
+void MainWindow::clearK3bPid()
+{
+    const QString path = QDir::homePath()
+        + QStringLiteral("/.config/musiclib/k3b.pid");
+    QFile::remove(path);
+}
+
+bool MainWindow::isProcessRunningByPid(qint64 pid) const
+{
+    // On Linux, /proc/<pid> exists for every running process.
+    return QFileInfo::exists(QStringLiteral("/proc/%1").arg(pid));
 }
 
 // ═════════════════════════════════════════════════════════════

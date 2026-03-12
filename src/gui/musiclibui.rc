@@ -1,6 +1,25 @@
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="musiclib" version="2">
+<gui name="musiclib" version="3">
   <!-- Menu layout is handled by KXmlGuiWindow defaults.
-       Custom actions (e.g. MusicLib Handbook) are injected
-       programmatically after setupGUI(). -->
+       Custom actions (e.g. MusicLib Handbook, Configure Toolbars) are
+       injected programmatically after setupGUI().
+
+       Toolbar management is fully programmatic via MainWindow::setupToolbar()
+       and MainWindow::rebuildToolbar().  Configurable toolbar actions and
+       their stable IDs (ToolbarItemId enum) are:
+
+         Album        = 2   — Show album details for current track
+         Playlist     = 3   — Playlist label + dropdown selector
+         Audacious    = 4   — Launch / raise Audacious
+         Kid3         = 5   — Open current track in Kid3 tag editor
+         Dolphin      = 6   — Open track folder in Dolphin
+         RipCD        = 7   — Launch / raise K3b CD ripper
+                              (disabled when K3B_INSTALLED=false)
+
+       The Rip CD action (RipCD) was added in Tasking 4 of the K3b
+       integration plan.  It is wired to MainWindow::onRipCdTriggered()
+       and implements four scenarios (A-D) covering all K3b running/stopped
+       states and musiclib-vs-independently-launched detection via a PID file
+       at ~/.config/musiclib/k3b.pid.
+  -->
 </gui>

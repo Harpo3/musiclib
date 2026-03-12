@@ -54,8 +54,8 @@ MaintenancePanel::MaintenancePanel(ScriptRunner *runner, QWidget *parent)
 QString MaintenancePanel::configValue(const QString &key)
 {
     static const QStringList configPaths = {
-        QDir::homePath() + "/musiclib/config/musiclib.conf",
         QDir::homePath() + "/.config/musiclib/musiclib.conf",
+        QDir::homePath() + "/musiclib/config/musiclib.conf",
     };
 
     for (const QString &path : configPaths) {

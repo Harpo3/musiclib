@@ -53,10 +53,12 @@ enum class ToolbarItemId {
     Kid3         = 5,   ///< Open track in Kid3 tag editor
     Dolphin      = 6,   ///< Open track folder in Dolphin
 
+    RipCD        = 7,   ///< Launch / raise K3b CD ripper (disabled when K3B_INSTALLED=false)
+
     // Future additions — append here, do NOT renumber entries above:
-    // RefreshFromAudacious = 7,  ///< Pull current track from Audacious (Mobile)
-    // RebuildTag           = 8,  ///< Rebuild tag for selected track
-    // RemoveRecord         = 9,  ///< Remove selected record from library
+    // RefreshFromAudacious = 8,  ///< Pull current track from Audacious (Mobile)
+    // RebuildTag           = 9,  ///< Rebuild tag for selected track
+    // RemoveRecord         = 10, ///< Remove selected record from library
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

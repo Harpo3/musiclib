@@ -34,6 +34,7 @@ class LibraryModel;
 class MaintenancePanel;
 class ScriptRunner;
 class MobilePanel;
+class CDRippingPanel;
 
 // Forward declaration - new album window
 class AlbumWindow;
@@ -91,6 +92,7 @@ public:
         PanelLibrary = 0,
         PanelMaintenance,
         PanelMobile,
+        PanelCDRipping,
         PanelSettings,       // opens dialog, not a panel
         PanelCount           // sentinel - must be last
     };
@@ -113,6 +115,9 @@ public Q_SLOTS:
 
     /// Open the folder containing the currently playing track in Dolphin.
     void onOpenDolphin();
+
+    /// Launch K3b CD ripper, or raise it if already running.
+    void onRipCdTriggered();
 
     /// Open the Settings dialog (KConfigDialog).
     void showSettingsDialog();
@@ -183,6 +188,20 @@ private:
     /// Build status bar text from current now-playing data
     QString buildStatusBarText() const;
 
+    // ── PID file helpers (K3b process tracking) ──
+
+    /// Write the PID of the K3b process launched by musiclib to the PID file.
+    void writeK3bPid(qint64 pid);
+
+    /// Read the stored K3b PID.  Returns 0 if the file is missing or invalid.
+    qint64 readK3bPid() const;
+
+    /// Delete the K3b PID file (called when K3b exits or on PID mismatch at startup).
+    void clearK3bPid();
+
+    /// Check whether a process with the given PID is currently alive (Linux /proc check).
+    bool isProcessRunningByPid(qint64 pid) const;
+
     /// Rebuild the configurable portion of the toolbar (everything after the
     /// fixed separator) using the given ordered item list.
     void rebuildToolbar(const QList<ToolbarItemId> &order);
@@ -202,7 +221,8 @@ private:
     // ── Panels ──
     LibraryView      *m_libraryPanel;       ///< Library browser panel
     MaintenancePanel *m_maintenancePanel;   ///< Maintenance operations panel
-    MobilePanel          *m_mobilePanel;        ///< Mobile sync panel
+    MobilePanel      *m_mobilePanel;        ///< Mobile sync panel
+    CDRippingPanel   *m_cdRippingPanel = nullptr;  ///< K3b CD ripping settings panel
 
     // ── Toolbar ──
     QToolBar      *m_toolbar         = nullptr;  ///< Main toolbar
@@ -218,6 +238,7 @@ private:
     QAction       *m_audaciousAction = nullptr;
     QAction       *m_kid3Action      = nullptr;
     QAction       *m_dolphinAction   = nullptr;
+    QAction       *m_ripCdAction     = nullptr;  ///< Launch / raise K3b CD ripper
 
     // ── Toolbar: other widgets kept as members for live updates ──
     QComboBox   *m_playlistDropdown;   ///< Playlist selector dropdown
