@@ -172,4 +172,71 @@
     </entry>
   </group>
 
+
+  <!-- ══════════════════════════════════════════════════════════
+       Group: SmartPlaylist — Age thresholds and generation params
+       All values are mirrored to musiclib.conf via ConfWriter.
+       POPM range boundaries are NOT duplicated here; they are
+       read from RatingGroup1-5 in musiclib.conf.
+       ══════════════════════════════════════════════════════════ -->
+  <group name="SmartPlaylist">
+
+    <entry name="AgeThresholdGroup1" type="Int">
+      <label>Days since last played threshold for 1-star tracks</label>
+      <default>360</default>
+      <min>1</min>
+      <max>3650</max>
+    </entry>
+
+    <entry name="AgeThresholdGroup2" type="Int">
+      <label>Days since last played threshold for 2-star tracks</label>
+      <default>180</default>
+      <min>1</min>
+      <max>3650</max>
+    </entry>
+
+    <entry name="AgeThresholdGroup3" type="Int">
+      <label>Days since last played threshold for 3-star tracks</label>
+      <default>90</default>
+      <min>1</min>
+      <max>3650</max>
+    </entry>
+
+    <entry name="AgeThresholdGroup4" type="Int">
+      <label>Days since last played threshold for 4-star tracks</label>
+      <default>60</default>
+      <min>1</min>
+      <max>3650</max>
+    </entry>
+
+    <entry name="AgeThresholdGroup5" type="Int">
+      <label>Days since last played threshold for 5-star tracks</label>
+      <default>30</default>
+      <min>1</min>
+      <max>3650</max>
+    </entry>
+
+    <entry name="PlaylistSize" type="Int">
+      <label>Number of tracks in the generated playlist</label>
+      <default>50</default>
+      <min>10</min>
+      <max>500</max>
+    </entry>
+
+    <entry name="SampleSize" type="Int">
+      <label>Number of tracks per variance-sampling batch</label>
+      <default>20</default>
+      <min>5</min>
+      <max>100</max>
+    </entry>
+
+    <entry name="ArtistExclusionCount" type="Int">
+      <label>Recently played artists to exclude during track selection</label>
+      <default>30</default>
+      <min>0</min>
+      <max>500</max>
+    </entry>
+
+  </group>
+
 </kcfg>

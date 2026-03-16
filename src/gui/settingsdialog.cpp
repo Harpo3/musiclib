@@ -659,6 +659,24 @@ void SettingsDialog::syncConfToKConfig()
     MusicLibSettings::setMaxBackupAgeDays(
         m_conf->intValue(QStringLiteral("MAX_BACKUP_AGE_DAYS"), 30));
 
+    // ── SmartPlaylist ──
+    MusicLibSettings::setAgeThresholdGroup1(
+        m_conf->intValue(QStringLiteral("SP_AGE_GROUP1"), 360));
+    MusicLibSettings::setAgeThresholdGroup2(
+        m_conf->intValue(QStringLiteral("SP_AGE_GROUP2"), 180));
+    MusicLibSettings::setAgeThresholdGroup3(
+        m_conf->intValue(QStringLiteral("SP_AGE_GROUP3"), 90));
+    MusicLibSettings::setAgeThresholdGroup4(
+        m_conf->intValue(QStringLiteral("SP_AGE_GROUP4"), 60));
+    MusicLibSettings::setAgeThresholdGroup5(
+        m_conf->intValue(QStringLiteral("SP_AGE_GROUP5"), 30));
+    MusicLibSettings::setPlaylistSize(
+        m_conf->intValue(QStringLiteral("SP_PLAYLIST_SIZE"), 50));
+    MusicLibSettings::setSampleSize(
+        m_conf->intValue(QStringLiteral("SP_SAMPLE_SIZE"), 20));
+    MusicLibSettings::setArtistExclusionCount(
+        m_conf->intValue(QStringLiteral("SP_ARTIST_EXCLUSION_COUNT"), 30));
+
     MusicLibSettings::self()->save();
 }
 
@@ -723,6 +741,24 @@ void SettingsDialog::syncKConfigToConf()
                         s->lockTimeout());
     m_conf->setIntValue(QStringLiteral("MAX_BACKUP_AGE_DAYS"),
                         s->maxBackupAgeDays());
+
+    // ── SmartPlaylist ──
+    m_conf->setIntValue(QStringLiteral("SP_AGE_GROUP1"),
+                        s->ageThresholdGroup1());
+    m_conf->setIntValue(QStringLiteral("SP_AGE_GROUP2"),
+                        s->ageThresholdGroup2());
+    m_conf->setIntValue(QStringLiteral("SP_AGE_GROUP3"),
+                        s->ageThresholdGroup3());
+    m_conf->setIntValue(QStringLiteral("SP_AGE_GROUP4"),
+                        s->ageThresholdGroup4());
+    m_conf->setIntValue(QStringLiteral("SP_AGE_GROUP5"),
+                        s->ageThresholdGroup5());
+    m_conf->setIntValue(QStringLiteral("SP_PLAYLIST_SIZE"),
+                        s->playlistSize());
+    m_conf->setIntValue(QStringLiteral("SP_SAMPLE_SIZE"),
+                        s->sampleSize());
+    m_conf->setIntValue(QStringLiteral("SP_ARTIST_EXCLUSION_COUNT"),
+                        s->artistExclusionCount());
 
     // Write to disk
     m_conf->save();
