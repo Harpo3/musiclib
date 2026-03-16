@@ -12,6 +12,7 @@ set(GUI_SOURCES
     confwriter.cpp
     mobile_panel.cpp
     cdrippingpanel.cpp
+    smartplaylistpanel.cpp
     systemtrayicon.cpp
 )
 

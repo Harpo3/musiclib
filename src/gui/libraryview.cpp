@@ -75,13 +75,15 @@ private:
     bool m_excludeRated   = false;
 };
 
-// Columns visible by default (hide ID, IDAlbum, SongPath, Custom2, Rating)
+// Columns visible by default.
+// A.2a: AlbumArtist moved into hidden set; Custom2 removed so "Custom Artist" is visible.
 static const QSet<int> HIDDEN_COLUMNS = {
     static_cast<int>(TrackColumn::ID),
     static_cast<int>(TrackColumn::IDAlbum),
     static_cast<int>(TrackColumn::SongPath),
-    static_cast<int>(TrackColumn::Custom2),
+    static_cast<int>(TrackColumn::AlbumArtist),  // hidden — Custom Artist column preferred
     static_cast<int>(TrackColumn::Rating),
+    // TrackColumn::Custom2 removed — "Custom Artist" is now visible by default
 };
 
 LibraryView::LibraryView(QWidget *parent)
@@ -232,10 +234,11 @@ void LibraryView::setupColumns()
         m_tableView->setColumnHidden(col, HIDDEN_COLUMNS.contains(col));
     }
 
-    // Set sensible default widths for visible columns
+    // Set sensible default widths for visible columns.
+    // A.2b: AlbumArtist width entry removed (now hidden); Custom2 added at same width.
     m_tableView->setColumnWidth(static_cast<int>(TrackColumn::Artist),        180);
     m_tableView->setColumnWidth(static_cast<int>(TrackColumn::Album),         180);
-    m_tableView->setColumnWidth(static_cast<int>(TrackColumn::AlbumArtist),   150);
+    m_tableView->setColumnWidth(static_cast<int>(TrackColumn::Custom2),       150);  // Custom Artist
     m_tableView->setColumnWidth(static_cast<int>(TrackColumn::SongTitle),     220);
     m_tableView->setColumnWidth(static_cast<int>(TrackColumn::Genre),         100);
     m_tableView->setColumnWidth(static_cast<int>(TrackColumn::SongLength),     60);
@@ -607,13 +610,16 @@ void LibraryView::onTagRebuildFinished(const QString &operationId, int exitCode,
 // ===========================================================================
 
 // Maps TrackColumn enum values to the exact column names in the DSV header.
-// Only these five fields are user-editable; everything else is read-only.
+// A.2c: Custom2 added so the "Custom Artist" cell is double-click editable.
+// AlbumArtist remains in the map even though it is now hidden — it can still be
+// edited via a right-click context menu or a direct script call in the future.
 static const QMap<int, QString> EDITABLE_DSV_FIELDS = {
     {static_cast<int>(TrackColumn::Artist),      QStringLiteral("Artist")},
     {static_cast<int>(TrackColumn::Album),       QStringLiteral("Album")},
     {static_cast<int>(TrackColumn::AlbumArtist), QStringLiteral("AlbumArtist")},
     {static_cast<int>(TrackColumn::SongTitle),   QStringLiteral("SongTitle")},
     {static_cast<int>(TrackColumn::Genre),       QStringLiteral("Genre")},
+    {static_cast<int>(TrackColumn::Custom2),     QStringLiteral("Custom2")},
 };
 
 void LibraryView::onCellDoubleClicked(const QModelIndex &proxyIndex)
@@ -644,6 +650,7 @@ void LibraryView::onCellDoubleClicked(const QModelIndex &proxyIndex)
     case TrackColumn::AlbumArtist: currentValue = track.albumArtist; break;
     case TrackColumn::SongTitle:   currentValue = track.songTitle;   break;
     case TrackColumn::Genre:       currentValue = track.genre;       break;
+    case TrackColumn::Custom2:     currentValue = track.custom2;     break;  // A.2c
     default: return;
     }
 

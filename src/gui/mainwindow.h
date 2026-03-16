@@ -35,6 +35,7 @@ class MaintenancePanel;
 class ScriptRunner;
 class MobilePanel;
 class CDRippingPanel;
+class SmartPlaylistPanel;
 
 // Forward declaration - new album window
 class AlbumWindow;
@@ -93,6 +94,7 @@ public:
         PanelMaintenance,
         PanelMobile,
         PanelCDRipping,
+        PanelSmartPlaylist,  // ← smart playlist generation panel
         PanelSettings,       // opens dialog, not a panel
         PanelCount           // sentinel - must be last
     };
@@ -219,10 +221,11 @@ private:
     QLabel         *m_folderArtLabel = nullptr;  ///< Album art below sidebar tabs
 
     // ── Panels ──
-    LibraryView      *m_libraryPanel;       ///< Library browser panel
-    MaintenancePanel *m_maintenancePanel;   ///< Maintenance operations panel
-    MobilePanel      *m_mobilePanel;        ///< Mobile sync panel
-    CDRippingPanel   *m_cdRippingPanel = nullptr;  ///< K3b CD ripping settings panel
+    LibraryView         *m_libraryPanel;                   ///< Library browser panel
+    MaintenancePanel    *m_maintenancePanel;               ///< Maintenance operations panel
+    MobilePanel         *m_mobilePanel;                    ///< Mobile sync panel
+    CDRippingPanel      *m_cdRippingPanel      = nullptr;  ///< K3b CD ripping settings panel
+    SmartPlaylistPanel  *m_smartPlaylistPanel  = nullptr;  ///< Smart playlist generation panel
 
     // ── Toolbar ──
     QToolBar      *m_toolbar         = nullptr;  ///< Main toolbar

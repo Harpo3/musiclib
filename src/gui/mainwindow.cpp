@@ -14,6 +14,7 @@
 #include "configuretoolbarsdialog.h"
 #include "mobile_panel.h"
 #include "cdrippingpanel.h"
+#include "smartplaylistpanel.h"
 #include "systemtrayicon.h"
 #include "musiclib.h"   // KConfigXT-generated MusicLibSettings singleton
 
@@ -376,11 +377,12 @@ void MainWindow::setupSidebar()
         m_sidebar->addItem(item);
     };
 
-    addItem(i18n("Library"),     QStringLiteral("folder-music"));
-    addItem(i18n("Maintenance"), QStringLiteral("configure"));
-    addItem(i18n("Mobile"),      QStringLiteral("smartphone"));
-    addItem(i18n("CD Ripping"),  QStringLiteral("media-optical-audio"));
-    addItem(i18n("Settings"),    QStringLiteral("preferences-system"));
+    addItem(i18n("Library"),        QStringLiteral("folder-music"));
+    addItem(i18n("Maintenance"),    QStringLiteral("configure"));
+    addItem(i18n("Mobile"),         QStringLiteral("smartphone"));
+    addItem(i18n("CD Ripping"),     QStringLiteral("media-optical-audio"));
+    addItem(i18n("Smart Playlist"), QStringLiteral("media-playlist-shuffle"));
+    addItem(i18n("Settings"),       QStringLiteral("preferences-system"));
 
     connect(m_sidebar, &QListWidget::currentRowChanged,
             this, &MainWindow::onSidebarItemChanged);
@@ -422,6 +424,17 @@ void MainWindow::setupPanels()
     // ── CD Ripping panel ──
     m_cdRippingPanel = new CDRippingPanel(m_confWriter, this);
     m_panelStack->addWidget(m_cdRippingPanel);   // index 3
+
+    // ── Smart Playlist panel ──
+    m_smartPlaylistPanel = new SmartPlaylistPanel(m_confWriter, this);
+    m_panelStack->addWidget(m_smartPlaylistPanel);   // index 4
+
+    // Notify the status bar when a playlist is generated
+    connect(m_smartPlaylistPanel, &SmartPlaylistPanel::playlistGenerated,
+            this, [this](const QString &playlistPath) {
+        statusBar()->showMessage(
+            i18n("Playlist generated: %1", playlistPath), 6000);
+    });
 
     // ── K3b startup detection (Scenario D) ──
     // Check whether K3b is already running when musiclib starts.

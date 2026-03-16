@@ -478,6 +478,15 @@ while [[ "$currsize" -lt "$SP_PLAYLIST_SIZE" ]]; do
     while IFS="$DELIM" read -r trackpath trackartist; do
         [[ -z "$trackpath" ]] && continue
 
+        # Guard against the open-fd problem: the "remove same-artist entries from
+        # $SP_SAMPLE" step below replaces the file on disk, but this loop's file
+        # descriptor was opened before that replacement and still reads from the
+        # original inode.  Check the live exclusion list so we never emit two
+        # tracks by the same effective artist in the same round.
+        if grep -qFx "$trackartist" "$SP_EXCL" 2>/dev/null; then
+            continue
+        fi
+
         # Add to playlist
         printf '%s\n' "$trackpath" >> "$playlist_output"
 

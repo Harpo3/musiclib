@@ -16,7 +16,7 @@ LibraryModel::LibraryModel(QObject *parent)
     m_headers = {
         "ID", "Artist", "IDAlbum", "Album", "Album Artist",
         "Title", "Path", "Genre", "Length", "Rating",
-        "Custom2", "Stars", "Last Played"
+        "Custom Artist", "Stars", "Last Played"   // Custom2 column — renamed for display (A.1)
     };
 
     // Debounce DSV changes - wait 500ms after last change before reloading

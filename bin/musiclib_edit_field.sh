@@ -4,11 +4,12 @@
 # Usage: musiclib_edit_field.sh <record_id> <field_name> <new_value>
 #
 # Updates the named field for the record with the given ID in the DSV database.
-# Only the DSV record is changed — audio file tags are NOT modified.
-# Use "Rebuild Tag" from the context menu to sync tags from the database.
+# For most fields only the DSV record is changed.
+# Exception — Custom2: the Songs-DB_Custom2 tag is also written to the audio
+# file via kid3-cli so the value survives a full database rebuild.
 #
 # Supported field names:
-#   Artist, Album, AlbumArtist, SongTitle, Genre
+#   Artist, Album, AlbumArtist, SongTitle, Genre, Custom2
 #
 # Exit codes:
 #   0 - Success
@@ -38,7 +39,7 @@ MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
 if [ $# -lt 3 ]; then
     echo "Usage: $0 <record_id> <field_name> <new_value>"
     echo ""
-    echo "Supported field names: Artist, Album, AlbumArtist, SongTitle, Genre"
+    echo "Supported field names: Artist, Album, AlbumArtist, SongTitle, Genre, Custom2"
     exit 1
 fi
 
@@ -52,12 +53,13 @@ if [ -z "$RECORD_ID" ]; then
 fi
 
 # Whitelist: only these DSV column names are editable
+# A.5: Custom2 added to allow the "Custom Artist" cell to be edited via the GUI
 case "$FIELD_NAME" in
-    Artist|Album|AlbumArtist|SongTitle|Genre) ;;
+    Artist|Album|AlbumArtist|SongTitle|Genre|Custom2) ;;
     *)
         error_exit 1 "Unsupported field name" \
             "field" "$FIELD_NAME" \
-            "supported" "Artist, Album, AlbumArtist, SongTitle, Genre"
+            "supported" "Artist, Album, AlbumArtist, SongTitle, Genre, Custom2"
         exit 1
         ;;
 esac
@@ -162,6 +164,41 @@ fi
 #############################################
 
 echo "✓ $FIELD_NAME updated for record $RECORD_ID"
+
+#############################################
+# Custom2: also write tag to the audio file
+# so the value survives a database rebuild.
+#############################################
+
+if [[ "$FIELD_NAME" == "Custom2" ]]; then
+    # Locate the SongPath column number from the header
+    pathcol=$(head -1 "$MUSICDB" | tr '^' '\n' | grep -n "^SongPath$" | cut -d: -f1)
+
+    if [[ -n "$pathcol" ]]; then
+        song_path=$(awk -F'^' -v id="$RECORD_ID" -v pcol="$pathcol" \
+            'NR > 1 && $1 == id { print $pcol; exit }' "$MUSICDB")
+
+        if [[ -n "$song_path" ]] && [[ -f "$song_path" ]]; then
+            if command -v kid3-cli >/dev/null 2>&1; then
+                # Escape any double-quotes in the value before embedding in the
+                # -c string (artist names rarely contain them, but be safe).
+                escaped_value=$(printf '%s' "$NEW_VALUE" | sed 's/["\\]/\\&/g')
+                if kid3-cli -c "set Songs-DB_Custom2 \"$escaped_value\"" \
+                       "$song_path" 2>/dev/null; then
+                    echo "✓ Songs-DB_Custom2 tag written to file: $(basename "$song_path")"
+                else
+                    echo "Warning: kid3-cli failed to write tag — database updated but file tag unchanged" >&2
+                fi
+            else
+                echo "Warning: kid3-cli not found — database updated but file tag not written" >&2
+            fi
+        else
+            echo "Warning: SongPath not found or file missing for record $RECORD_ID — database updated but file tag not written" >&2
+        fi
+    else
+        echo "Warning: SongPath column not found in database header — file tag not written" >&2
+    fi
+fi
 
 if command -v log_message >/dev/null 2>&1; then
     log_message "Edited $FIELD_NAME for record $RECORD_ID via GUI"
