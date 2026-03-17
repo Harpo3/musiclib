@@ -1,6 +1,6 @@
 # MusicLib User Manual
 
-**Version**: 1.4
+**Version**: 1.50
 **Last Updated**: March 2026
 **For**: MusicLib on Linux with KDE Plasma 6
 
@@ -19,7 +19,7 @@
 9. [Mobile Sync](#mobile-sync)
 10. [CD Ripping](#cd-ripping)
 11. [Desktop Integration](#desktop-integration)
-12. [Smart PLaylist](#smart-playlist)
+12. [Smart Playlist](#smart-playlist)
 13. [Command-Line Reference](#command-line-reference)
 14. [Standalone Utilities](#standalone-utilities)
 15. [FAQ](#frequently-asked-questions)
@@ -48,7 +48,7 @@ It sits between you and the Audacious audio player, and handles all the behind-t
 ### What MusicLib Does
 
 - **Centralizes Your Music**: Maintains a single database of all your songs, albums, and metadata—and expands each file's tag data to store rating and last-played information
-- **Rates and Organizes**: Star-rate songs and see your ratings everywhere
+- **Rates and Organizes**: Star-rate songs and see your ratings everywhere, including Dolphin file manager
 - **Tracks Playback**: Records last-played history across devices—desktop (Audacious) and remote (mobile phone)
 - **Syncs to Mobile**: Pushes playlists/files to Android or iOS devices via KDE Connect, and captures the last-played data from the old playlist when the new one is replaced. Logs actual played timestamps for tracks played from the desktop, and logs synthesized dates for playlists played on mobile
 - **Rips CDs**: Manages K3b's rip configuration (format, bitrate, error correction) and deploys it before each session, so K3b is always ready with the settings you want
@@ -145,7 +145,7 @@ sudo dnf install k3b
 
 ```bash
 # Install dependencies
-sudo apt install audacious kid3-common exiftool kdeconnect bc
+sudo apt install audacious kid3-common exiftool kdeconnect bc attr
 
 # For ReplayGain (if available in your repo)
 sudo apt install rsgain
@@ -165,6 +165,8 @@ cmake ..
 make
 sudo make install
 ```
+
+> **Ubuntu 25.10 note:** Ubuntu 25.10 is migrating from GNU coreutils to [uutils coreutils](https://github.com/uutils/coreutils), a Rust rewrite. The `attr` package (`setfattr`/`getfattr`) is independent of coreutils and is unaffected by this migration directly, but the overall dependency chain for xattr support has not been fully validated against the uutils runtime. If Dolphin ratings are not displaying after installation on Ubuntu 25.10 or later, verify that `setfattr` is functional by running `setfattr --version` and, if necessary, reinstall the `attr` package manually: `sudo apt install --reinstall attr`.
 
 ### openSUSE Plasma (zypper)
 
@@ -428,7 +430,9 @@ Open MusicLib (default panel is LibraryView) and play a track in Audacious. You 
 
 You can also rate tracks without playing them: find a track's entry using Library View, find the stars field, move your mouse from left to right to highlight number of stars, then click its rating directly to set.
 
-If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE System Settings → Shortcuts → Custom Shortcuts** and you can rate anything playing in Audacious without touching MusicLib's window.
+You can also rate tracks directly from Dolphin. Open Dolphin to you music library and right-click on a track you want to rate. Look for the star symbol on the context menu. Select and bring up the sub-menu to select your chosen rating. If you have not already, right-click on any column heading in Dolphin and enable the rating column. MusicLib integrates all ratings and rating changes to Dolphin immediately, and you can view all current ratings from within Dolphin.
+
+If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE System Settings → Shortcuts → Custom Shortcuts** and you can rate anything playing in Audacious without touching MusicLib's window. You can also right-click any audio file in Dolphin and choose **Rate Track** from the context menu — setup installs this automatically. See [Desktop Integration](#desktop-integration) for details.
 
 ### Step 3: Import a New Album
 
@@ -828,7 +832,7 @@ Left-click the icon for quick actions:
 
 Right-click any audio file in Dolphin file manager:
 
-- **Rate in MusicLib** — Set star rating (coming soon)
+- **Rate Track** — A submenu with five star ratings (★☆☆☆☆ through ★★★★★). Selecting one calls `musiclib-cli rate <1-5> <filepath>` directly, updating both the database and the file's embedded tag. Works on any supported audio file (MP3, FLAC, OGG, M4A, WAV) without opening MusicLib. The service menu is installed automatically during `musiclib-cli setup` to `~/.local/share/kio/servicemenus/musiclib-rate.desktop`. If it doesn't appear after setup, restart Dolphin.
 - **Add to MusicLib** — Import the file(s) from your downloads folder (coming soon)
 - **Edit Tags with Kid3** — Open in tag editor
 
@@ -877,7 +881,7 @@ Use the **Analyze** section of the Smart Playlist panel to preview how your curr
 
 Good starting points:
 - 1★ tracks need a long threshold (several hundred days) to keep low-rated music from overwhelming the pool.
-- 5★ tracks can have a short threshold (30–60 days) so your favourites cycle back quickly.
+- 5★ tracks can have a short threshold (30–60 days) so your favorites cycle back quickly.
 - Use the **Sample breakdown** in the preview table to check that higher-rated groups hold the slots you want. It will show a breakdown of how many tracks per rating group given an assumed sample size of 20. You can modify the sample size, if desired.
 
 ### The Custom Artist Field
@@ -896,7 +900,7 @@ The Analyze preview displays a **Custom Artist coverage** percentage showing wha
 
 **Analyze section** — Click **Preview** to run a full analysis. The table shows per-group statistics including eligible track counts, unique artist counts (raw and after Custom Artist merging), and the expected sample breakdown at your current settings. Groups with fewer than 10 eligible tracks are highlighted and excluded from sampling.
 
-**Generate section** — Enter a playlist name, optionally check **Load into Audacious after generating**, then click **Generate Playlist**. Progress is shown in the log area. On success, the `.m3u` file is written to your playlists directory and (if selected) loaded directly into Audacious.
+**Generate section** — Enter a playlist name, optionally check **Load into Audacious after generating**, then click **Generate Playlist**. Progress is shown in the log area. On success, the `.m3u` file is written to your playlists directory and (if selected) loaded directly into Audacious. **Note:** the playlist name can be duplicated in Audacious, so if you never change the default name "Smart Playlist" in MusicLib, or do not rename them in Audacious, you will end up with duplicate tabs with the same name.
 
 ### Settings Dialog — Smart Playlist Page
 
@@ -917,6 +921,23 @@ These options are handled by the `musiclib-cli` wrapper before any subcommand:
 - `--config <path>` — Use alternate config file (default: `~/.config/musiclib/musiclib.conf`)
 
 ### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `setup` | Interactive first-run configuration wizard |
+| `build` | Full database build/rebuild from filesystem scan |
+| `new-tracks` | Import new music downloads into the library and database |
+| `tagclean` | Clean and normalize audio file tags |
+| `tagrebuild` | Repair track tags from database values |
+| `boost` | Apply ReplayGain loudness targeting to an album |
+| `rate` | Set star rating (0–5) for the current or a specified track |
+| `mobile` | Mobile sync and Audacious playlist management |
+| `smart-playlist` | Analyze pool composition or generate a variety-optimized playlist |
+| `process-pending` | Retry deferred operations queued during lock contention |
+
+Full details for each command follow below. Run `musiclib-cli <command> --help` at any time for a quick reference from the terminal.
+
+---
 
 #### `musiclib-cli setup`
 
@@ -1026,6 +1047,7 @@ musiclib-cli build [MUSIC_DIR] [options]
 - Generates a fresh database (`musiclib.dsv`) with all discovered tracks
 - Resets `LastTimePlayed` to `0` for all tracks (use `-b` to back up existing data first)
 - Assigns new sequential track IDs and regenerates album IDs
+- Indexes all tracks so that ratings can also be viewed from Dolphin file manager
 
 **Examples**:
 
@@ -1447,9 +1469,88 @@ musiclib-cli boost /mnt/music/radiohead/ok_computer 19
 
 ---
 
+#### `musiclib-cli smart-playlist`
+
+**Purpose**: Analyze the candidate pool or generate a variety-optimized playlist from your library.
+
+**Usage**:
+
+```bash
+musiclib-cli smart-playlist analyze [options]
+musiclib-cli smart-playlist generate [options]
+```
+
+##### `smart-playlist analyze`
+
+Reads `musiclib.dsv`, applies per-group POPM rating filters and last-played age thresholds, and reports pool statistics. Use this to tune thresholds before generating. All output is JSON to stdout.
+
+**Options**:
+
+- `-m counts|preview|file` — Output mode (default: `preview`)
+  - `counts` — Fast path: per-group eligible track and unique artist counts only
+  - `preview` — Full analysis with variance totals, sample weights, and per-group breakdown
+  - `file` — Write variance-annotated pool to `~/.local/share/musiclib/data/sp_pool.csv`
+- `-g G1,G2,G3,G4,G5` — Comma-separated age thresholds in days per rating group (1★–5★)
+- `-s <n>` — Sample size used in per-group breakdown. Default: from `SP_SAMPLE_SIZE` in config.
+- `-u L1,L2,L3,L4,L5` — POPM low bounds per rating group. Default: from `RatingGroup1-5` in config.
+- `-v H1,H2,H3,H4,H5` — POPM high bounds per rating group. Default: from `RatingGroup1-5` in config.
+
+**Examples**:
+
+```bash
+# Full preview with current config defaults
+musiclib-cli smart-playlist analyze
+
+# Quick count check to see how many tracks are eligible
+musiclib-cli smart-playlist analyze -m counts
+
+# Preview with custom age thresholds
+musiclib-cli smart-playlist analyze -g 720,360,180,90,45
+```
+
+##### `smart-playlist generate`
+
+Generates a variety-optimized M3U playlist. Delegates pool building to the analyze script, then runs the variance-proportional selection loop with a rolling artist-exclusion window.
+
+**Options**:
+
+- `-n <name>` — Playlist name without `.m3u` extension. Default: `Smart Playlist`.
+- `-o <file>` — Full output file path (overrides `-n` and default playlists directory).
+- `-p <n>` — Target playlist size. Default: from `SP_PLAYLIST_SIZE` in config.
+- `-s <n>` — Sample size per selection round. Default: from `SP_SAMPLE_SIZE` in config.
+- `-e <n>` — Recent unique effective artists to exclude per round. Default: from `SP_ARTIST_EXCLUSION_COUNT` in config.
+- `-g G1,G2,G3,G4,G5` — Age thresholds in days per rating group.
+- `-u L1,L2,L3,L4,L5` — POPM low bounds per rating group.
+- `-v H1,H2,H3,H4,H5` — POPM high bounds per rating group.
+- `--load-audacious` — Load the generated playlist into Audacious after writing. Audacious must be running.
+
+**Examples**:
+
+```bash
+# Generate a default playlist using all config settings
+musiclib-cli smart-playlist generate
+
+# Generate and load directly into Audacious
+musiclib-cli smart-playlist generate --load-audacious
+
+# 100-track playlist with a custom name and tighter age thresholds
+musiclib-cli smart-playlist generate -p 100 -n "Evening Mix" -g 180,90,45,30,14
+
+# Write to a specific output path
+musiclib-cli smart-playlist generate -o ~/Music/saturday.m3u
+```
+
+**Notes**:
+
+- All threshold and size defaults come from `musiclib.conf` (`SP_AGE_GROUP*`, `SP_PLAYLIST_SIZE`, `SP_SAMPLE_SIZE`, `SP_ARTIST_EXCLUSION_COUNT`, `RatingGroup1-5`). Adjust them in **Settings → Smart Playlist** or directly in the config file.
+- The artist exclusion window uses the **Custom Artist** field (`Custom2`) as the effective artist identity when it is set, falling back to `AlbumArtist`. See the [Smart Playlist](#smart-playlist) section for details on setting Custom Artist values.
+- The command-line flags override config values for the current run only; they do not persist to `musiclib.conf`.
+
+---
+
 #### `musiclib-cli remove-record`
 
-**Purpose**: Remove a track's database record (doesn't delete the file).
+**Purpose**: Remove a track's database record (includes a flag to also delete the file).
 
 **Usage**:
 

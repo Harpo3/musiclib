@@ -1,0 +1,31 @@
+[Desktop Entry]
+Type=Service
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;
+Actions=Rate1;Rate2;Rate3;Rate4;Rate5
+X-KDE-Submenu=Rate Track
+X-KDE-Priority=TopLevel
+
+[Desktop Action Rate1]
+Name=★☆☆☆☆  (1 — Poor)
+Icon=rating
+Exec=musiclib-cli rate 1 %f
+
+[Desktop Action Rate2]
+Name=★★☆☆☆  (2 — Fair)
+Icon=rating
+Exec=musiclib-cli rate 2 %f
+
+[Desktop Action Rate3]
+Name=★★★☆☆  (3 — Good)
+Icon=rating
+Exec=musiclib-cli rate 3 %f
+
+[Desktop Action Rate4]
+Name=★★★★☆  (4 — Great)
+Icon=rating
+Exec=musiclib-cli rate 4 %f
+
+[Desktop Action Rate5]
+Name=★★★★★  (5 — Excellent)
+Icon=dialog-ok-apply
+Exec=musiclib-cli rate 5 %f

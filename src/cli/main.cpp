@@ -16,9 +16,9 @@ QTextStream cout(stdout);
 QTextStream cerr(stderr);
 
 void showVersion() {
-    cout << "musiclib-cli version 1.4" << Qt::endl;
+    cout << "musiclib-cli version 1.50" << Qt::endl;
     cout << "Music library management CLI dispatcher" << Qt::endl;
-    cout << "Backend API Version: 1.1" << Qt::endl;
+    cout << "Backend API Version: 1.5" << Qt::endl;
     cout << "Copyright (c) 2025-2026 - Licensed under MIT" << Qt::endl;
 }
 
@@ -51,12 +51,16 @@ void showGlobalHelp() {
     cout << "  musiclib-cli tagclean process /mnt/music/artist/album -r         # Clean tags recursively" << Qt::endl;
     cout << "  musiclib-cli tagrebuild \"/mnt/music/artist/album/corrupted.mp3\"    # Repair tags from database" << Qt::endl;
     cout << "  musiclib-cli process-pending                                     # Retry deferred operations" << Qt::endl;
+    cout << "  musiclib-cli smart-playlist analyze                              # Preview pool composition" << Qt::endl;
+    cout << "  musiclib-cli smart-playlist analyze -m counts                    # Fast per-group counts" << Qt::endl;
+    cout << "  musiclib-cli smart-playlist generate --load-audacious            # Generate and load into Audacious" << Qt::endl;
+    cout << "  musiclib-cli smart-playlist generate -p 100 -n \"Evening Mix\"   # 100-track custom playlist" << Qt::endl;
 }
 
 int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("musiclib-cli");
-    QCoreApplication::setApplicationVersion("1.4");
+    QCoreApplication::setApplicationVersion("1.50");
     
     // Initialize command registry early so help can display available commands
     CommandHandler::registerCommands();

@@ -474,6 +474,7 @@ This wizard will:
   7. Scan library for file and directory conformance
   8. Refresh playlists from Audacious (if installed)
   9. Configure Audacious Song Change integration (if installed)
+ 10. Install Dolphin service menu for right-click track rating (if KIO servicemenus dir is available)
 
 The wizard writes ONLY user-specific values to ~/.config/musiclib/musiclib.conf
 All other settings use system defaults from /usr/lib/musiclib/config/musiclib.conf
@@ -1074,6 +1075,32 @@ else
 fi
 
 #############################################
+# Dolphin Service Menu (Rate Track)
+#############################################
+
+print_header "Dolphin Service Menu"
+
+SERVICEMENU_SRC="/usr/lib/musiclib/config/servicemenus/musiclib-rate.desktop"
+SERVICEMENU_DEST_DIR="${XDG_DATA_HOME}/kio/servicemenus"
+SERVICEMENU_DEST="${SERVICEMENU_DEST_DIR}/musiclib-rate.desktop"
+
+if [ ! -f "$SERVICEMENU_SRC" ]; then
+    print_info "Skipped: musiclib-rate.desktop not found at $SERVICEMENU_SRC"
+    print_info "Install the musiclib package and re-run setup to enable Dolphin rating."
+else
+    mkdir -p "$SERVICEMENU_DEST_DIR" || {
+        print_error "Failed to create KIO servicemenus directory: $SERVICEMENU_DEST_DIR"
+    }
+
+    if [ -d "$SERVICEMENU_DEST_DIR" ]; then
+        cp "$SERVICEMENU_SRC" "$SERVICEMENU_DEST"
+        print_success "Dolphin service menu installed to: $SERVICEMENU_DEST"
+        print_info "Right-click any audio file in Dolphin and choose 'Rate Track' to rate it."
+        print_info "Note: You may need to restart Dolphin for the menu to appear."
+    fi
+fi
+
+#############################################
 # Setup Complete
 #############################################
 
@@ -1098,6 +1125,15 @@ else
     echo ""
     print_info "K3b not found — CD ripping panel will be disabled."
     print_info "Install k3b and re-run setup to enable."
+fi
+
+if [ -f "$SERVICEMENU_DEST" ]; then
+    echo ""
+    print_success "Dolphin service menu installed — right-click audio files to rate them."
+else
+    echo ""
+    print_info "Dolphin service menu not installed."
+    print_info "Install the musiclib package and re-run setup to enable."
 fi
 
 echo ""

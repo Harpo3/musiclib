@@ -512,6 +512,18 @@ else
     echo ""
     echo "Database rebuild complete!"
     [ "$CREATE_BACKUP" = true ] && echo "Backup created in: $(dirname "$MUSICDB")"
+
+    # Sync Baloo extended attributes so Dolphin's Rating column reflects the
+    # rebuilt database.  Non-fatal: skipped silently if setfattr is absent.
+    if command -v setfattr >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/musiclib_baloo_sync.sh" ]; then
+        [ "$QUIET" = false ] && echo ""
+        [ "$QUIET" = false ] && echo "Syncing Baloo rating attributes for Dolphin rating display..."
+        if [ "$QUIET" = true ]; then
+            "$SCRIPT_DIR/musiclib_baloo_sync.sh" >/dev/null 2>&1 || true
+        else
+            "$SCRIPT_DIR/musiclib_baloo_sync.sh" || true
+        fi
+    fi
 fi
 
 exit 0

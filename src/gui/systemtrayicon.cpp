@@ -6,6 +6,8 @@
 #include "mainwindow.h"
 
 #include <KLocalizedString>
+#include <KWindowSystem>
+#include <KX11Extras>
 
 #include <QApplication>
 #include <QClipboard>
@@ -524,8 +526,17 @@ QString SystemTrayIcon::starsString(int rating) const
 void SystemTrayIcon::raiseMainWindow(int panelIndex)
 {
     m_mainWindow->show();
-    m_mainWindow->raise();
-    m_mainWindow->activateWindow();
     if (panelIndex >= 0)
         m_mainWindow->switchToPanel(panelIndex);
+
+    // Qt's raise()+activateWindow() is frequently suppressed by KDE's
+    // focus-stealing prevention.  Use the KDE-native force-activate path
+    // instead so the window reliably comes to the foreground.
+    if (KWindowSystem::isPlatformX11()) {
+        KX11Extras::forceActiveWindow(m_mainWindow->winId());
+    } else {
+        // Wayland (and any other platform): best-effort Qt approach.
+        m_mainWindow->raise();
+        m_mainWindow->activateWindow();
+    }
 }

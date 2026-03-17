@@ -96,6 +96,15 @@ void CommandHandler::registerCommands() {
         handleBoost
     };
 
+    // Register: smart-playlist
+    commands_["smart-playlist"] = {
+        "smart-playlist",
+        "Analyze pool composition or generate a variety-optimized playlist",
+        "analyze|generate [options]",
+        "",
+        handleSmartPlaylist
+    };
+
     registered_ = true;
 }
 
@@ -265,6 +274,52 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "  musiclib-cli boost /mnt/music/pink_floyd/the_wall 12    # Target -12 LUFS" << Qt::endl;
         cout << "  musiclib-cli boost /mnt/music/radiohead/ok_computer 19  # Target -19 LUFS" << Qt::endl;
     }
+    else if (cmd == "smart-playlist") {
+        cout << "Subcommands:" << Qt::endl;
+        cout << "  analyze [options]   Analyze the candidate pool and show per-group statistics." << Qt::endl;
+        cout << "                      Reads musiclib.dsv, applies rating-group POPM filters and" << Qt::endl;
+        cout << "                      last-played age thresholds, and computes variance weights." << Qt::endl;
+        cout << "  generate [options]  Generate a variety-optimized M3U playlist." << Qt::endl;
+        cout << "                      Delegates pool building to the analyze script, then runs" << Qt::endl;
+        cout << "                      the variance-proportional selection loop with a rolling" << Qt::endl;
+        cout << "                      artist-exclusion window." << Qt::endl;
+        cout << Qt::endl;
+        cout << "analyze options:" << Qt::endl;
+        cout << "  -m counts|preview|file  Output mode (default: preview)" << Qt::endl;
+        cout << "     counts   Per-group eligible track and unique artist counts only (fast)." << Qt::endl;
+        cout << "     preview  Full analysis with variance totals and sample breakdown." << Qt::endl;
+        cout << "     file     Write variance-annotated pool to sp_pool.csv." << Qt::endl;
+        cout << "  -g G1,G2,G3,G4,G5  Age thresholds in days per rating group (1★–5★)." << Qt::endl;
+        cout << "  -s <n>              Sample size for per-group breakdown. Default: from config." << Qt::endl;
+        cout << "  -u L1,L2,L3,L4,L5  POPM low bounds per rating group." << Qt::endl;
+        cout << "  -v H1,H2,H3,H4,H5  POPM high bounds per rating group." << Qt::endl;
+        cout << "  -p <value>          Minimum POPM value to include." << Qt::endl;
+        cout << "  -r <value>          Maximum POPM value to include." << Qt::endl;
+        cout << Qt::endl;
+        cout << "generate options:" << Qt::endl;
+        cout << "  -n <name>           Playlist name (without .m3u extension). Default: \"Smart Playlist\"." << Qt::endl;
+        cout << "  -o <file>           Full output file path (overrides -n and default directory)." << Qt::endl;
+        cout << "  -p <n>              Target playlist size (number of tracks). Default: from config." << Qt::endl;
+        cout << "  -s <n>              Sample size per selection round. Default: from config." << Qt::endl;
+        cout << "  -e <n>              Recent unique artists to exclude per round. Default: from config." << Qt::endl;
+        cout << "  -g G1,G2,G3,G4,G5  Age thresholds in days per rating group (1★–5★)." << Qt::endl;
+        cout << "  -u L1,L2,L3,L4,L5  POPM low bounds per rating group." << Qt::endl;
+        cout << "  -v H1,H2,H3,H4,H5  POPM high bounds per rating group." << Qt::endl;
+        cout << "  --load-audacious    Load the generated playlist into Audacious after writing." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Configuration:" << Qt::endl;
+        cout << "  All threshold and size defaults are read from musiclib.conf (SP_AGE_GROUP*," << Qt::endl;
+        cout << "  SP_PLAYLIST_SIZE, SP_SAMPLE_SIZE, SP_ARTIST_EXCLUSION_COUNT, RatingGroup1-5)." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Examples:" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist analyze                         # Full preview with defaults" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist analyze -m counts               # Fast count check" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist analyze -g 720,360,180,90,45   # Preview custom thresholds" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist generate                        # Generate 50-track default playlist" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist generate --load-audacious       # Generate and load into Audacious" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist generate -p 100 -n \"Evening Mix\" -g 180,90,45,30,14" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist generate -o ~/Music/playlist.m3u" << Qt::endl;
+    }
     else if (cmd == "setup") {
         cout << "Options:" << Qt::endl;
         cout << "  --build-db    Build initial database after setup completes" << Qt::endl;
@@ -299,8 +354,8 @@ void CommandHandler::showAvailableCommands() {
 
 int CommandHandler::handleRate(const QStringList& args) {
     // Rate accepts either 1 or 2 arguments:
-    // 1 arg:  <rating> - rates currently playing track (uses audtool)
-    // 2 args: <filepath> <rating> - rates specific file
+    // 1 arg:  <rating>           - rates currently playing track (uses audtool)
+    // 2 args: <rating> <filepath> - rates specific file
     
     if (args.size() != 1 && args.size() != 2) {
         cerr << "Error: 'rate' requires 1 or 2 arguments" << Qt::endl;
@@ -316,10 +371,10 @@ int CommandHandler::handleRate(const QStringList& args) {
         ratingStr = args[0];
         // Script will use audtool to get current track
     } else {
-        // Two arguments: filepath + rating
-        filepath = args[0];
-        ratingStr = args[1];
-        
+        // Two arguments: rating + filepath
+        ratingStr = args[0];
+        filepath = args[1];
+
         // Validate file exists
         if (!QFileInfo::exists(filepath)) {
             cerr << "Error: File not found: " << filepath << Qt::endl;
@@ -432,6 +487,35 @@ int CommandHandler::handleSetup(const QStringList& args) {
     // needs direct access to the terminal's stdin/stdout/stderr.
     return CLIUtils::executeScript("musiclib_init_config.sh", args,
                                    /*interactive=*/true);
+}
+
+int CommandHandler::handleSmartPlaylist(const QStringList& args) {
+    if (args.isEmpty()) {
+        cerr << "Error: 'smart-playlist' requires a subcommand (analyze or generate)" << Qt::endl;
+        showHelp("smart-playlist");
+        return 1;
+    }
+
+    QString subcommand = args[0];
+
+    if (subcommand == "analyze") {
+        // Pass remaining arguments directly to musiclib_smartplaylist_analyze.sh.
+        // The script handles its own option parsing (-m, -g, -s, -u, -v, -p, -r, -d, -h).
+        QStringList scriptArgs = args.mid(1);
+        return CLIUtils::executeScript("musiclib_smartplaylist_analyze.sh", scriptArgs);
+    }
+    else if (subcommand == "generate") {
+        // Pass remaining arguments directly to musiclib_smartplaylist.sh.
+        // The script handles its own option parsing (-e, -g, -h, -n, -o, -p, -s, -u, -v,
+        // and the long option --load-audacious).
+        QStringList scriptArgs = args.mid(1);
+        return CLIUtils::executeScript("musiclib_smartplaylist.sh", scriptArgs);
+    }
+    else {
+        cerr << "Error: Unknown smart-playlist subcommand '" << subcommand << "'" << Qt::endl;
+        cerr << "Valid subcommands: analyze, generate" << Qt::endl;
+        return 1;
+    }
 }
 
 int CommandHandler::handleBoost(const QStringList& args) {

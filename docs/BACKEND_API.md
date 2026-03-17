@@ -1,4 +1,4 @@
-# MusicLib Backend API Contract v1.3
+# MusicLib Backend API Contract v1.5
 
 ## Document Purpose
 
@@ -297,6 +297,7 @@ musiclib_rate.sh STAR_RATING [FILEPATH]
 - Updates `musiclib.dsv` (Rating and GroupDesc columns)
 - Updates POPM tag in file (via `kid3-cli`)
 - Updates Work/TIT1 tag to match GroupDesc
+- Writes `user.baloo.rating` filesystem extended attribute (`GroupDesc × 2`, range 0–10) so Dolphin's Rating column stays in sync without a Baloo indexing sweep
 - Regenerates Conky assets (`starrating.png`, `currgpnum.txt`)
 - Logs to `musiclib.log`
 - Shows KDE notification (via `kdialog`, if available)
@@ -316,6 +317,58 @@ musiclib-cli rate 5
 ```
 
 **Equivalent GUI**: Library view → select track → star rating widget
+
+---
+
+### 2.1.1 `musiclib_baloo_sync.sh` (standalone utility)
+
+**Purpose**: One-shot back-fill of Dolphin/Baloo star ratings from the MusicLib database. Run this once after installing the Baloo integration, or any time ratings written before the integration was added need to be synced to the filesystem.
+
+**Background**: Dolphin reads its Rating column from the `user.baloo.rating` filesystem extended attribute. Baloo does not natively map ID3 POPM frames to this attribute. `musiclib_rate.sh` now writes the attribute on every new rating, but existing rated tracks must be back-filled. This script reads `GroupDesc` from every row in `musiclib.dsv` and writes `user.baloo.rating = GroupDesc × 2` to the corresponding file, mapping MusicLib's 0–5 scale to Baloo's 0–10 scale.
+
+**Invocation**:
+```bash
+musiclib_baloo_sync.sh [--dry-run] [--verbose]
+```
+
+**Flags**:
+- `--dry-run`: Show what would be written without touching any files
+- `--verbose`: Print a status line (`SET` / `SKIP` / `MISSING`) for every track
+
+**Rating Scale Mapping**:
+
+| GroupDesc | Stars | Baloo value (`user.baloo.rating`) |
+|-----------|-------|----------------------------------|
+| 0 | Unrated | 0 |
+| 1 | ★☆☆☆☆ | 2 |
+| 2 | ★★☆☆☆ | 4 |
+| 3 | ★★★☆☆ | 6 |
+| 4 | ★★★★☆ | 8 |
+| 5 | ★★★★★ | 10 |
+
+**Side Effects**:
+- Writes `user.baloo.rating` extended attribute to audio files via `setfattr`
+- Calls `balooctl check` after processing to nudge the indexer (non-fatal if unavailable)
+- Logs summary to `musiclib.log`
+
+**Dependencies**: `setfattr` / `getfattr` (from the `attr` package)
+
+**Exit Codes**:
+- 0: Success (all files processed)
+- 1: Invalid arguments
+- 2: `setfattr` not installed, database not found, or one or more files could not be written
+
+**Examples**:
+```bash
+# Preview what would change (safe, no writes)
+musiclib_baloo_sync.sh --dry-run --verbose
+
+# Run the back-fill
+musiclib_baloo_sync.sh
+
+# Check progress verbosely
+musiclib_baloo_sync.sh --verbose
+```
 
 ---
 
@@ -684,6 +737,7 @@ musiclib_build.sh [--dry-run]
 **Side Effects**:
 - Overwrites `musiclib.dsv`
 - Creates backup: `musiclib.dsv.backup.YYYYMMDD_HHMMSS`
+- Invokes `musiclib_baloo_sync.sh` after the database is replaced to stamp `user.baloo.rating` extended attributes on all audio files (skipped silently if `setfattr` is absent, or in test/dry-run mode)
 - Logs to `musiclib.log`
 
 **Exit Codes**:
@@ -1232,11 +1286,16 @@ musiclib-cli edit-field 204 Custom2 "Petty"
 
 ---
 
-### 2.13 `musiclib_smartplaylist_analyze.sh` (GUI-invoked)
+### 2.13 `musiclib-cli smart-playlist analyze` → `musiclib_smartplaylist_analyze.sh`
 
-**Purpose**: Analyze the smart playlist candidate pool. Reads `musiclib.dsv`, applies per-group POPM rating filters and last-played age thresholds, and computes variance weights. Called directly by `SmartPlaylistPanel` — not currently exposed as a `musiclib-cli` subcommand.
+**Purpose**: Analyze the smart playlist candidate pool. Reads `musiclib.dsv`, applies per-group POPM rating filters and last-played age thresholds, and computes variance weights. Available as a `musiclib-cli` subcommand and called directly by `SmartPlaylistPanel`.
 
-**Invocation**:
+**CLI Invocation**:
+```bash
+musiclib-cli smart-playlist analyze [options]
+```
+
+**Direct Script Invocation**:
 ```bash
 musiclib_smartplaylist_analyze.sh [options]
 ```
@@ -1328,17 +1387,15 @@ Groups with fewer than 10 eligible tracks include an additional `"warning"` fiel
 
 **Examples**:
 ```bash
-# Full preview with defaults
-musiclib_smartplaylist_analyze.sh
+# Via musiclib-cli (recommended)
+musiclib-cli smart-playlist analyze                      # Full preview with defaults
+musiclib-cli smart-playlist analyze -m counts            # Fast counts
+musiclib-cli smart-playlist analyze -g 720,360,180,90,45 # Custom thresholds
+musiclib-cli smart-playlist analyze -m file -g 360,180,90,60,30  # Write pool file
 
-# Fast counts for live UI feedback
+# Direct script invocation (advanced / GUI use)
 musiclib_smartplaylist_analyze.sh -m counts
-
-# Preview with custom thresholds
 musiclib_smartplaylist_analyze.sh -g 720,360,180,90,45
-
-# Write pool file for the generator
-musiclib_smartplaylist_analyze.sh -m file -g 360,180,90,60,30
 ```
 
 **Dependencies**:
@@ -1347,11 +1404,16 @@ musiclib_smartplaylist_analyze.sh -m file -g 360,180,90,60,30
 
 ---
 
-### 2.14 `musiclib_smartplaylist.sh` (GUI-invoked)
+### 2.14 `musiclib-cli smart-playlist generate` → `musiclib_smartplaylist.sh`
 
-**Purpose**: Generate a variety-optimized M3U playlist from the musiclib database. Delegates pool building to `musiclib_smartplaylist_analyze.sh -m file`, then runs the variance-proportional selection loop with a rolling artist-exclusion window. Optionally loads the result into Audacious. Called directly by `SmartPlaylistPanel` — not currently exposed as a `musiclib-cli` subcommand.
+**Purpose**: Generate a variety-optimized M3U playlist from the musiclib database. Delegates pool building to `musiclib_smartplaylist_analyze.sh -m file`, then runs the variance-proportional selection loop with a rolling artist-exclusion window. Optionally loads the result into Audacious. Available as a `musiclib-cli` subcommand and called directly by `SmartPlaylistPanel`.
 
-**Invocation**:
+**CLI Invocation**:
+```bash
+musiclib-cli smart-playlist generate [options]
+```
+
+**Direct Script Invocation**:
 ```bash
 musiclib_smartplaylist.sh [options]
 ```
@@ -1410,14 +1472,14 @@ where `n` is the number of tracks selected so far and `total` is the target play
 
 **Examples**:
 ```bash
-# Generate a default 50-track playlist and load into Audacious
+# Via musiclib-cli (recommended)
+musiclib-cli smart-playlist generate --load-audacious              # Default playlist, load into Audacious
+musiclib-cli smart-playlist generate -p 100 -n "Evening Mix" -g 180,90,45,30,14
+musiclib-cli smart-playlist generate -o ~/Music/playlist.m3u
+
+# Direct script invocation (advanced / GUI use)
 musiclib_smartplaylist.sh --load-audacious
-
-# 100-track playlist with custom thresholds
 musiclib_smartplaylist.sh -p 100 -g 180,90,45,30,14 -n "Evening Mix"
-
-# Custom output path
-musiclib_smartplaylist.sh -o ~/Music/playlist.m3u
 ```
 
 **Dependencies**:
@@ -1777,6 +1839,8 @@ mv musiclib.dsv.new musiclib.dsv
 /usr/lib/musiclib/bin/musiclib_edit_field.sh
 /usr/lib/musiclib/bin/musiclib_utils.sh
 /usr/lib/musiclib/bin/musiclib_utils_tag_functions.sh
+/usr/lib/musiclib/bin/musiclib_smartplaylist_analyze.sh
+/usr/lib/musiclib/bin/musiclib_smartplaylist.sh
 ```
 
 ### Config File
@@ -1789,6 +1853,7 @@ mv musiclib.dsv.new musiclib.dsv
 
 ```
 ~/.local/share/musiclib/data/musiclib.dsv
+~/.local/share/musiclib/data/sp_pool.csv
 ~/.local/share/musiclib/data/conky_output/
 ~/.local/share/musiclib/playlists/
 ~/.local/share/musiclib/logs/

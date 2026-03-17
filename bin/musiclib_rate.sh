@@ -420,6 +420,21 @@ if [ "$UPDATE_CONKY" = true ]; then
 fi
 
 #############################################
+# Update Baloo Extended Attribute
+#############################################
+# Dolphin reads ratings from user.baloo.rating (0-10 scale).
+# Baloo does not natively map POPM to this attribute, so we write
+# it directly here.  GroupDesc 0-5 maps to Baloo 0-10 (multiply by 2).
+BALOO_RATING=$((GROUPDESC_VALUE * 2))
+if command -v setfattr >/dev/null 2>&1; then
+    if ! setfattr -n "user.baloo.rating" -v "$BALOO_RATING" "$FILEPATH" 2>/dev/null; then
+        echo "Warning: Failed to set Baloo rating attribute on $FILEPATH" >&2
+    else
+        echo "  ✓ Baloo rating set: $BALOO_RATING (${STAR_RATING}-star)"
+    fi
+fi
+
+#############################################
 # Show Notification
 #############################################
 # Only show success notification if we didn't show "Processing..." notification

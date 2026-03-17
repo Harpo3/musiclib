@@ -67,7 +67,8 @@ private:
     static int handleProcessPending(const QStringList& args);
     static int handleSetup(const QStringList& args);
     static int handleBoost(const QStringList& args);
-    
+    static int handleSmartPlaylist(const QStringList& args);
+
     // Command registry
     static QMap<QString, CommandInfo> commands_;
     static bool registered_;
