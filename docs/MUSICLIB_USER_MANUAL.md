@@ -1,6 +1,6 @@
 # MusicLib User Manual
 
-**Version**: 1.3
+**Version**: 1.4
 **Last Updated**: March 2026
 **For**: MusicLib on Linux with KDE Plasma 6
 
@@ -19,11 +19,12 @@
 9. [Mobile Sync](#mobile-sync)
 10. [CD Ripping](#cd-ripping)
 11. [Desktop Integration](#desktop-integration)
-12. [Command-Line Reference](#command-line-reference)
-13. [Standalone Utilities](#standalone-utilities)
-14. [FAQ](#frequently-asked-questions)
-15. [Troubleshooting](#troubleshooting)
-16. [Tips & Tricks](#tips--tricks)
+12. [Smart PLaylist](#smart-playlist)
+13. [Command-Line Reference](#command-line-reference)
+14. [Standalone Utilities](#standalone-utilities)
+15. [FAQ](#frequently-asked-questions)
+16. [Troubleshooting](#troubleshooting)
+17. [Tips & Tricks](#tips--tricks)
 
 ---
 
@@ -35,8 +36,9 @@ Rather than juggling multiple applications, MusicLib brings everything together 
 
 - **Rate and organize** your music collection
 - **Play and Queue** tracks/playlists directly via integration with Audacious
+- **Create Smart Playlists** using your database to produce real variety
 - **Edit tags** via integration with Kid3
-- **Remove and Add** tracks/database entries
+- **Remove, Add, and Edit** tracks/database entries
 - **Track playback** across devices
 - **Sync to mobile** (Android or iOS)
 - **Deep KDE integration** (system tray, shortcuts, file manager)
@@ -96,7 +98,7 @@ Before installing MusicLib, ensure you have:
 
 **Optional but Recommended**:
 
-- **kid3 (KDE) or kid3-qt (QT)** (GUI-based tag editor) — Opens directly from MusicLib for detailed metadata editing. Provides a full-featured interface for ID3 tags, album art, and more, and includes kid3-common.
+- **kid3 (KDE) or kid3-qt (QT)** (GUI-based tag editor) — Opens directly from MusicLib for detailed metadata editing. Provides a full-featured interface for ID3 tags, album art, and more, and includes kid3-cli/kid3-common.
 - **rsgain** (ReplayGain analyzer) — Required for the Boost Album feature. May need to be compiled from source on some distros.
 - **k3b** (CD ripper) — Required for the CD Ripping panel and Rip CD toolbar action. When detected by setup, MusicLib manages K3b's rip configuration (output format, bitrate, error correction) and deploys it to K3b before each rip session.
 
@@ -293,7 +295,6 @@ The script scans for common music directories:
 
 - `~/Music`
 - `/mnt/music`
-- `~/Downloads/Music`
 - Any custom directory you specify
 
 It shows you what it finds and lets you select which directories to include in your library.
@@ -327,11 +328,13 @@ No manual folder creation needed—the script handles it all.
 
 ### Step 6: Configure Audacious Integration
 
-If Audacious is detected, the Song Change plugin and script is configured automatically. 
+If Audacious is detected, the Song Change plugin and script is configured automatically, and Audacious playlists are imported. 
 
 ### Step 7: Build Initial Database
 
-The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. Without a database file, this application has little use.
+The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. 
+
+You can't really skip this. Without a database file, MusicLib will have little use.
 
 ---
 
@@ -423,15 +426,15 @@ For full details on `conform_musiclib.sh` options and safety features, see the [
 
 Open MusicLib (default panel is LibraryView) and play a track in Audacious. You can search for any track in your library, right click and play/queue in Audacious, or select an Audacious playlist from the toolbar. The toolbar has an Audacious button to launch it (or activate if already open), and you will also see the track name (if playing) and a row of stars. Click a star to set the rating — it saves instantly to both the database and the audio file itself.
 
-You can also rate tracks without playing them: find a track in the Library View, click its star column directly, and the rating is set.
+You can also rate tracks without playing them: find a track's entry using Library View, find the stars field, move your mouse from left to right to highlight number of stars, then click its rating directly to set.
 
 If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE System Settings → Shortcuts → Custom Shortcuts** and you can rate anything playing in Audacious without touching MusicLib's window.
 
 ### Step 3: Import a New Album
 
-**IMPORTANT:** When you download new music, use the **Add New Tracks** workflow rather than dropping files into your music library manually — this ensures filenames are normalized and the database stays in sync. Use only your chosen download directory from setup for staging each artist's files for the add process.
+**IMPORTANT:** When you download/rip new music, use the **Add New Tracks** workflow rather than dropping files into your music library manually — this ensures filenames are normalized and the database stays in sync. Use only your chosen download directory from setup for staging each artist's files for the add process.
 
-Before importing, open the album in Kid3 and check that the Artist and Album tags are correct and consistently named (e.g., "Pink Floyd" not "pink floyd" or "The Pink Floyd"). MusicLib uses the Album tag to name the destination folder.
+Before importing, **open the album in Kid3** to ensure the tag data for Artist and Album are correct and consistently named. NOTE: MusicLib uses the Album tag to name the destination folder in your library, so if the album already exists, it should match.
 
 Then, in MusicLib:
 
@@ -439,7 +442,7 @@ Then, in MusicLib:
 2. Find the **Add New Tracks** frame
 3. Enter the artist name and click **Execute**
 
-MusicLib will normalize filenames, move the files into your music repository under `artist/album/`, and add the tracks to the database.
+MusicLib will normalize filenames, move the files into your music repository under `artist/album/`, and add the tracks to the database. So, if your Tag has "Pink Floyd" for artist and "Wish You Were Here" as the album, MusicLib will look for the "pink_floyd" directory and "wish_you_were_here" subdirectory, and if either or both do not exist, it will create them, convert the filenames similarly, place them in your library, and create a database entry for each track.
 
 ### What Comes Next
 
@@ -464,6 +467,7 @@ Each row includes:
 - **Genre** — Music genre
 - **SongLength** — Track duration
 - **Rating** — Your 0-5 star rating
+- **Custom Artist** — Sets a common name when you have variants for the same artist, useful for smart playlist variety
 - **GroupDesc** — Visual star symbols (★★★★★)
 - **LastTimePlayed** — Timestamp of last playback
 
@@ -495,17 +499,19 @@ POPM (Popularimeter) is the ID3v2 frame used to store ratings. The default POPM 
 
 Mobile sync is a two-phase operation:
 
-**Phase A (Playback logging)**: When you upload a new playlist, MusicLib first processes the *previous* playlist. It calculates how long that playlist was on your phone (time between uploads) and distributes synthetic "last played" timestamps across the tracks using an exponential distribution. This gives you playback history even though your phone can't report what you actually listened to. It uses actual timestamps for the tracks played from your desktop in Audacious.
+**Phase A (Playback logging)**: When you upload a new playlist, MusicLib first processes the *previous* playlist. It calculates how long that playlist was on your phone (time between uploads) and distributes "synthetic" timestamps across the tracks using an exponential distribution. This gives you playback history even though your phone can't report what you actually listened to. It uses only the actual timestamps for those tracks that were played from your desktop in Audacious during the time between uploads.
 
-**Phase B (Upload)**: MusicLib converts the playlist to `.m3u` format and sends it along with all the music files to your device via KDE Connect.
+**Phase B (Upload)**: MusicLib converts the playlist to `.m3u` format and sends it along with all the music files to your device via KDE Connect. **If you have existing tracks on the device**, remove them as space requires, before upload.
 
 ### Playback Tracking
 
-MusicLib tracks when you listen to music in two ways:
+MusicLib tracks your play history in two ways:
 
 **Desktop (Audacious)**: The Audacious Song Change hook monitors playback and updates `LastTimePlayed` when you've listened to at least 50% of a track (with the threshold capped at a minimum of 30 seconds and a maximum of 4 minutes). This is logged with the exact timestamp.
 
-**Mobile**: Since mobile devices can't report precise playback data, MusicLib uses the logging approach described above to synthesize timestamps based on how long the playlist was on your device.
+**Mobile**: Since mobile devices can't report precise playback data, MusicLib uses the logging approach described in Phase A above to synthesize timestamps based on how long the playlist was on your device.
+
+See the Mobile Sync section for more detail on Last-Played accounting.
 
 ---
 
@@ -544,6 +550,8 @@ Select from the Side Panel on the left to access the other panels:
 **Maintenance Panel** — Perform database and tag maintenance operations like rebuilding the database, cleaning tags, or importing new music.
 
 **CD Ripping Panel** — Configure K3b CD ripping settings (output format, bitrate/quality, error correction) and manage the ripping profile. Only available when K3b is installed and detected by setup. See the [CD Ripping](#cd-ripping) section for details.
+
+**Smart Playlist Panel** — Generate variety-optimized playlists using rating groups, last-played age thresholds, and artist exclusion. See the [Smart Playlist](#smart-playlist) section for details.
 
 **Settings** — (Opens new Window) Configure MusicLib paths, device IDs, and behavior options.
 
@@ -624,6 +632,8 @@ To normalize ID3 tags across your collection:
    - **Strip** — Remove ID3v1 and APE tags only
    - **Embed Art** — Embeds `folder.jpg`, if in the album directory, into the tag as album art, if missing
 5. Click **Execute**
+
+Alternatively, just open the track(s) in Kid3 and use it to edit the tag(s) directly. 
 
 ### Repairing Corrupted Tags
 
@@ -846,6 +856,51 @@ MusicLib generates output files with music data and images for use with a Conky 
 - `folder.jpg` — Album art image 
 
 Add the paths to your `.conkyrc` to display now-playing information on your desktop or for other display purposes.
+
+---
+
+## Smart Playlist
+
+The Smart Playlist panel generates variety-optimized playlists from your library using three key variables: track rating (POPM stars), days since last played, and a rolling artist exclusion window. The result is a playlist that surfaces artists and tracks you haven't heard in a while, weighted toward your preferred ratings.
+
+### How the Algorithm Works
+
+MusicLib divides your library into five rating groups (1★ through 5★). For each group it applies an **age threshold**: tracks played more recently than the threshold are excluded from the candidate pool. Tracks that clear the threshold are eligible; the further past the threshold a track is, the higher its **variance** score. For example, assuming a threshold of 50 days, a track last played 100 days ago will have a much higher variance than one played 60 days ago. 
+
+Variance scores are summed per group and used to assign proportional weights. Each batch of `sample_size` tracks is drawn from the pool in proportion to those weights, so rating groups with more eligible, long-unplayed tracks contribute more slots. This lets you tune the playlist mix — for example, raising the 1★ threshold makes 1-star tracks more restrictive (fewer eligible), shifting slots toward higher-rated groups.
+
+After each track is selected, its effective artist is added to a rolling exclusion window. The next `artist_exclusion_count` picks will skip any track by an artist already in the window, ensuring the playlist doesn't cluster around the same artists.
+
+### Tuning Thresholds
+
+Use the **Analyze** section of the Smart Playlist panel to preview how your current thresholds affect each rating group. The table shows eligible track counts, unique artist counts, variance totals, and the resulting sample weights. Adjust the age threshold spinboxes and run another preview to see the effect before generating.
+
+Good starting points:
+- 1★ tracks need a long threshold (several hundred days) to keep low-rated music from overwhelming the pool.
+- 5★ tracks can have a short threshold (30–60 days) so your favourites cycle back quickly.
+- Use the **Sample breakdown** in the preview table to check that higher-rated groups hold the slots you want. It will show a breakdown of how many tracks per rating group given an assumed sample size of 20. You can modify the sample size, if desired.
+
+### The Custom Artist Field
+
+The exclusion window works on **effective artist**, not raw Album Artist. If a track has a value in the **Custom Artist** column (Custom2 in the database), that value is used instead of the **Artist** for exclusion purposes.
+
+This matters when the same artist appears under multiple names. For example, if you have tracks filed under both *Tom Petty* and *Tom Petty & The Heartbreakers*, the exclusion window normally treats them as two separate artists — meaning both could appear close together in the playlist. Setting **Custom Artist** to `Petty` on all of those tracks causes them to share a single exclusion slot, so excluding `Petty` blocks both groups at once and produces genuine variety.
+
+To set a Custom Artist value, double-click the Custom Artist cell for any track in the library view. Tracks with no Custom Artist value fall back to their  Artist name automatically.
+
+The Analyze preview displays a **Custom Artist coverage** percentage showing what fraction of your eligible tracks have a Custom Artist value set. If coverage is low, partially-mapped artists will appear under two different effective-artist keys (e.g. `Petty` for tagged tracks and `Tom Petty` for untagged ones), and the exclusion window will track them independently. The preview will flag this if it affects your pool.
+
+### Using the Smart Playlist Panel
+
+**Configuration section** — Set age thresholds for each rating group, playlist size, sample size, and artist exclusion count. Changes are saved immediately to both the settings store and `musiclib.conf`. Use **Reset to defaults** to restore factory values.
+
+**Analyze section** — Click **Preview** to run a full analysis. The table shows per-group statistics including eligible track counts, unique artist counts (raw and after Custom Artist merging), and the expected sample breakdown at your current settings. Groups with fewer than 10 eligible tracks are highlighted and excluded from sampling.
+
+**Generate section** — Enter a playlist name, optionally check **Load into Audacious after generating**, then click **Generate Playlist**. Progress is shown in the log area. On success, the `.m3u` file is written to your playlists directory and (if selected) loaded directly into Audacious.
+
+### Settings Dialog — Smart Playlist Page
+
+All threshold and generation parameters are also accessible from **Settings → Smart Playlist**, letting you adjust values without opening the panel. Changes here sync to `musiclib.conf` on Apply, so the backend scripts pick them up immediately. The Smart Playlist panel reads from the same settings store, so values stay consistent between the two locations.
 
 ---
 
@@ -1804,20 +1859,9 @@ done
 
 MusicLib is actively being developed. Here are features planned for future releases:
 
-### Advanced Playlist Creation (Planned for v0.2)
+### Advanced Playlist Creation (Implemented in v1.5)
 
-Future versions will include intelligent playlist generation that considers multiple factors:
-
-- **Play History**: Create playlists biased toward songs you haven't played recently
-- **Ratings**: Weight songs by your star ratings (prefer 4-5 star songs, avoid 1 star)
-- **Artist Rotation**: Avoid repeating the same artist too frequently
-- **Smart Mixing**: Combine these factors to generate varied, fresh playlists automatically
-
-**Example use cases**:
-
-- "Show me my favorite songs I haven't heard in a month"
-- "Create a playlist from different artists, avoiding those I heard yesterday"
-- "Mix my top-rated songs with some new discoveries"
+Smart playlist generation is now available. See the [Smart Playlist](#smart-playlist) section for full documentation. The feature includes variance-weighted sampling by rating group, configurable last-played age thresholds, a rolling artist exclusion window, and the Custom Artist field for artist-name grouping. Use the Smart Playlist panel to tune thresholds for your library and generate playlists directly into Audacious.
 
 ### KRunner Integration (Planned for v0.3)
 

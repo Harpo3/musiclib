@@ -79,6 +79,16 @@ SmartPlaylistPanel::SmartPlaylistPanel(ConfWriter *conf, QWidget *parent)
 
     // ── Initialize constraint display placeholder ──
     updateConstraintDisplay();
+
+    // ── Audacious availability poll ──
+    // Check immediately so the checkbox starts in the correct state, then
+    // recheck every 3 seconds so it tracks Audacious being launched or closed.
+    m_audaciousCheckTimer = new QTimer(this);
+    m_audaciousCheckTimer->setInterval(3000);
+    connect(m_audaciousCheckTimer, &QTimer::timeout,
+            this, &SmartPlaylistPanel::checkAudaciousRunning);
+    m_audaciousCheckTimer->start();
+    checkAudaciousRunning();
 }
 
 SmartPlaylistPanel::~SmartPlaylistPanel()
@@ -343,6 +353,30 @@ void SmartPlaylistPanel::resetToDefaults()
 
     // Kick off a fresh counts run
     m_constraintDebounce->start();
+}
+
+// ═════════════════════════════════════════════════════════════
+// Audacious availability
+// ═════════════════════════════════════════════════════════════
+
+void SmartPlaylistPanel::checkAudaciousRunning()
+{
+    // pgrep -x audacious returns 0 if at least one matching process exists.
+    const bool running =
+        (QProcess::execute(QStringLiteral("pgrep"),
+                           { QStringLiteral("-x"), QStringLiteral("audacious") }) == 0);
+
+    if (!running) {
+        // Dim and uncheck — generating with --load-audacious would fail anyway.
+        m_loadAudaciousCheck->setChecked(false);
+        m_loadAudaciousCheck->setEnabled(false);
+        m_loadAudaciousCheck->setToolTip(
+            i18n("Activate this feature by launching Audacious."));
+    } else {
+        m_loadAudaciousCheck->setEnabled(true);
+        m_loadAudaciousCheck->setToolTip(
+            i18n("Load the generated playlist directly into Audacious."));
+    }
 }
 
 // ═════════════════════════════════════════════════════════════

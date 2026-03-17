@@ -79,6 +79,10 @@ private Q_SLOTS:
     void onGenerateReadyRead();
     void onGenerateFinished(int exitCode, QProcess::ExitStatus status);
 
+    // ── Audacious availability ──
+    /// Poll for a running Audacious process and update the load-checkbox state.
+    void checkAudaciousRunning();
+
     // ── Live constraint display ──
     /// Fired by m_constraintDebounce; runs analyze in counts mode.
     void startCountsRun();
@@ -109,13 +113,14 @@ private:
     // ── Members ──
     ConfWriter *m_conf;
 
-    QTimer     *m_constraintDebounce = nullptr;  ///< 500ms debounce for counts refresh
-    QProcess   *m_analyzeProcess     = nullptr;
-    QProcess   *m_generateProcess    = nullptr;
-    QByteArray  m_analyzeBuffer;                 ///< Accumulates stdout from analyze
-    QByteArray  m_generateBuffer;                ///< Accumulates stdout from generate
-    bool        m_busy               = false;    ///< True while any subprocess is running
-    bool        m_analyzeIsPreview   = false;    ///< Distinguishes preview vs counts run
+    QTimer     *m_constraintDebounce    = nullptr;  ///< 500ms debounce for counts refresh
+    QTimer     *m_audaciousCheckTimer  = nullptr;  ///< 3s poll for Audacious process
+    QProcess   *m_analyzeProcess       = nullptr;
+    QProcess   *m_generateProcess      = nullptr;
+    QByteArray  m_analyzeBuffer;                    ///< Accumulates stdout from analyze
+    QByteArray  m_generateBuffer;                   ///< Accumulates stdout from generate
+    bool        m_busy                 = false;     ///< True while any subprocess is running
+    bool        m_analyzeIsPreview     = false;     ///< Distinguishes preview vs counts run
 
     /// Per-group statistics populated after each analyze run.
     struct GroupStats {

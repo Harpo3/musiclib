@@ -1169,7 +1169,7 @@ musiclib_remove_record.sh "/mnt/music/deleted/old_track.mp3"
 
 ### 2.12 `musiclib-cli edit-field` → `musiclib_edit_field.sh`
 
-**Purpose**: Update a single metadata field (Artist, Album, AlbumArtist, SongTitle, or Genre) in the database for a specified track record. Only the DSV row is changed; audio file tags are not touched.
+**Purpose**: Update a single metadata field in the database for a specified track record. Accepted fields: `Artist`, `Album`, `AlbumArtist`, `SongTitle`, `Genre`, `Custom2`. For all fields except `Custom2`, only the DSV row is changed; audio file tags are not touched. For `Custom2`, the script also writes `Songs-DB_Custom2` to the audio file tag via `kid3-cli`.
 
 **Invocation**:
 ```bash
@@ -1178,7 +1178,7 @@ musiclib_edit_field.sh RECORD_ID FIELD_NAME NEW_VALUE
 
 **Parameters**:
 - `RECORD_ID`: The `ID` field value from the DSV row (column 1). Used to identify the exact record to update.
-- `FIELD_NAME`: The DSV column name to update. Must be one of: `Artist`, `Album`, `AlbumArtist`, `SongTitle`, `Genre`.
+- `FIELD_NAME`: The DSV column name to update. Must be one of: `Artist`, `Album`, `AlbumArtist`, `SongTitle`, `Genre`, `Custom2`.
 - `NEW_VALUE`: Replacement text. Must not contain the `^` delimiter character.
 
 **Workflow**:
@@ -1188,10 +1188,12 @@ musiclib_edit_field.sh RECORD_ID FIELD_NAME NEW_VALUE
 4. Locate the row in `musiclib.dsv` where column 1 matches `RECORD_ID`
 5. Identify the column index for `FIELD_NAME` from the DSV header
 6. Overwrite that cell in-place, rewrite the DSV atomically
-7. Log the change and show a `kdialog` notification on success
+7. If `FIELD_NAME == Custom2`: write `Songs-DB_Custom2` to the audio file tag via `kid3-cli`
+8. Log the change and show a `kdialog` notification on success
 
 **Side Effects**:
 - Updates one field in one row of `musiclib.dsv`
+- `Custom2` only: also writes `Songs-DB_Custom2` tag to the audio file (no tagrebuild step needed for this field)
 - Logs to `musiclib.log`
 - Shows `kdialog` passive popup notification (success or failure)
 - `QFileSystemWatcher` on `musiclib.dsv` triggers automatic model refresh in the GUI
@@ -1208,17 +1210,222 @@ musiclib-cli edit-field 142 Artist "Pink Floyd"
 
 # Update album title for record ID 87
 musiclib-cli edit-field 87 Album "The Wall (Remaster)"
+
+# Set a Custom Artist grouping key so both names are treated as one artist
+# in the smart playlist exclusion window (effective artist merging)
+musiclib-cli edit-field 203 Custom2 "Petty"
+musiclib-cli edit-field 204 Custom2 "Petty"
 ```
 
-**Equivalent GUI**: Library view → double-click a cell in the Artist, Album, AlbumArtist, Title, or Genre column → inline editor → press Enter to confirm
+**Equivalent GUI**: Library view → double-click a cell in the Artist, Album, AlbumArtist, Title, Genre, or Custom Artist column → inline editor → press Enter to confirm
 
 **Notes**:
-- Only DSV metadata is updated. To also synchronize the change to file tags, run `musiclib-cli tagrebuild` on the affected file afterward.
+- For all fields except `Custom2`: only DSV metadata is updated. Run `musiclib-cli tagrebuild` on the affected file to also sync the change to audio file tags.
+- For `Custom2`: the DSV and the file tag are both updated in one step. No separate tagrebuild is needed.
 - The `^` delimiter cannot appear in field values; the script exits 1 if `NEW_VALUE` contains one.
+- `Custom2` (displayed as **Custom Artist** in the library view) is the field used by the smart playlist engine as the **effective artist** for exclusion-window purposes. See §2.13–2.14 for details.
 
 **Dependencies**:
 - `musiclib_utils.sh` (provides `load_config`, `with_db_lock`, `error_exit`, `log_message`)
+- `kid3-cli` (required for `Custom2` tag write; optional for other fields)
 - `kdialog` (optional, for desktop notifications)
+
+---
+
+### 2.13 `musiclib_smartplaylist_analyze.sh` (GUI-invoked)
+
+**Purpose**: Analyze the smart playlist candidate pool. Reads `musiclib.dsv`, applies per-group POPM rating filters and last-played age thresholds, and computes variance weights. Called directly by `SmartPlaylistPanel` — not currently exposed as a `musiclib-cli` subcommand.
+
+**Invocation**:
+```bash
+musiclib_smartplaylist_analyze.sh [options]
+```
+
+**Options**:
+
+| Flag | Argument | Default | Description |
+|------|----------|---------|-------------|
+| `-d` | `<delim>` | `^` | Field delimiter for the DSV database |
+| `-g` | `G1,G2,G3,G4,G5` | from `SP_AGE_GROUP*` in conf | Comma-separated age thresholds in days per rating group (group 1 = 1★ … group 5 = 5★) |
+| `-m` | `counts\|preview\|file` | `preview` | Output mode (see below) |
+| `-p` | `<value>` | from `RatingGroup1` low | Minimum POPM value to include |
+| `-r` | `<value>` | from `RatingGroup5` high | Maximum POPM value to include |
+| `-s` | `<n>` | from `SP_SAMPLE_SIZE` | Sample size for the per-group breakdown |
+| `-u` | `L1,L2,L3,L4,L5` | from `RatingGroup1-5` in conf | Comma-separated POPM low bounds for each group |
+| `-v` | `H1,H2,H3,H4,H5` | from `RatingGroup1-5` in conf | Comma-separated POPM high bounds for each group |
+
+**Modes**:
+
+- **`counts`** — Fast path. Per-group eligible track count and unique artist count only. No variance computation. Used by the panel's live constraint display (triggered after every threshold change via 500 ms debounce).
+- **`preview`** — Full analysis. Per-group eligible count, unique artist count (raw and effective), variance total, sample weight percentage, sample quantity, and Custom2 coverage. Used by the **Preview** button in `SmartPlaylistPanel`.
+- **`file`** — Writes the variance-annotated intermediate pool to `~/.local/share/musiclib/data/sp_pool.csv`. Emits a brief JSON status object to stdout. Called internally by `musiclib_smartplaylist.sh` as its first step.
+
+**Effective Artist**: For artist counting and uniqueness, the script uses `Custom2` (the **Custom Artist** field) as the artist identity when it is non-blank. If `Custom2` is blank, `AlbumArtist` is used as the fallback. This is called the *effective artist* throughout. Both column indices are detected dynamically from the DSV header; if `Custom2` is absent from the schema, `AlbumArtist` is used unconditionally.
+
+**JSON output — `-m preview`**:
+```json
+{
+  "status": "ok",
+  "total_eligible": 1243,
+  "unique_artists_effective": 287,
+  "unique_artists_raw": 304,
+  "custom2_coverage_pct": 72,
+  "groups": [
+    {
+      "group": 1,
+      "stars": 1,
+      "popm_low": 1,
+      "popm_high": 32,
+      "threshold_days": 360,
+      "eligible_tracks": 287,
+      "unique_artists_effective": 87,
+      "unique_artists_raw": 92,
+      "custom2_coverage_pct": 68,
+      "variance_total": 14.72,
+      "sample_weight_pct": 28.4,
+      "sample_qty": 6
+    }
+  ]
+}
+```
+
+Groups with fewer than 10 eligible tracks include an additional `"warning"` field instead of variance/sample fields:
+```json
+{ "group": 2, "eligible_tracks": 7, "warning": "below minimum floor of 10; excluded from sampling" }
+```
+
+**JSON output — `-m counts`**:
+```json
+{
+  "status": "ok",
+  "total_eligible": 1243,
+  "unique_artists_effective": 287,
+  "unique_artists_raw": 304,
+  "custom2_coverage_pct": 72,
+  "groups": [
+    { "group": 1, "eligible_tracks": 287, "unique_artists_effective": 87, "unique_artists_raw": 92 }
+  ]
+}
+```
+
+**JSON output — `-m file`**:
+```json
+{ "status": "ok", "pool_file": "/home/user/.local/share/musiclib/data/sp_pool.csv", "pool_size": 1243 }
+```
+
+**Error schema** (stderr, any mode, exit 1 or 2):
+```json
+{"status": "error", "code": 1, "message": "Database not found: /path/to/musiclib.dsv"}
+```
+
+**Output files**:
+- `-m file` only: `~/.local/share/musiclib/data/sp_pool.csv` — variance-annotated pool, consumed by `musiclib_smartplaylist.sh`
+
+**Exit Codes**:
+- 0: Success
+- 1: User/validation error — bad flag value, insufficient eligible tracks (pool smaller than `SP_PLAYLIST_SIZE`), database header missing required columns
+- 2: System error — config load failure, database unreadable, I/O error writing pool file
+
+**Examples**:
+```bash
+# Full preview with defaults
+musiclib_smartplaylist_analyze.sh
+
+# Fast counts for live UI feedback
+musiclib_smartplaylist_analyze.sh -m counts
+
+# Preview with custom thresholds
+musiclib_smartplaylist_analyze.sh -g 720,360,180,90,45
+
+# Write pool file for the generator
+musiclib_smartplaylist_analyze.sh -m file -g 360,180,90,60,30
+```
+
+**Dependencies**:
+- `musiclib_utils.sh` (provides `load_config`, `error_exit`, `log_message`, `get_data_dir`)
+- `awk`, `sort`, `shuf` (coreutils)
+
+---
+
+### 2.14 `musiclib_smartplaylist.sh` (GUI-invoked)
+
+**Purpose**: Generate a variety-optimized M3U playlist from the musiclib database. Delegates pool building to `musiclib_smartplaylist_analyze.sh -m file`, then runs the variance-proportional selection loop with a rolling artist-exclusion window. Optionally loads the result into Audacious. Called directly by `SmartPlaylistPanel` — not currently exposed as a `musiclib-cli` subcommand.
+
+**Invocation**:
+```bash
+musiclib_smartplaylist.sh [options]
+```
+
+**Options**:
+
+| Flag | Argument | Default | Description |
+|------|----------|---------|-------------|
+| `-e` | `<n>` | from `SP_ARTIST_EXCLUSION_COUNT` | Number of recent unique effective artists to exclude per selection round |
+| `-g` | `G1,G2,G3,G4,G5` | from `SP_AGE_GROUP*` | Comma-separated age thresholds in days for groups 1–5 |
+| `-n` | `<name>` | `"Smart Playlist"` | Playlist name (without `.m3u` extension); used as the Audacious playlist title |
+| `-o` | `<file>` | `${PLAYLISTS_DIR}/<name>.m3u` | Full output file path (overrides `-n` and default directory) |
+| `-p` | `<n>` | from `SP_PLAYLIST_SIZE` | Target playlist size (number of tracks) |
+| `-s` | `<n>` | from `SP_SAMPLE_SIZE` | Sample size — tracks considered per selection round |
+| `-u` | `L1,…,L5` | from `RatingGroup1-5` | POPM low bounds for each group |
+| `-v` | `H1,…,H5` | from `RatingGroup1-5` | POPM high bounds for each group |
+| `--load-audacious` | (flag) | false | Load the playlist into Audacious after writing |
+
+**Processing steps**:
+1. Call `musiclib_smartplaylist_analyze.sh -m file` (with the same `-g`/`-u`/`-v`/`-s` flags) to produce the variance-annotated pool at `~/.local/share/musiclib/data/sp_pool.csv`.
+2. Run the main playlist-building loop: variance-proportional batch sampling with a rolling effective-artist exclusion window of size `-e`.
+3. Write output `.m3u` to `${PLAYLISTS_DIR}/<name>.m3u` (or the path specified by `-o`).
+4. If `--load-audacious`: verify Audacious is running (`pgrep -x audacious`). Search for an existing playlist with the same name; if found, select and clear it; if not found, create a new one. Load each track via `audtool --playlist-addurl`.
+5. Emit JSON success object to stdout.
+
+**Progress output** (stdout, during step 2):
+The panel's log area receives free-form text lines. Progress bar updates use the prefix:
+```
+PROGRESS:n:total
+```
+where `n` is the number of tracks selected so far and `total` is the target playlist size.
+
+**JSON success output** (stdout, on exit 0):
+```json
+{
+  "status": "ok",
+  "playlist": "Smart Playlist",
+  "tracks": 50,
+  "output": "/home/user/.local/share/musiclib/playlists/smart_playlist.m3u"
+}
+```
+
+**Error schema** (stderr, exit 1 or 2):
+```json
+{"status": "error", "code": 2, "message": "Audacious is not running"}
+```
+
+**Output files**:
+- `${PLAYLISTS_DIR}/<name>.m3u` — the generated playlist (always written)
+- `~/.local/share/musiclib/data/sp_pool.csv` — intermediate pool (written by analyze script, overwritten on each run)
+
+**Exit Codes**:
+- 0: Success — playlist written (and loaded into Audacious if `--load-audacious` was set)
+- 1: User/validation error — bad flag values, playlist size larger than eligible pool
+- 2: System error — config load failure, analyze script failed, Audacious not running when `--load-audacious` requested, I/O error writing `.m3u`
+
+**Examples**:
+```bash
+# Generate a default 50-track playlist and load into Audacious
+musiclib_smartplaylist.sh --load-audacious
+
+# 100-track playlist with custom thresholds
+musiclib_smartplaylist.sh -p 100 -g 180,90,45,30,14 -n "Evening Mix"
+
+# Custom output path
+musiclib_smartplaylist.sh -o ~/Music/playlist.m3u
+```
+
+**Dependencies**:
+- `musiclib_smartplaylist_analyze.sh` (pool building)
+- `musiclib_utils.sh` (provides `load_config`, `error_exit`, `log_message`, `get_data_dir`)
+- `audtool` (required only for `--load-audacious`)
+- `pgrep` (required only for `--load-audacious`)
+- `awk`, `shuf` (coreutils)
 
 ---
 
@@ -1304,6 +1511,40 @@ connect(watcher, &QFileSystemWatcher::fileChanged, this, [=]() {
 | B — Already running (ours) | PID file exists and matches running process | Raise K3b window via `raiseWindowByClass("k3b")`. No deploy. |
 | C — Already running (external) | No PID file or PID mismatch | Raise K3b window. No deploy. Panel shows dimmed state via its own poll timer. |
 | D — Startup with K3b open | Detected at MainWindow init | PID match: treat as Scenario B. PID mismatch: clear stale PID file, no dialog. |
+
+---
+
+### 3.5 SmartPlaylistPanel Script Interface
+
+`SmartPlaylistPanel` calls two scripts directly via `QProcess`. Both are invoked with the scripts directory resolved from `ConfWriter` (key `SCRIPTS_DIR`, default `/usr/lib/musiclib/bin`).
+
+**Script calls and triggers**:
+
+| Trigger | Script | Flags |
+|---------|--------|-------|
+| Threshold spinbox change (500 ms debounce) | `musiclib_smartplaylist_analyze.sh` | `-m counts -g G1,G2,G3,G4,G5` |
+| **Preview** button | `musiclib_smartplaylist_analyze.sh` | `-m preview -g G1,G2,G3,G4,G5 -s S` |
+| **Generate** button | `musiclib_smartplaylist.sh` | `-p P -e E -g G1,G2,G3,G4,G5 -s S -n "Name" [--load-audacious]` |
+
+Where `G1–G5` are the current age threshold spinbox values, `S` is the sample size, `P` is the playlist size, and `E` is the artist exclusion count.
+
+**stdout parsing — generate script**:
+The generate script writes two kinds of lines to stdout during execution:
+- `PROGRESS:n:total` — parsed by the panel to advance `m_generateProgress` (value `n`, maximum `total`)
+- All other lines — appended verbatim to the `m_generateLog` `QTextEdit`
+
+On process exit, the panel reads the accumulated `m_generateBuffer` and parses the terminal JSON object. Exit 0 with a valid `{"status":"ok",...}` object triggers `playlistGenerated(outputPath)` and a success message. Any other exit code causes the JSON `"message"` field (or the raw stderr) to appear in the log in red.
+
+**stdout parsing — analyze script**:
+The panel accumulates all stdout into `m_analyzeBuffer` and parses the complete JSON object on `QProcess::finished`. It does not attempt incremental parsing. The JSON is used to populate `m_cachedStats` and, for `-m preview`, to populate `m_previewTable`.
+
+**Mutual exclusion**: Both the Preview and Generate buttons are disabled (`setBusy(true)`) while any `QProcess` is running. The counts debounce timer is also suppressed while a generate process is active to avoid interfering with the pool file.
+
+**Signal emitted by panel**:
+
+| Signal | Type | Purpose |
+|--------|------|---------|
+| `playlistGenerated(const QString &path)` | `Q_SIGNAL` | Emitted on successful generation; `MainWindow` connects to this to update the status bar with the output path |
 
 ---
 

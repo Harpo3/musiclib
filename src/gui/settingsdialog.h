@@ -61,6 +61,7 @@ private:
     QWidget *createGeneralPage();
     QWidget *createPlaybackMobilePage();
     QWidget *createAdvancedPage();
+    QWidget *createSmartPlaylistPage();
 
     // ── Sync helpers ──
     void syncConfToKConfig();
@@ -102,6 +103,12 @@ private:
     QCheckBox *m_closeToTrayCheck    = nullptr;
     QCheckBox *m_minimizeToTrayCheck = nullptr;
     QCheckBox *m_startMinimizedCheck = nullptr;
+
+    // ── Smart Playlist page widgets ──
+    QSpinBox *m_spThreshold[5]     = {};   // [0]=1★ … [4]=5★ age thresholds
+    QSpinBox *m_spPlaylistSize     = nullptr;
+    QSpinBox *m_spSampleSize       = nullptr;
+    QSpinBox *m_spArtistExclusion  = nullptr;
 
     // ── Snapshot of conf values at dialog open (for hasChanged) ──
     QMap<QString, QString> m_savedSnapshot;

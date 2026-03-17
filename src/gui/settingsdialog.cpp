@@ -60,6 +60,11 @@ SettingsDialog::SettingsDialog(QWidget *parent, ConfWriter *conf)
             QStringLiteral("configure"),
             i18n("Scripts, locking, and maintenance"));
 
+    addPage(createSmartPlaylistPage(),
+            i18n("Smart Playlist"),
+            QStringLiteral("media-playlist-shuffle"),
+            i18n("Playlist generation and threshold settings"));
+
     // Resize to something comfortable
     resize(560, 480);
 }
@@ -523,6 +528,141 @@ QWidget *SettingsDialog::createAdvancedPage()
              "This is read-only — it is set by the installed scripts."));
     layout->addWidget(m_apiVersionLabel);
 
+    layout->addStretch();
+
+    return page;
+}
+
+QWidget *SettingsDialog::createSmartPlaylistPage()
+{
+    auto *page   = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    // ── Age Thresholds group ──────────────────────────────────────────────
+    // Each threshold controls how many days must have elapsed since a track
+    // was last played before it is eligible for the smart playlist pool.
+    // Higher threshold → stricter → fewer eligible tracks in that group.
+    auto *thresholdGroup = new QGroupBox(i18n("Age Thresholds"), page);
+    auto *thresholdForm  = new QFormLayout(thresholdGroup);
+
+    static const struct { const char *label; const char *kcfg; int def; } kThresholdRows[5] = {
+        { "1★ threshold (days)", "kcfg_AgeThresholdGroup1", 360 },
+        { "2★ threshold (days)", "kcfg_AgeThresholdGroup2", 180 },
+        { "3★ threshold (days)", "kcfg_AgeThresholdGroup3",  90 },
+        { "4★ threshold (days)", "kcfg_AgeThresholdGroup4",  60 },
+        { "5★ threshold (days)", "kcfg_AgeThresholdGroup5",  30 },
+    };
+
+    static const char *kThresholdTips[5] = {
+        "Days since last play required for 1-star tracks to be eligible.\n"
+        "Higher = more restrictive. Default: 360 days.\n"
+        "1-star tracks are played least often — a long threshold keeps them\n"
+        "from overwhelming the pool.",
+
+        "Days since last play required for 2-star tracks to be eligible.\n"
+        "Default: 180 days.",
+
+        "Days since last play required for 3-star tracks to be eligible.\n"
+        "Default: 90 days.",
+
+        "Days since last play required for 4-star tracks to be eligible.\n"
+        "Default: 60 days.\n"
+        "4-star tracks are favourites — a shorter threshold keeps them\n"
+        "appearing more frequently.",
+
+        "Days since last play required for 5-star tracks to be eligible.\n"
+        "Default: 30 days.\n"
+        "5-star tracks are your top picks — a short threshold means they\n"
+        "cycle back into playlists quickly."
+    };
+
+    for (int i = 0; i < 5; ++i) {
+        m_spThreshold[i] = new QSpinBox(thresholdGroup);
+        m_spThreshold[i]->setRange(1, 3650);
+        m_spThreshold[i]->setSuffix(i18n(" days"));
+        m_spThreshold[i]->setObjectName(
+            QString::fromLatin1(kThresholdRows[i].kcfg));
+        m_spThreshold[i]->setToolTip(
+            i18n(kThresholdTips[i]));
+        thresholdForm->addRow(i18n(kThresholdRows[i].label), m_spThreshold[i]);
+    }
+
+    auto *thresholdNote = new QLabel(
+        i18n("<i>Use the Smart Playlist panel to run a live preview and see how "
+             "changing these values affects the number of eligible tracks in each "
+             "rating group.</i>"),
+        thresholdGroup);
+    thresholdNote->setWordWrap(true);
+    thresholdForm->addRow(QString(), thresholdNote);
+
+    layout->addWidget(thresholdGroup);
+
+    // ── Generation Parameters group ───────────────────────────────────────
+    auto *genGroup = new QGroupBox(i18n("Generation Parameters"), page);
+    auto *genForm  = new QFormLayout(genGroup);
+
+    m_spPlaylistSize = new QSpinBox(genGroup);
+    m_spPlaylistSize->setRange(10, 500);
+    m_spPlaylistSize->setObjectName(QStringLiteral("kcfg_PlaylistSize"));
+    m_spPlaylistSize->setToolTip(
+        i18n("Number of tracks to include in the generated playlist.\n"
+             "Default: 50. The eligible pool must be at least this large\n"
+             "for generation to succeed."));
+    genForm->addRow(i18n("Playlist size:"), m_spPlaylistSize);
+
+    m_spSampleSize = new QSpinBox(genGroup);
+    m_spSampleSize->setRange(5, 100);
+    m_spSampleSize->setObjectName(QStringLiteral("kcfg_SampleSize"));
+    m_spSampleSize->setToolTip(
+        i18n("Number of tracks per variance-sampling batch.\n"
+             "Controls the resolution of proportional weighting between rating\n"
+             "groups. Smaller values favour higher-variance groups more strongly;\n"
+             "larger values produce a smoother distribution.\n"
+             "Default: 20. Rarely needs changing."));
+    genForm->addRow(i18n("Sample size:"), m_spSampleSize);
+
+    m_spArtistExclusion = new QSpinBox(genGroup);
+    m_spArtistExclusion->setRange(0, 500);
+    m_spArtistExclusion->setObjectName(QStringLiteral("kcfg_ArtistExclusionCount"));
+    m_spArtistExclusion->setToolTip(
+        i18n("Number of most-recently-played unique artists to exclude while\n"
+             "building the playlist. Prevents the same artist from appearing\n"
+             "in consecutive slots.\n\n"
+             "The exclusion window uses the Custom Artist field (shown as\n"
+             "'Custom Artist' in the library view) rather than Album Artist\n"
+             "when it is set. For example, if you set Custom Artist to\n"
+             "'Petty' on tracks filed under both 'Tom Petty' and\n"
+             "'Tom Petty & The Heartbreakers', both names count as one artist\n"
+             "in the exclusion window — giving you genuine variety instead of\n"
+             "treating them as two separate artists.\n\n"
+             "Default: 30. Set to 0 to disable artist exclusion entirely."));
+    genForm->addRow(i18n("Artist exclusion count:"), m_spArtistExclusion);
+
+    layout->addWidget(genGroup);
+
+    // ── Custom Artist field info ──────────────────────────────────────────
+    auto *customArtistGroup = new QGroupBox(i18n("Custom Artist Field"), page);
+    auto *customArtistLayout = new QVBoxLayout(customArtistGroup);
+
+    auto *customArtistLabel = new QLabel(
+        i18n("The <b>Custom Artist</b> column in the library view lets you assign "
+             "a shared grouping key to tracks that belong to the same artist but "
+             "appear under different Album Artist names. "
+             "The smart playlist engine uses this key — called the "
+             "<i>effective artist</i> — when applying the exclusion window.<br><br>"
+             "Example: setting Custom Artist to <b>Petty</b> on tracks filed under "
+             "both <i>Tom Petty</i> and <i>Tom Petty &amp; The Heartbreakers</i> "
+             "causes both to count as one artist slot in the exclusion window. "
+             "Without it, the generator treats them as two separate artists and "
+             "may schedule both within the same playlist section.<br><br>"
+             "To set a Custom Artist value, double-click the Custom Artist cell "
+             "for any track in the library view. Tracks with no Custom Artist "
+             "value fall back to their Album Artist name."),
+        customArtistGroup);
+    customArtistLabel->setWordWrap(true);
+    customArtistLayout->addWidget(customArtistLabel);
+
+    layout->addWidget(customArtistGroup);
     layout->addStretch();
 
     return page;

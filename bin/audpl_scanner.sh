@@ -11,8 +11,8 @@
 # ────────────────────────────────────────────────
 
 AUDACIOUS_SRC_DIR="$HOME/.config/audacious/playlists" # Audacious .config location of playlist files
-PLAYLIST_DIR="$HOME/musiclib/playlists"          # your location for .audpl files
-OUTPUT_DIR="$HOME/musiclib/data"                 # location for musiclib data
+PLAYLIST_DIR="$HOME/.local/share/musiclib/playlists"          # your location for .audpl files
+OUTPUT_DIR="$HOME/.local/share/musiclib/data"                 # location for musiclib data
 OUTPUT_FILE="playlist_ratings.csv"
 
 OUTPUT_FILE_FULL="${OUTPUT_DIR}/${OUTPUT_FILE}"
