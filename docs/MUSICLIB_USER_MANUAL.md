@@ -299,7 +299,7 @@ The script scans for common music directories:
 - `/mnt/music`
 - Any custom directory you specify
 
-It shows you what it finds and lets you select which directories to include in your library.
+Review the displayed results and select the top level directory for your music  library, which is one level above where all the artist subdirectories appear.
 
 ### Step 3: Set Download Directory
 
@@ -430,7 +430,7 @@ Open MusicLib (default panel is LibraryView) and play a track in Audacious. You 
 
 You can also rate tracks without playing them: find a track's entry using Library View, find the stars field, move your mouse from left to right to highlight number of stars, then click its rating directly to set.
 
-You can also rate tracks directly from Dolphin. Open Dolphin to you music library and right-click on a track you want to rate. Look for the star symbol on the context menu. Select and bring up the sub-menu to select your chosen rating. If you have not already, right-click on any column heading in Dolphin and enable the rating column. MusicLib integrates all ratings and rating changes to Dolphin immediately, and you can view all current ratings from within Dolphin.
+You can also rate tracks directly from Dolphin. Open Dolphin to your music library and right-click on a track you want to rate. Look for the star symbol on the context menu. Select and bring up the sub-menu to select your chosen rating. If you have not already, right-click on any column heading in Dolphin and enable the rating column. MusicLib integrates all ratings and rating changes to Dolphin immediately, and you can view all current ratings from within Dolphin.
 
 If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE System Settings → Shortcuts → Custom Shortcuts** and you can rate anything playing in Audacious without touching MusicLib's window. You can also right-click any audio file in Dolphin and choose **Rate Track** from the context menu — setup installs this automatically. See [Desktop Integration](#desktop-integration) for details.
 
