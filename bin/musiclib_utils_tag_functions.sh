@@ -5,142 +5,425 @@
 # These functions handle tag corruption repair and new track tag normalization
 # Added in Phase 00_03
 
-# Global array for excluded frames (loaded once)
-declare -A EXCLUDED_FRAMES
+# Tag schema arrays — populated once by load_tag_schema() from tag_schema.conf.
+#
+#   SCHEMA_FRAMES_ALLOWED  ID3v2 frame codes that are permitted (both tiers).
+#                          Non-TXXX frames not listed here are dropped.
+#   SCHEMA_TXXX_ALLOWED    TXXX descriptions that are permitted (both tiers).
+#                          TXXX frames whose description is not listed here
+#                          are dropped.
+#   SCHEMA_TXXX_DB         TXXX descriptions from the [db_written] tier only.
+#                          Used to identify DB-authoritative fields so the
+#                          pre-extraction loop (which reads file values) can
+#                          skip them — those fields are written from the DB.
+#   SCHEMA_TXXX_ALL        Union of SCHEMA_TXXX_ALLOWED + SCHEMA_TXXX_DB.
+#                          Used by sync_external_tool_config() to build the
+#                          kid3 CustomFrames list (all named TXXX fields).
+declare -A SCHEMA_FRAMES_ALLOWED
+declare -A SCHEMA_TXXX_ALLOWED
+declare -A SCHEMA_TXXX_DB
+declare -A SCHEMA_TXXX_ALL
 FRAMES_LOADED=false
+# Guard: kid3 external config sync runs at most once per process
+KID3_CONFIG_SYNCED=false
+
+# Static lookup: kid3 unified field names → ID3v2 frame codes.
+# Only the ~15 names that actually appear in tag_schema.conf are listed.
+# load_tag_schema() uses this table to translate no-prefix schema entries.
+# "Album Artist" uses the exact multi-word key from the schema (with space).
+declare -A UNIFIED_TO_FRAME=(
+    ["Title"]="TIT2"
+    ["Artist"]="TPE1"
+    ["Album"]="TALB"
+    ["Album Artist"]="TPE2"
+    ["Genre"]="TCON"
+    ["Rating"]="POPM"
+    ["Work"]="TIT1"
+    ["Track Number"]="TRCK"
+    ["Disc Number"]="TPOS"
+    ["Date"]="TYER"
+    ["BPM"]="TBPM"
+    ["Comment"]="COMM"
+    ["Lyrics"]="USLT"
+    ["Picture"]="APIC"
+    ["ISRC"]="TSRC"
+)
 
 #############################################
-# Load frame exclude list from config
-# Usage: load_frame_excludes
-# Returns: 0=success, 1=fallback to defaults
+# Load tag schema from tag_schema.conf
+# Populates SCHEMA_FRAMES_ALLOWED, SCHEMA_TXXX_ALLOWED,
+# SCHEMA_TXXX_DB, and SCHEMA_TXXX_ALL from the config file.
+# Usage: load_tag_schema
+# Returns: 0=success, 1=fallback to built-in defaults
 #############################################
-load_frame_excludes() {
-    # Only load once
+load_tag_schema() {
+    # Only load once per process
     [ "$FRAMES_LOADED" = true ] && return 0
 
     local config_dir
     if [ -n "${MUSICLIB_ROOT:-}" ]; then
-    config_dir="${MUSICLIB_ROOT}/config"
+        config_dir="${MUSICLIB_ROOT}/config"
     else
-    # Use XDG-aware detection from musiclib_utils.sh
-    config_dir="$(get_config_dir)"
+        # Use XDG-aware detection from musiclib_utils.sh
+        config_dir="$(get_config_dir)"
     fi
 
-    local custom_file="${config_dir}/tag_excludes.conf"
-    local system_file="/usr/lib/musiclib/config/tag_excludes.conf"
-    local exclude_file=""
+    local schema_file="${config_dir}/tag_schema.conf"
+    local system_schema="/usr/lib/musiclib/config/tag_schema.conf"
+    local load_result=0
 
-    # Priority: user override > system default > built-in defaults
-    if [ -f "$custom_file" ]; then
-        exclude_file="$custom_file"
-        log_message "Loading frame excludes from: $custom_file"
-    elif [ -f "$system_file" ]; then
-        exclude_file="$system_file"
-        log_message "Loading frame excludes from: $system_file"
+    # Priority: project config > system default > built-in defaults
+    if [ -f "$schema_file" ]; then
+        log_message "Loading tag schema from: $schema_file"
+    elif [ -f "$system_schema" ]; then
+        schema_file="$system_schema"
+        log_message "Loading tag schema from: $system_schema"
     else
-        log_message "No frame exclude list found, using built-in defaults"
+        log_message "No tag_schema.conf found, using built-in defaults"
         load_default_excludes
+        load_result=1
+        sync_external_tool_config || true
         FRAMES_LOADED=true
-        return 1
+        return $load_result
     fi
 
-    # Parse exclude file for frame codes
+    # Parse tag_schema.conf section by section.
+    # Tracks which section we are in ([db_written] or [file_preserved]).
+    local current_section=""
     while IFS= read -r line || [ -n "$line" ]; do
-        # Skip comments and empty lines
+        # Skip pure comment lines and empty lines
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
 
-        # Extract frame code (first 4 uppercase letters/numbers)
-        if [[ "$line" =~ ^[[:space:]]*([A-Z0-9]{4}) ]]; then
-            local frame="${BASH_REMATCH[1]}"
-            EXCLUDED_FRAMES["$frame"]=1
+        # Strip inline comments (everything from the first unquoted '#' onward)
+        local stripped="${line%%#*}"
+        # Strip trailing whitespace
+        stripped="${stripped%"${stripped##*[! ]}"}"
+        [ -z "$stripped" ] && continue
+
+        # Detect section headers: [db_written] or [file_preserved]
+        if [[ "$stripped" =~ ^\[([a-z_]+)\] ]]; then
+            current_section="${BASH_REMATCH[1]}"
+            continue
         fi
-    done < "$exclude_file"
+
+        # For [db_written] entries the format is "entry = db_column".
+        # The "= db_column" part is informational only — strip it.
+        local entry="${stripped%%=*}"
+        # Strip trailing whitespace from entry name
+        entry="${entry%"${entry##*[! ]}"}"
+        [ -z "$entry" ] && continue
+
+        if [[ "$entry" == !* ]]; then
+            # "!" prefix: either a raw 4-char ID3v2 frame code or a TXXX description
+            local rest="${entry#!}"
+            if [[ "$rest" =~ ^[A-Z][A-Z0-9]{3}$ ]]; then
+                # Raw frame code (e.g. !RVA2) — matches [A-Z][A-Z0-9]{3}
+                SCHEMA_FRAMES_ALLOWED["$rest"]=1
+            else
+                # TXXX description (e.g. !Songs-DB_Custom1, !CATALOGNUMBER)
+                SCHEMA_TXXX_ALLOWED["$rest"]=1
+                if [ "$current_section" = "db_written" ]; then
+                    SCHEMA_TXXX_DB["$rest"]=1
+                fi
+            fi
+        else
+            # No prefix: kid3 unified name — look up in UNIFIED_TO_FRAME table
+            local frame_code="${UNIFIED_TO_FRAME[$entry]:-}"
+            if [ -n "$frame_code" ]; then
+                SCHEMA_FRAMES_ALLOWED["$frame_code"]=1
+            else
+                log_message "  Warning: unified name '$entry' not found in UNIFIED_TO_FRAME — skipped"
+            fi
+        fi
+    done < "$schema_file"
+
+    # Build SCHEMA_TXXX_ALL as the union of SCHEMA_TXXX_ALLOWED and SCHEMA_TXXX_DB.
+    # Since SCHEMA_TXXX_DB is a subset of SCHEMA_TXXX_ALLOWED, iterating both is
+    # redundant, but explicit iteration makes the intent clear and guards against
+    # future cases where entries might differ.
+    for desc in "${!SCHEMA_TXXX_ALLOWED[@]}"; do
+        SCHEMA_TXXX_ALL["$desc"]=1
+    done
+    for desc in "${!SCHEMA_TXXX_DB[@]}"; do
+        SCHEMA_TXXX_ALL["$desc"]=1
+    done
+
+    log_message "Loaded ${#SCHEMA_FRAMES_ALLOWED[@]} allowed frame codes, ${#SCHEMA_TXXX_ALLOWED[@]} allowed TXXX descriptions (${#SCHEMA_TXXX_DB[@]} db_written)"
+
+    # Sync kid3 config on first script run (hash-guarded; cheap if nothing changed)
+    sync_external_tool_config || true
 
     FRAMES_LOADED=true
-    log_message "Loaded ${#EXCLUDED_FRAMES[@]} excluded ID3v2 frames"
-    return 0
+    return $load_result
 }
 
 #############################################
-# Load built-in default excludes (fallback)
+# Populate schema arrays with built-in defaults (fallback)
+# Called by load_tag_schema() when tag_schema.conf is not found.
+# Mirrors the content of config/tag_schema.conf so behaviour is
+# identical whether the file is present or not.
 # Usage: load_default_excludes
 # Returns: Always 0
 #############################################
 load_default_excludes() {
-    local defaults=(
-        # Personnel
-        "TPE3" "TPE4" "TCOM" "TEXT" "TOLY"
-        # Original/Source
-        "TOAL" "TOPE"
-        # Legal/Commercial
-        "TOWN" "TENC" "TCOP" "TCMP"
-        # URLs
-        "WCOM" "WCOP" "WOAF" "WOAR" "WOAS" "WORS" "WPAY" "WPUB" "WXXX"
-        # Technical
-        "TKEY" "TLAN" "TDLY" "TSIZ" "UFID" "GEOB" "PRIV" "ETCO"
-        "AENC" "ENCR" "GRID" "LINK"
+    # --- Allowed ID3v2 frame codes (mirrors [db_written] + [file_preserved]) ---
+    # [db_written] standard frames
+    local frame_codes=(
+        "TIT2"   # Title
+        "TPE1"   # Artist
+        "TALB"   # Album
+        "TPE2"   # Album Artist
+        "TCON"   # Genre
+        "POPM"   # Rating
+        "TIT1"   # Work / GroupDesc
+        # [file_preserved] standard frames
+        "TRCK"   # Track Number
+        "TPOS"   # Disc Number
+        "TYER"   # Date (year)
+        "TBPM"   # BPM
+        "COMM"   # Comment
+        "USLT"   # Lyrics
+        "APIC"   # Picture (album art)
+        "TSRC"   # ISRC
+        # [file_preserved] raw frame code entries
+        "RVA2"   # Relative Volume Adjustment v2 (from !RVA2)
     )
-
-    for frame in "${defaults[@]}"; do
-        EXCLUDED_FRAMES["$frame"]=1
+    for code in "${frame_codes[@]}"; do
+        SCHEMA_FRAMES_ALLOWED["$code"]=1
     done
 
-    log_message "Loaded ${#defaults[@]} default excluded frames"
+    # --- Allowed TXXX descriptions from [db_written] ---
+    local txxx_db_descs=(
+        "Songs-DB_Custom1"   # LastTimePlayed (DB column: lastplayed)
+        "Songs-DB_Custom2"   # Custom2        (DB column: custom2)
+    )
+    for desc in "${txxx_db_descs[@]}"; do
+        SCHEMA_TXXX_ALLOWED["$desc"]=1
+        SCHEMA_TXXX_DB["$desc"]=1
+        SCHEMA_TXXX_ALL["$desc"]=1
+    done
+
+    # --- Allowed TXXX descriptions from [file_preserved] ---
+    local txxx_file_descs=(
+        "CATALOGNUMBER"
+        "REPLAYGAIN_TRACK_GAIN"
+        "REPLAYGAIN_TRACK_PEAK"
+        "REPLAYGAIN_ALBUM_GAIN"
+        "REPLAYGAIN_ALBUM_PEAK"
+        "MusicMatch_Mood"
+    )
+    for desc in "${txxx_file_descs[@]}"; do
+        SCHEMA_TXXX_ALLOWED["$desc"]=1
+        SCHEMA_TXXX_ALL["$desc"]=1
+    done
+
+    log_message "Loaded ${#SCHEMA_FRAMES_ALLOWED[@]} allowed frame codes (built-in defaults)"
+}
+
+#############################################
+# Propagate musiclib tag standards to kid3's config file.
+# Applies POPM star-rating mapping, custom frame names, and UTF-8 encoding.
+# Uses the mtime of ~/.config/musiclib/musiclib.conf to skip re-application
+# when the local config has not changed (lazy-load pattern, same as FRAMES_LOADED).
+# Other change signals can be added here later using the same mtime pattern.
+# Stamp file: ~/.local/share/musiclib/kid3_config.hash
+# Usage: sync_external_tool_config
+# Returns: 0=success or skipped, 1=kid3-cli unavailable
+#############################################
+sync_external_tool_config() {
+    # Run at most once per process
+    [ "$KID3_CONFIG_SYNCED" = true ] && return 0
+
+    # Require kid3-cli; skip silently if not installed
+    if ! command -v kid3-cli &>/dev/null; then
+        KID3_CONFIG_SYNCED=true
+        return 1
+    fi
+
+    # Use mtime of local config as the change signal — cheaper than hashing
+    # values and catches any edit to the file, not just POPM_STAR lines.
+    local user_conf="${XDG_CONFIG_HOME:-$HOME/.config}/musiclib/musiclib.conf"
+    local current_mtime=""
+    [ -f "$user_conf" ] && current_mtime=$(stat -c %Y "$user_conf" 2>/dev/null)
+
+    local hash_dir="${XDG_DATA_HOME:-$HOME/.local/share}/musiclib"
+    local hash_file="${hash_dir}/kid3_config.hash"
+    local stored_mtime=""
+    [ -f "$hash_file" ] && stored_mtime=$(cat "$hash_file" 2>/dev/null)
+
+    if [ -n "$current_mtime" ] && [ "$current_mtime" = "$stored_mtime" ]; then
+        log_message "sync_external_tool_config: musiclib.conf unchanged (mtime match), skipping"
+        KID3_CONFIG_SYNCED=true
+        return 0
+    fi
+
+    log_message "sync_external_tool_config: applying kid3 config (conf changed or first run)"
+
+    # Re-source the XDG user config to guarantee local POPM_STAR overrides are in scope.
+    # load_config() (musiclib_utils.sh) resolves "user_config" to
+    # ~/musiclib/config/musiclib.conf when MUSICLIB_ROOT is set, which mirrors
+    # system defaults and never reaches ~/.config/musiclib/musiclib.conf.
+    # Sourcing here makes local customizations visible regardless of which config
+    # path load_config() took.
+    # shellcheck source=/dev/null
+    [ -f "$user_conf" ] && source "$user_conf"
+
+    # Ensure kid3-cli writes to the shared musiclib config file, not its own default.
+    # Must be exported so the kid3-cli subprocess sees it regardless of calling environment.
+    export KID3_CONFIG_FILE="${KID3_CONFIG_FILE:-$HOME/.config/kid3rc}"
+
+    # Use POPM_STAR vars from sourced config; fall back to system defaults if unset
+    local p1="${POPM_STAR1:-1}"
+    local p2="${POPM_STAR2:-64}"
+    local p3="${POPM_STAR3:-128}"
+    local p4="${POPM_STAR4:-196}"
+    local p5="${POPM_STAR5:-255}"
+
+    # Build the comma-separated CustomFrames list from SCHEMA_TXXX_ALL,
+    # excluding REPLAYGAIN* entries (those are managed by ReplayGain tools,
+    # not the kid3 custom frame UI).  Sorted for stable output.
+    local custom_frames_list
+    custom_frames_list=$(
+        for desc in "${!SCHEMA_TXXX_ALL[@]}"; do
+            [[ "$desc" == REPLAYGAIN* ]] && continue
+            printf '%s\n' "$desc"
+        done | sort | paste -sd ', '
+    )
+
+    local kid3rc="${KID3_CONFIG_FILE:-$HOME/.config/kid3rc}"
+
+    # Bootstrap kid3rc if it does not yet exist.
+    # kid3-cli config writes create the file from kid3's internal defaults.
+    # However, any kid3-cli config write also strips StarRatingMapping because
+    # kid3-cli rewrites the whole file from its internal state and cannot write
+    # that key.  We therefore only call kid3-cli here — it is skipped on all
+    # subsequent runs once the Python patch below takes over.
+    if [ ! -f "$kid3rc" ]; then
+        kid3-cli -c "config Tag.customFrames Songs-DB_Custom1 Songs-DB_Custom2 CATALOGNUMBER" &>/dev/null
+        kid3-cli -c "config Tag.textEncoding TE_UTF8" &>/dev/null
+    fi
+
+    # Patch kid3rc directly for all three settings — avoids any kid3-cli config
+    # write that would strip StarRatingMapping.
+    #
+    # CustomFrames and TextEncoding are patched within [Tags] only.  TextEncoding
+    # also appears in [Files] (as "System"); a section-aware replace prevents
+    # that entry from being overwritten.  TE_UTF8 maps to the integer value 2.
+    #
+    # StarRatingMapping: update the POPM entry in-place, or inject a POPM-only
+    # entry after [Tags] if the line is absent (e.g. after a bootstrap write).
+    # kid3 appends defaults for the other entries (WMP, Traktor, etc.) when it
+    # next writes the file, so the POPM-only seed is not permanent.
+    if [ -f "$kid3rc" ]; then
+        python3 - "$kid3rc" "$p1" "$p2" "$p3" "$p4" "$p5" "$custom_frames_list" &>/dev/null << 'PYEOF' || true
+import re, sys
+
+rc, p1, p2, p3, p4, p5, custom_frames = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7]
+
+with open(rc) as f:
+    content = f.read()
+
+def patch_in_section(text, section, key, new_val):
+    """Replace key=value only within the named INI section.
+    Safe when the same key exists in multiple sections (e.g. TextEncoding
+    in both [Files] and [Tags]).  Uses a lookahead so the next section
+    header is not consumed by the match."""
+    def _repl(m):
+        return re.sub(
+            r'^(' + re.escape(key) + r'=).*$',
+            lambda mm: mm.group(1) + new_val,
+            m.group(0),
+            flags=re.MULTILINE
+        )
+    return re.sub(
+        r'(?m)^\[' + re.escape(section) + r'\].*?(?=^\[|\Z)',
+        _repl,
+        text,
+        flags=re.DOTALL
+    )
+
+content = patch_in_section(content, 'Tags', 'CustomFrames', custom_frames)
+content = patch_in_section(content, 'Tags', 'TextEncoding', '2')
+
+# Within-entry separator in Qt QStringList INI format is \\, (two literal
+# backslashes + comma).  The regex captures each \\, group so it is
+# reproduced exactly.  Only the POPM (first) entry is changed; all others
+# (WMP, Traktor, IRTD, etc.) are preserved.
+srm_pat = r'(StarRatingMapping=POPM\\\\,)\d+(\\\\,)\d+(\\\\,)\d+(\\\\,)\d+(\\\\,)\d+'
+srm_repl = r'\g<1>' + p1 + r'\g<2>' + p2 + r'\g<3>' + p3 + r'\g<4>' + p4 + r'\g<5>' + p5
+new_content, n = re.subn(srm_pat, srm_repl, content)
+if n:
+    content = new_content
+else:
+    # StarRatingMapping absent (e.g. freshly bootstrapped by kid3-cli).
+    # Inject a POPM-only entry immediately after [Tags].  Kid3 appends
+    # defaults for other entries the next time it writes the file.
+    new_line = 'StarRatingMapping=POPM\\\\,' + p1 + '\\\\,' + p2 + '\\\\,' + p3 + '\\\\,' + p4 + '\\\\,' + p5 + '\n'
+    content = re.sub(r'(?m)(^\[Tags\]\n)', lambda m: m.group(0) + new_line, content, count=1)
+
+with open(rc, 'w') as f:
+    f.write(content)
+sys.exit(0)
+PYEOF
+    fi
+
+    # Persist mtime so we only re-apply when local config changes
+    mkdir -p "$hash_dir"
+    printf '%s\n' "$current_mtime" > "$hash_file"
+
+    KID3_CONFIG_SYNCED=true
+    log_message "sync_external_tool_config: kid3 config applied and mtime stored"
+    return 0
 }
 
 #############################################
 # Strip characters from a tag value that break kid3-cli command-string quoting
-# or are otherwise unwanted in filenames and the DSV database.
-# - Accented/non-ASCII characters are transliterated to their closest ASCII
-#   equivalent (é→e, ü→u, ñ→n, etc.) via iconv so filenames stay clean.
+# or are otherwise unwanted in the DSV database.
 # - Single quotes (') break kid3-cli's quoted argument parsing
 #   (e.g. "set Title 'Rollin''" is mis-parsed, leaving the title blank)
 # - Commas (,) cause inconsistent display in the library UI
-# The protocol for this library is to remove/transliterate them outright.
+# Unicode is preserved: kid3 is configured for UTF-8 (Tag.textEncoding TE_UTF8),
+# so iconv transliteration is unnecessary and would cause data loss.
 # Usage: sanitize_for_kid3 "value"
-# Returns: sanitized value safe for kid3-cli commands and filenames
+# Returns: sanitized value safe for kid3-cli commands
 #############################################
 sanitize_for_kid3() {
-    local value
-    # Transliterate accented/non-ASCII to ASCII; fall back to original on error
-    value=$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT//IGNORE 2>/dev/null) || value="$1"
-    printf '%s' "$value" | tr -d "',"
+    printf '%s' "$1" | tr -d "',"
 }
 
 #############################################
-# Check if a frame is allowed (not in exclude list)
+# Check if a frame is allowed by the tag schema
 # Usage: is_frame_allowed <frame_code> [description]
-# Returns: 0=allowed, 1=excluded
+# Returns: 0=allowed, 1=not in schema (drop)
+#
+# Logic:
+#   TXXX frames  — allowed only if description is in SCHEMA_TXXX_ALLOWED
+#                  or SCHEMA_TXXX_DB; all others are dropped.
+#   Non-TXXX     — allowed only if frame code is in SCHEMA_FRAMES_ALLOWED;
+#                  all others are dropped.
 #############################################
 is_frame_allowed() {
     local frame="$1"
     local description="${2:-}"
 
-    # Ensure excludes are loaded
-    load_frame_excludes 2>/dev/null || true
+    # Ensure schema is loaded
+    load_tag_schema 2>/dev/null || true
 
-    # Special handling for TXXX (user-defined text frames)
+    # TXXX (user-defined text frames): schema-driven allowlist only
     if [[ "$frame" == "TXXX" ]]; then
-        # Always allow our custom database fields
-        if [[ "$description" == "Songs-DB_Custom1" ]] || \
-           [[ "$description" == "Songs-DB_Custom2" ]]; then
+        if [ -n "${SCHEMA_TXXX_ALLOWED[$description]:-}" ] || \
+           [ -n "${SCHEMA_TXXX_DB[$description]:-}" ]; then
             return 0
         fi
-        # Always allow ReplayGain tags (stored as TXXX)
-        if [[ "$description" =~ ^REPLAYGAIN ]]; then
-            return 0
-        fi
-        # Block all other TXXX frames
         return 1
     fi
 
-    # Check if frame is in exclude list
-    if [ -n "${EXCLUDED_FRAMES[$frame]:-}" ]; then
-        return 1  # Excluded
+    # Non-TXXX frames: schema-driven allowlist only
+    if [ -n "${SCHEMA_FRAMES_ALLOWED[$frame]:-}" ]; then
+        return 0
     fi
-
-    return 0  # Allowed
+    return 1
 }
 
 #############################################
@@ -152,7 +435,7 @@ is_frame_allowed() {
 # It extracts all metadata, strips corrupted tags, and rebuilds with:
 #   - Database values for core fields (Artist, Album, Title, Rating, etc.)
 #   - Preserved values for non-DB fields (ReplayGain, Comment, Year, etc.)
-#   - Only frames NOT in the exclude list
+#   - Only frames allowed by the tag schema (SCHEMA_FRAMES_ALLOWED / SCHEMA_TXXX_ALLOWED)
 #############################################
 rebuild_tag() {
     local filepath="$1"
@@ -202,11 +485,54 @@ rebuild_tag() {
         # Verify it's actually an image
         if file "$album_art" 2>/dev/null | grep -qi "image"; then
             has_album_art=true
-            log_message "  âœ“ Album art extracted ($(stat -c%s "$album_art") bytes)"
+            log_message "  âœ” Album art extracted ($(stat -c%s "$album_art") bytes)"
         fi
     fi
 
-    log_message "  âœ“ Metadata extraction complete"
+    # Extract lyrics (USLT) to a temp file before tags are stripped.
+    # exiftool names USLT frames as "Lyrics-{lang}" in JSON (e.g. Lyrics-xxx,
+    # Lyrics-eng). The plain "-Lyrics -s3" flag does not match these names and
+    # produces no output. Use jq on the already-extracted metadata JSON to find
+    # whatever Lyrics-* key is present, then write its value to a file.
+    # Must run before Stage 3 strip.
+    local lyrics_file="$temp_dir/lyrics.txt"
+    local has_lyrics=false
+    if command -v jq >/dev/null 2>&1; then
+        local lyrics_key
+        lyrics_key=$(jq -r '[.[0] | keys[] | select(test("^Lyrics"))] | first // empty' \
+            "$metadata_json" 2>/dev/null)
+        if [ -n "$lyrics_key" ]; then
+            jq -r ".[0][\"$lyrics_key\"]" "$metadata_json" > "$lyrics_file" 2>/dev/null || true
+        fi
+    fi
+    if [ -s "$lyrics_file" ]; then
+        has_lyrics=true
+        log_message "  Lyrics extracted for preservation"
+    fi
+
+    log_message "  âœ” Metadata extraction complete"
+
+    # Pre-read file-preserved TXXX frames via kid3-cli BEFORE tags are stripped.
+    # exiftool does not reliably report all TXXX frames (e.g. Songs-DB_Custom1
+    # is invisible to exiftool but readable by kid3-cli — see Bug 6).
+    # We iterate SCHEMA_TXXX_ALLOWED entries (from tag_schema.conf [file_preserved]
+    # and [db_written]) and capture any values present in the file now; they are
+    # written back at the end of Stage 4 after the full rebuild.
+    # DB-authoritative entries (SCHEMA_TXXX_DB: Songs-DB_Custom1, Songs-DB_Custom2)
+    # are skipped — their values come from the database, not the file, and must
+    # not be overwritten by a potentially stale file value at the write-back step.
+    load_tag_schema 2>/dev/null || true
+    declare -A txxx_preserved_values
+    for desc in "${!SCHEMA_TXXX_ALLOWED[@]}"; do
+        # Skip DB-authoritative TXXX entries
+        [ -n "${SCHEMA_TXXX_DB[$desc]:-}" ] && continue
+        local raw_val
+        raw_val=$($KID3_CMD -c "get '$desc'" "$filepath" 2>/dev/null | tail -n1)
+        [ -n "$raw_val" ] && txxx_preserved_values["$desc"]="$raw_val"
+    done
+    if [ "${#txxx_preserved_values[@]}" -gt 0 ]; then
+        log_message "  Pre-read ${#txxx_preserved_values[@]} preserved TXXX frames"
+    fi
 
     #########################################
     # STAGE 2: Query Database for Authoritative Values
@@ -300,7 +626,20 @@ rebuild_tag() {
 
     # Temporal/Extended Metadata (preserve from extracted, check if allowed)
     local year=$(get_extracted_value "Year")
-    local comment=$(get_extracted_value "Comment")
+    local comment
+    comment=$(get_extracted_value "Comment")
+    # COMM frames with a content descriptor are stored as "Comment-{lang}" in
+    # exiftool JSON (e.g. "Comment-xxx"). The plain "Comment" key is absent,
+    # causing get_extracted_value to return empty. Fall back to the first
+    # Comment-* key found, then strip the "(descriptor) " prefix that exiftool
+    # prepends to the value when the content descriptor is non-empty.
+    if [ -z "$comment" ] && command -v jq >/dev/null 2>&1; then
+        comment=$(jq -r \
+            '[.[0] | to_entries[] | select(.key | test("^Comment")) | .value] | first // empty' \
+            "$metadata_json" 2>/dev/null)
+        # Strip leading "(descriptor) " prefix e.g. "(Songs-DB_Custom2) Aerosmith" -> "Aerosmith"
+        comment="${comment#\(*\) }"
+    fi
     comment="$(sanitize_for_kid3 "$comment")"
     local track_num=$(get_extracted_value "Track")
     [ -n "$track_num" ] && track_num=$(printf "%02d" "$((10#${track_num%%/*}))")
@@ -348,7 +687,7 @@ rebuild_tag() {
         $KID3_CMD -c "set POPM $db_rating" "$filepath" 2>/dev/null
     fi
     if [ -n "$db_groupdesc" ]; then
-        $KID3_CMD -c "set Grouping $db_groupdesc" "$filepath" 2>/dev/null
+        $KID3_CMD -c "set Work $db_groupdesc" "$filepath" 2>/dev/null
     fi
 
     # Play Tracking Tags (DB authoritative - always allowed)
@@ -406,6 +745,43 @@ rebuild_tag() {
     # Convert to ID3v2.3 (most compatible)
     $KID3_CMD -c "to23" "$filepath" 2>/dev/null || true
 
+    # Restore file-preserved TXXX frames captured before tags were stripped.
+    # DB-authoritative entries (SCHEMA_TXXX_DB) were excluded from the
+    # txxx_preserved_values loop above, so they cannot appear here and cannot
+    # overwrite the DB-sourced values written earlier in Stage 4.
+    for desc in "${!txxx_preserved_values[@]}"; do
+        local val_clean
+        val_clean="$(sanitize_for_kid3 "${txxx_preserved_values[$desc]}")"
+        [ -n "$val_clean" ] && \
+            $KID3_CMD -c "set '$desc' '$val_clean'" "$filepath" 2>/dev/null
+    done
+
+    # Restore lyrics (USLT) extracted in Stage 1.
+    # exiftool cannot write MP3 tags on this system (ver 13.50); use mutagen
+    # (Python) instead. Paths are passed via environment variables to avoid
+    # quoting/injection issues with arbitrary file paths.
+    # Runs after to23 so the ID3v2.3 tag exists before mutagen writes to it.
+    # is_frame_allowed "USLT" gates on the schema; if USLT is removed from
+    # tag_schema.conf, lyrics will be silently dropped during rebuild.
+    if [ "$has_lyrics" = true ] && is_frame_allowed "USLT"; then
+        if MUSICLIB_LYRICS_FILE="$lyrics_file" MUSICLIB_MP3_FILE="$filepath" \
+                python3 -c "
+import os, sys
+from mutagen.id3 import ID3, USLT
+lf  = os.environ['MUSICLIB_LYRICS_FILE']
+mp3 = os.environ['MUSICLIB_MP3_FILE']
+with open(lf, 'r', errors='replace') as f:
+    lyrics = f.read()
+tags = ID3(mp3)
+tags.add(USLT(encoding=1, lang='xxx', desc='', text=lyrics))
+tags.save(v2_version=3)
+" 2>/dev/null; then
+            log_message "  Lyrics restored"
+        else
+            log_message "  Lyrics restoration failed (non-critical)"
+        fi
+    fi
+
     #########################################
     # STAGE 5: Verify Rebuild
     #########################################
@@ -434,7 +810,7 @@ rebuild_tag() {
 #
 # This function cleans up tags on NEW TRACKS before they are added to the database.
 # It extracts all metadata, strips all tags (including ID3v1, APE), and rebuilds
-# with only ID3v2.3 frames that are NOT in the exclude list.
+# with only ID3v2.3 frames allowed by the tag schema.
 #
 # Unlike rebuild_tag(), this does NOT query the database (track not in DB yet).
 # All values come from the file's current tags (assumed to be user-edited).
@@ -484,6 +860,43 @@ normalize_new_track_tags() {
             has_album_art=true
         fi
     fi
+
+    # Extract lyrics (USLT) to a temp file before tags are stripped.
+    # Same jq-based approach as rebuild_tag(): exiftool names USLT as "Lyrics-{lang}"
+    # in JSON, so "-Lyrics -s3" produces no output. Must run before Stage 2 strip.
+    local lyrics_file="$temp_dir/lyrics.txt"
+    local has_lyrics=false
+    if command -v jq >/dev/null 2>&1; then
+        local lyrics_key
+        lyrics_key=$(jq -r '[.[0] | keys[] | select(test("^Lyrics"))] | first // empty' \
+            "$metadata_json" 2>/dev/null)
+        if [ -n "$lyrics_key" ]; then
+            jq -r ".[0][\"$lyrics_key\"]" "$metadata_json" > "$lyrics_file" 2>/dev/null || true
+        fi
+    fi
+    [ -s "$lyrics_file" ] && has_lyrics=true
+
+    # Pre-read file-preserved TXXX frames via kid3-cli BEFORE tags are stripped.
+    # Primary source is kid3-cli (reliable for all TXXX frames including those
+    # exiftool silently skips). Exiftool JSON is checked as a fallback for values
+    # stored in non-standard formats that kid3-cli may not expose via "get".
+    # DB-authoritative entries (SCHEMA_TXXX_DB) are skipped — on normalization of
+    # new tracks those fields are not yet in the database, so there is nothing to
+    # overwrite, but skipping them keeps the logic symmetric with rebuild_tag().
+    load_tag_schema 2>/dev/null || true
+    declare -A txxx_preserved_values
+    for desc in "${!SCHEMA_TXXX_ALLOWED[@]}"; do
+        # Skip DB-authoritative TXXX entries
+        [ -n "${SCHEMA_TXXX_DB[$desc]:-}" ] && continue
+        local raw_val
+        raw_val=$($KID3_CMD -c "get '$desc'" "$filepath" 2>/dev/null | tail -n1)
+        if [ -z "$raw_val" ] && command -v jq >/dev/null 2>&1; then
+            raw_val=$(jq -r ".[0].\"$desc\" // empty" "$metadata_json" 2>/dev/null)
+            [ -z "$raw_val" ] && raw_val=$(jq -r ".[0].\"${desc,,}\" // empty" "$metadata_json" 2>/dev/null)
+            [ -z "$raw_val" ] && raw_val=$(jq -r ".[0].\"${desc^}\" // empty" "$metadata_json" 2>/dev/null)
+        fi
+        [ -n "$raw_val" ] && txxx_preserved_values["$desc"]="$raw_val"
+    done
 
     #########################################
     # STAGE 2: Remove All Existing Tags
@@ -561,7 +974,15 @@ normalize_new_track_tags() {
 
     # Extended metadata (check if allowed)
     local year=$(get_value "Year")
-    local comment=$(get_value "Comment")
+    local comment
+    comment=$(get_value "Comment")
+    # Same Comment-xxx fallback as rebuild_tag() — see that function for explanation.
+    if [ -z "$comment" ] && command -v jq >/dev/null 2>&1; then
+        comment=$(jq -r \
+            '[.[0] | to_entries[] | select(.key | test("^Comment")) | .value] | first // empty' \
+            "$metadata_json" 2>/dev/null)
+        comment="${comment#\(*\) }"
+    fi
     comment="$(sanitize_for_kid3 "$comment")"
     local track_num=$(get_value "Track")
     [ -n "$track_num" ] && track_num=$(printf "%02d" "$((10#${track_num%%/*}))")
@@ -596,6 +1017,35 @@ normalize_new_track_tags() {
 
     # Convert to ID3v2.3 (most compatible)
     $KID3_CMD -c "to23" "$filepath" 2>/dev/null || true
+
+    # Restore preserved TXXX frames captured before tags were stripped.
+    for desc in "${!txxx_preserved_values[@]}"; do
+        local val_clean
+        val_clean="$(sanitize_for_kid3 "${txxx_preserved_values[$desc]}")"
+        [ -n "$val_clean" ] && \
+            $KID3_CMD -c "set '$desc' '$val_clean'" "$filepath" 2>/dev/null
+    done
+
+    # Restore lyrics (USLT) extracted in Stage 1.
+    # Same mutagen approach as rebuild_tag() — exiftool 13.50 cannot write MP3 tags.
+    if [ "$has_lyrics" = true ] && is_frame_allowed "USLT"; then
+        if MUSICLIB_LYRICS_FILE="$lyrics_file" MUSICLIB_MP3_FILE="$filepath" \
+                python3 -c "
+import os, sys
+from mutagen.id3 import ID3, USLT
+lf  = os.environ['MUSICLIB_LYRICS_FILE']
+mp3 = os.environ['MUSICLIB_MP3_FILE']
+with open(lf, 'r', errors='replace') as f:
+    lyrics = f.read()
+tags = ID3(mp3)
+tags.add(USLT(encoding=1, lang='xxx', desc='', text=lyrics))
+tags.save(v2_version=3)
+" 2>/dev/null; then
+            echo "  Lyrics restored"
+        else
+            echo "  Lyrics restoration failed (non-critical)"
+        fi
+    fi
 
     #########################################
     # STAGE 4: Verify

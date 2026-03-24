@@ -32,20 +32,30 @@ if ! load_config 2>/dev/null; then
     exit 2
 fi
 
+# Sync kid3 star-rating config when local musiclib.conf has changed.
+# Sourced here (not at script top) so POPM_STAR vars from load_config are
+# available for re-application if the mtime check detects a change.
+if [ -f "$SCRIPT_DIR/musiclib_utils_tag_functions.sh" ]; then
+    source "$SCRIPT_DIR/musiclib_utils_tag_functions.sh" 2>/dev/null || true
+    sync_external_tool_config || true
+fi
+
 # Fallback configuration
 MUSIC_DISPLAY_DIR="${MUSIC_DISPLAY_DIR:-}"
 MUSIC_DIR="${MUSIC_DIR:-${MUSIC_DISPLAY_DIR:-$(get_data_dir)/data/conky_output}}"
 MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
 STAR_DIR="${STAR_DIR:-$MUSIC_DIR/stars}"
 
-# Star rating to POPM mapping (midpoints from RatingGroups)
+# Star rating to POPM mapping — driven by POPM_STAR1-5 from musiclib.conf.
+# Fall back to kid3 standard defaults if config vars are not set.
+# Override values in ~/.config/musiclib/musiclib.conf (user config layer).
 declare -A STAR_TO_POPM=(
     [0]=0
-    [1]=64
-    [2]=118   # Midpoint of 65-128 = 96.5, rounded up for better visibility
-    [3]=153   # Midpoint of 129-185 = 157
-    [4]=196   # Midpoint of 186-200 = 193, using 196 to avoid overlap
-    [5]=255
+    [1]="${POPM_STAR1:-1}"
+    [2]="${POPM_STAR2:-64}"
+    [3]="${POPM_STAR3:-128}"
+    [4]="${POPM_STAR4:-196}"
+    [5]="${POPM_STAR5:-255}"
 )
 
 # Star rating to GroupDesc mapping (simple 1:1)

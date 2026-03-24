@@ -31,10 +31,17 @@ AUDACIOUS_REGISTRY_READY=false
 SONG_CHANGE_SO="/usr/lib/audacious/General/song_change.so"
 PLUGIN_REGISTRY="$HOME/.config/audacious/plugin-registry"
 
+EXISTING_MUSIC_REPO=""
 if command -v audacious &>/dev/null; then
     AUDACIOUS_DETECTED=true
     if [ -f "$PLUGIN_REGISTRY" ] && grep -q "^general $SONG_CHANGE_SO" "$PLUGIN_REGISTRY"; then
         AUDACIOUS_REGISTRY_READY=true
+    fi
+    # Pre-populate EXISTING_MUSIC_REPO from Audacious [search-tool] path if available
+    _aud_config="$HOME/.config/audacious/config"
+    if [ -f "$_aud_config" ]; then
+        _aud_path=$(awk '/^\[search-tool\]/{found=1; next} found && /^path=/{sub(/^path=/, ""); print; exit} found && /^\[/{exit}' "$_aud_config")
+        [ -n "$_aud_path" ] && EXISTING_MUSIC_REPO="$_aud_path"
     fi
 fi
 
@@ -534,10 +541,12 @@ fi
 print_step "1/3" "Locating music repository"
 
 # Read existing setting if available
-EXISTING_MUSIC_REPO=""
+# Note: EXISTING_MUSIC_REPO may already be pre-set from Audacious detection above;
+# musiclib config takes priority if present, otherwise the Audacious-detected value is kept.
 if [ -n "$EXISTING_CONFIG_FILE" ]; then
-    EXISTING_MUSIC_REPO=$(grep '^MUSIC_REPO=' "$EXISTING_CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"')
-    EXISTING_MUSIC_REPO=$(eval echo "$EXISTING_MUSIC_REPO" 2>/dev/null || echo "$EXISTING_MUSIC_REPO")
+    _conf_repo=$(grep '^MUSIC_REPO=' "$EXISTING_CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"')
+    _conf_repo=$(eval echo "$_conf_repo" 2>/dev/null || echo "$_conf_repo")
+    [ -n "$_conf_repo" ] && EXISTING_MUSIC_REPO="$_conf_repo"
 fi
 
 # Default suggestions
@@ -808,6 +817,89 @@ EOF
 KID3_GUI_INSTALLED="$KID3_GUI_DETECTED"
 
 EOF
+    fi
+    # Apply musiclib tag standards to kid3's shared config file.
+    # This runs once at install time; runtime drift is caught by sync_external_tool_config()
+    # in musiclib_utils_tag_functions.sh on each subsequent script invocation.
+    if command -v kid3-cli &>/dev/null; then
+        # Read POPM_STAR values from system config; fall back to kid3 defaults
+        _sys_conf="/usr/lib/musiclib/config/musiclib.conf"
+        _p1=1; _p2=64; _p3=128; _p4=196; _p5=255
+        if [ -f "$_sys_conf" ]; then
+            _v=$(grep -E '^POPM_STAR1=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
+            [ -n "$_v" ] && _p1=$_v
+            _v=$(grep -E '^POPM_STAR2=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
+            [ -n "$_v" ] && _p2=$_v
+            _v=$(grep -E '^POPM_STAR3=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
+            [ -n "$_v" ] && _p3=$_v
+            _v=$(grep -E '^POPM_STAR4=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
+            [ -n "$_v" ] && _p4=$_v
+            _v=$(grep -E '^POPM_STAR5=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
+            [ -n "$_v" ] && _p5=$_v
+        fi
+        # Point kid3-cli at the shared GUI config file (same as KID3_CONFIG_FILE in musiclib.conf)
+        export KID3_CONFIG_FILE="$HOME/.config/kid3rc"
+        # Use kid3-cli config writes only to create kid3rc when it does not yet exist.
+        # kid3-cli rewrites the whole file from internal state and strips StarRatingMapping,
+        # so writes are limited to bootstrap; the Python patch below handles all subsequent
+        # changes.  The starRatingMappingStrings command was read-only and had no effect.
+        if [ ! -f "$KID3_CONFIG_FILE" ]; then
+            kid3-cli -c "config Tag.customFrames Songs-DB_Custom1 Songs-DB_Custom2 CATALOGNUMBER" &>/dev/null || true
+            kid3-cli -c "config Tag.textEncoding TE_UTF8" &>/dev/null || true
+        fi
+        # Patch kid3rc directly — same three-setting logic used by sync_external_tool_config()
+        # at runtime.  StarRatingMapping is updated in-place or injected if absent.
+        _kid3rc="$KID3_CONFIG_FILE"
+        if [ -f "$_kid3rc" ]; then
+            python3 - "$_kid3rc" "$_p1" "$_p2" "$_p3" "$_p4" "$_p5" &>/dev/null << 'PYEOF' || true
+import re, sys
+
+rc, p1, p2, p3, p4, p5 = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6]
+
+with open(rc) as f:
+    content = f.read()
+
+def patch_in_section(text, section, key, new_val):
+    def _repl(m):
+        return re.sub(
+            r'^(' + re.escape(key) + r'=).*$',
+            lambda mm: mm.group(1) + new_val,
+            m.group(0),
+            flags=re.MULTILINE
+        )
+    return re.sub(
+        r'(?m)^\[' + re.escape(section) + r'\].*?(?=^\[|\Z)',
+        _repl,
+        text,
+        flags=re.DOTALL
+    )
+
+content = patch_in_section(content, 'Tags', 'CustomFrames',
+                            'Songs-DB_Custom1, Songs-DB_Custom2, CATALOGNUMBER')
+content = patch_in_section(content, 'Tags', 'TextEncoding', '2')
+
+srm_pat = r'(StarRatingMapping=POPM\\\\,)\d+(\\\\,)\d+(\\\\,)\d+(\\\\,)\d+(\\\\,)\d+'
+srm_repl = r'\g<1>' + p1 + r'\g<2>' + p2 + r'\g<3>' + p3 + r'\g<4>' + p4 + r'\g<5>' + p5
+new_content, n = re.subn(srm_pat, srm_repl, content)
+if n:
+    content = new_content
+else:
+    new_line = 'StarRatingMapping=POPM\\\\,' + p1 + '\\\\,' + p2 + '\\\\,' + p3 + '\\\\,' + p4 + '\\\\,' + p5 + '\n'
+    content = re.sub(r'(?m)(^\[Tags\]\n)', lambda m: m.group(0) + new_line, content, count=1)
+
+with open(rc, 'w') as f:
+    f.write(content)
+sys.exit(0)
+PYEOF
+        fi
+        unset _kid3rc
+        # Seed the runtime stamp so sync_external_tool_config() skips re-application on first run.
+        # Stores mtime of the local config file; matches the mtime check used at runtime.
+        _hash_dir="${XDG_DATA_HOME:-$HOME/.local/share}/musiclib"
+        mkdir -p "$_hash_dir"
+        printf '%s\n' "$(stat -c %Y "${XDG_CONFIG_HOME:-$HOME/.config}/musiclib/musiclib.conf" 2>/dev/null)" \
+            > "${_hash_dir}/kid3_config.hash"
+        unset _sys_conf _p1 _p2 _p3 _p4 _p5 _v _hash_dir
     fi
     if [ "$K3B_DETECTED" = true ]; then
         # Detect the predominant audio format in the library to seed the rip format default.
