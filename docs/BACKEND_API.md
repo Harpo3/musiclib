@@ -293,9 +293,12 @@ musiclib_rate.sh STAR_RATING [FILEPATH]
 - **GUI mode** (`FILEPATH` provided): Requires `kid3-cli`. Does **not** require Audacious to be running. Allows rating any track in the library regardless of playback state.
 - **Keyboard shortcut mode** (`FILEPATH` omitted): Requires both `audtool` and `kid3-cli`. Audacious must be running with a track playing. Rates whatever is currently playing.
 
+**POPM Mapping**:
+The exact POPM byte written for each star level is driven by `POPM_STAR1`–`POPM_STAR5` in `musiclib.conf` (system defaults: `1, 64, 128, 196, 255`). These can be overridden in the user config layer (`~/.config/musiclib/musiclib.conf`). The script falls back to the same defaults if the variables are unset. Note: `RatingGroup1`–`RatingGroup5` define POPM *range boundaries* for smart playlist eligibility logic and are independent of these write values.
+
 **Side Effects**:
 - Updates `musiclib.dsv` (Rating and GroupDesc columns)
-- Updates POPM tag in file (via `kid3-cli`)
+- Updates POPM tag in file (via `kid3-cli`) using the `POPM_STAR*` mapped value
 - Updates Work/TIT1 tag to match GroupDesc
 - Writes `user.baloo.rating` filesystem extended attribute (`GroupDesc × 2`, range 0–10) so Dolphin's Rating column stays in sync without a Baloo indexing sweep
 - Regenerates Conky assets (`starrating.png`, `currgpnum.txt`)
@@ -806,14 +809,17 @@ musiclib_tagrebuild.sh FILEPATH
 
 **Workflow**:
 1. Look up track in `musiclib.dsv` by path
-2. Read Artist, Album, AlbumArtist, Title, Genre, Rating from DB
-3. Strip all existing tags from file
-4. Write tags from DB values via `kid3-cli`
-5. Restore rating as POPM + Grouping
+2. Create a timestamped binary backup of the file in `TAG_BACKUP_DIR`
+3. Read Artist, Album, AlbumArtist, Title, Genre, Rating, GroupDesc, LastTimePlayed, Custom2 from DB
+4. Extract non-DB fields (ReplayGain, album art, track number, year, lyrics) from the file before stripping
+5. Strip all existing tags from file
+6. Write DB-authoritative tags + preserved file metadata via `kid3-cli` and `exiftool`
+7. On success: backup is **retained** in `TAG_BACKUP_DIR` for 30 days (see `MAX_BACKUP_AGE_DAYS`)
+8. On failure: backup is **restored** over the original file and an error is reported
 
 **Side Effects**:
-- Overwrites file tags
-- Creates tag backup
+- Overwrites file tags in place
+- Creates a timestamped backup (`<file>.backup.YYYYMMDD_HHMMSS`) in `TAG_BACKUP_DIR`; backup is retained for 30 days after a successful rebuild and cleaned up by the next run after expiry
 - Logs to `musiclib.log`
 
 **Exit Codes**:

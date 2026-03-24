@@ -31,7 +31,7 @@ kid3, kid3-qt, kid3-cli - Kid3 ID3 Tagger
 | **\--author**  
 | **\--version**  
 | **\--license**  
-| **\--desktopfile** **FILE** \]  
+| **\--desktopfile** **FILE** \]  
 \[_FILE_...\]
 
 **kid3-qt**  
@@ -45,8 +45,8 @@ kid3, kid3-qt, kid3-cli - Kid3 ID3 Tagger
 \[  
 | **\-h**  
 | **\--help** \]  
-\[**\-c COMMAND1**\]  
-\[**\-c COMMAND2**...\]  
+\[**\-c COMMAND1**\]  
+\[**\-c COMMAND2**...\]  
 \[_FILE_...\]
 
 [OPTIONS](#OPTIONS)
@@ -973,7 +973,7 @@ The table in Rating contains the mapping of star ratings to the effective values
 
 Besides the Name column containing the keys, the table has columns 1 to 5 for the values to be stored when the corresponding number of stars is given. The other way round, the values determine the number of stars which are displayed for the value stored in the frame. For instance, the row in the table below contains the values 1, 64, 128, 196, 255. The thresholds for the number of stars to be displayed lay between these values and are compatible with what the Windows® Explorer uses.
 
-**Table 1. Entry in Rating Table**
+**Table 1. Entry in Rating Table**
 
 **Name**
 
@@ -1112,7 +1112,7 @@ Help → About Kid3
 
 Displays a short information about Kid3.
 
-[KID3-CLI](#KID3-CLI)
+ki3[KID3-CLI](#KID3-CLI)
 =====================
 
 [Commands](#Commands)
@@ -1676,7 +1676,7 @@ The D-Bus API is specified in org.kde.Kid3.xml. The Kid3 interface has the follo
 
 **Open file or folder**  
 
-**boolean openDirectory(string** _path_**);**
+**boolean openDirectory(string** _path_**);**
 
   
 .PP _path_
@@ -1711,7 +1711,7 @@ Returns detailed error message.
 
 **Start an automatic batch import**  
 
-**boolean batchImport(int32** _tagMask_**, string** _profileName_**);**
+**boolean batchImport(int32** _tagMask_**, string** _profileName_**);**
 
   
 .PP _tagMask_
@@ -1731,7 +1731,7 @@ name of batch import profile to use
 
 **Import tags from a file**  
 
-**boolean importFromFile(int32** _tagMask_**, string** _path_**, int32** _fmtIdx_**);**
+**boolean importFromFile(int32** _tagMask_**, string** _path_**, int32** _fmtIdx_**);**
 
   
 .PP _tagMask_
@@ -1760,7 +1760,7 @@ Returns true if OK.
 
 **Import tags from other tags**  
 
-**importFromTags(int32** _tagMask_**, string** _source_**, string** _extraction_**);**
+**importFromTags(int32** _tagMask_**, string** _source_**, string** _extraction_**);**
 
   
 .PP _tagMask_
@@ -1787,7 +1787,7 @@ regular expression with frame names and captures to extract from source text
 
 **Import tags from other tags on selected files**  
 
-**array importFromTagsToSelection(int32** _tagMask_**, string** _source_**, string** _extraction_**);**
+**array importFromTagsToSelection(int32** _tagMask_**, string** _source_**, string** _extraction_**);**
 
   
 .PP _tagMask_
@@ -1823,7 +1823,7 @@ extracted value for "%{\_\_return}(.+)"
 
 **Download album cover art**  
 
-**downloadAlbumArt(string** _url_**, boolean** _allFilesInDir_**);**
+**downloadAlbumArt(string** _url_**, boolean** _allFilesInDir_**);**
 
   
 .PP _url_
@@ -1843,7 +1843,7 @@ true to add the image to all files in the folder
 
 **Export tags to a file**  
 
-**boolean exportToFile(int32** _tagMask_**, string** _path_**, int32** _fmtIdx_**);**
+**boolean exportToFile(int32** _tagMask_**, string** _path_**, int32** _fmtIdx_**);**
 
   
 .PP _tagMask_
@@ -1878,7 +1878,7 @@ Returns true if OK.
 
 **Get items of a playlist**  
 
-**array getPlaylistItems(string** _path_**);**
+**array getPlaylistItems(string** _path_**);**
 
   
 .PP _path_
@@ -1893,7 +1893,7 @@ Returns list of absolute paths to playlist items.
 
 **Set items of a playlist**  
 
-**boolean setPlaylistItems(string** _path_**, array** _items_**);**
+**boolean setPlaylistItems(string** _path_**, array** _items_**);**
 
   
 .PP _path_
@@ -1989,7 +1989,7 @@ Returns true if current file item is a folder.
 
 **Set the folder name from the tags**  
 
-**boolean setDirNameFromTag(int32** _tagMask_**, string** _format_**, boolean** _create_**);**
+**boolean setDirNameFromTag(int32** _tagMask_**, string** _format_**, boolean** _create_**);**
 
   
 .PP _tagMask_
@@ -2018,7 +2018,7 @@ Returns true if OK, else the error message is available using getErrorMessage().
 
 **Set subsequent track numbers in the selected files**  
 
-**numberTracks(int32** _tagMask_**, int32** _firstTrackNr_**);**
+**numberTracks(int32** _tagMask_**, int32** _firstTrackNr_**);**
 
   
 .PP _tagMask_
@@ -2038,7 +2038,7 @@ number to use for first file
 
 **Filter the files**  
 
-**filter(string** _expression_**);**
+**filter(string** _expression_**);**
 
   
 .PP _expression_
@@ -2073,7 +2073,7 @@ Returns true absolute file name, ends with "/" if it is a folder.
 
 **Set name of selected file**  
 
-**setFileName(string** _name_**);**
+**setFileName(string** _name_**);**
 
   
 .PP _name_
@@ -2088,7 +2088,7 @@ The file will be renamed when the folder is saved.
 
 **Set format to use when setting the filename from the tags**  
 
-**setFileNameFormat(string** _format_**);**
+**setFileNameFormat(string** _format_**);**
 
   
 .PP _format_
@@ -2101,7 +2101,7 @@ file name format
 
 **Set the file names of the selected files from the tags**  
 
-**setFileNameFromTag(int32** _tagMask_**);**
+**setFileNameFromTag(int32** _tagMask_**);**
 
   
 .PP _tagMask_
@@ -2114,7 +2114,7 @@ tag bit (1 for tag 1, 2 for tag 2)
 
 **Get value of frame**  
 
-**string getFrame(int32** _tagMask_**, string** _name_**);**
+**string getFrame(int32** _tagMask_**, string** _name_**);**
 
   
 .PP _tagMask_
@@ -2138,7 +2138,7 @@ Returns value of frame.
 
 **Set value of frame**  
 
-**boolean setFrame(int32** _tagMask_**, string** _name_**, string** _value_**);**
+**boolean setFrame(int32** _tagMask_**, string** _name_**, string** _value_**);**
 
   
 .PP _tagMask_
@@ -2169,7 +2169,7 @@ Returns true if OK.
 
 **Get all frames of a tag**  
 
-**array of string getTag(int32** _tagMask_**);**
+**array of string getTag(int32** _tagMask_**);**
 
   
 .PP _tagMask_
@@ -2192,7 +2192,7 @@ Returns list with alternating property names and values.
 
 **Set tag from file name**  
 
-**setTagFromFileName(int32** _tagMask_**);**
+**setTagFromFileName(int32** _tagMask_**);**
 
   
 .PP _tagMask_
@@ -2205,7 +2205,7 @@ tag bit (1 for tag 1, 2 for tag 2)
 
 **Set tag from other tag**  
 
-**setTagFromOtherTag(int32** _tagMask_**);**
+**setTagFromOtherTag(int32** _tagMask_**);**
 
   
 .PP _tagMask_
@@ -2218,7 +2218,7 @@ tag bit (1 for tag 1, 2 for tag 2)
 
 **Copy tag**  
 
-**copyTag(int32** _tagMask_**);**
+**copyTag(int32** _tagMask_**);**
 
   
 .PP _tagMask_
@@ -2231,7 +2231,7 @@ tag bit (1 for tag 1, 2 for tag 2)
 
 **Paste tag**  
 
-**pasteTag(int32** _tagMask_**);**
+**pasteTag(int32** _tagMask_**);**
 
   
 .PP _tagMask_
@@ -2244,7 +2244,7 @@ tag bit (1 for tag 1, 2 for tag 2)
 
 **Remove tag**  
 
-**removeTag(int32** _tagMask_**);**
+**removeTag(int32** _tagMask_**);**
 
   
 .PP _tagMask_

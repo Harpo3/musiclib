@@ -491,13 +491,15 @@ This means your ratings are preserved in the files themselves, not just in the d
 
 POPM (Popularimeter) is the ID3v2 frame used to store ratings. The default POPM ranges below align with the star rating/POPM values and ranges used by Kid3, Windows Media Player, and Winamp:
 
-| Stars           | POPM Range |
-| --------------- | ---------- |
-| ★ (1 star)      | 1–32       |
-| ★★ (2 stars)    | 33–96      |
-| ★★★ (3 stars)   | 97–160     |
-| ★★★★ (4 stars)  | 161–228    |
-| ★★★★★ (5 stars) | 229–255    |
+| Stars           | POPM Range | Default write value (`POPM_STAR*`) |
+| --------------- | ---------- | ---------------------------------- |
+| ★ (1 star)      | 1–32       | 1                                  |
+| ★★ (2 stars)    | 33–96      | 64                                 |
+| ★★★ (3 stars)   | 97–160     | 128                                |
+| ★★★★ (4 stars)  | 161–228    | 196                                |
+| ★★★★★ (5 stars) | 229–255    | 255                                |
+
+The exact POPM byte written to a file when you rate a track is controlled by `POPM_STAR1`–`POPM_STAR5` in `musiclib.conf`. You can override these in your user config (`~/.config/musiclib/musiclib.conf`) if you prefer different midpoint values. The POPM ranges in the table above (`RatingGroup1`–`RatingGroup5`) are used separately by the smart playlist system for eligibility logic and are not changed by overriding the write values.
 
 ### Mobile Sync Workflow
 
@@ -1039,13 +1041,14 @@ musiclib-cli build [MUSIC_DIR] [options]
 - `-b, --backup` — Create a timestamped backup of the existing database before writing
 - `-t, --test` — Test mode — write output to a temporary file instead of the real database
 - `--no-progress` — Disable progress indicators
+- `--restore-lastplayed` — Read `LastTimePlayed` from each file's `Songs-DB_Custom1` tag via `kid3-cli`. Use this when rebuilding an existing library to preserve play history. Omit for new libraries or when speed matters (adds one `kid3-cli` call per file).
 
 **What it does**:
 
 - Scans the music directory recursively for audio files
 - Extracts metadata (artist, album, title, duration, etc.) from file tags via `exiftool`
 - Generates a fresh database (`musiclib.dsv`) with all discovered tracks
-- Resets `LastTimePlayed` to `0` for all tracks (use `-b` to back up existing data first)
+- Sets `LastTimePlayed` to `0` for all tracks by default; with `--restore-lastplayed`, reads the value from each file's `Songs-DB_Custom1` tag instead
 - Assigns new sequential track IDs and regenerates album IDs
 - Indexes all tracks so that ratings can also be viewed from Dolphin file manager
 
@@ -1055,8 +1058,11 @@ musiclib-cli build [MUSIC_DIR] [options]
 # Preview what would be rebuilt (safe to run anytime)
 musiclib-cli build --dry-run
 
-# Rebuild the database, creating a backup first
-musiclib-cli build -b
+# Rebuild the database (new library — no play history to preserve)
+musiclib-cli build
+
+# Rebuild with backup and include restoring play history
+musiclib-cli build -b --restore-lastplayed
 
 # Write to a temp file to inspect output without touching the live database
 musiclib-cli build -t
@@ -1396,9 +1402,12 @@ musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 **What it does**:
 
 1. Looks up each track in the `musiclib.dsv` database by file path
-2. Strips all existing (corrupted) tags from the file
-3. Rewrites tags using database-authoritative values: artist, album, title, track number, rating, etc.
-4. Restores non-database fields that are preserved during the process: ReplayGain tags and embedded album art
+2. Creates a timestamped binary backup of the file before making any changes
+3. Strips all existing (corrupted) tags from the file
+4. Rewrites tags using database-authoritative values: artist, album, title, track number, rating, etc.
+5. Restores non-database fields that are preserved during the process: ReplayGain tags and embedded album art
+6. On success: retains the backup for 30 days in `TAG_BACKUP_DIR` (default: `~/.local/share/musiclib/data/tag_backups/`), then automatically cleans it up on the next run after expiry
+7. On failure: automatically restores the backup over the file, leaving it unchanged
 
 **Examples**:
 
