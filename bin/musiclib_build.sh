@@ -24,6 +24,7 @@ fi
 # Fallback configuration
 MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
 MUSIC_ROOT_DIR="${MUSIC_ROOT_DIR:-/mnt/music}"
+ERROR_LOG="${ERROR_LOG:-${LOGFILE:-$(get_data_dir)/logs/musiclib.log}}"
 
 # Default settings
 MIN_DEPTH=1
@@ -34,6 +35,7 @@ OUTPUT_FILE="$MUSICDB"
 TEMP_OUTPUT=""
 DRY_RUN=false
 SHOW_PROGRESS=true
+RESTORE_LASTPLAYED=false
 
 # Default header matching current musiclib.dsv format
 DEFAULT_HEADER="ID^Artist^IDAlbum^Album^AlbumArtist^SongTitle^SongPath^Genre^SongLength^Rating^Custom2^GroupDesc^LastTimePlayed^^"
@@ -65,16 +67,21 @@ Options:
   -b, --backup      Create backup of existing database
   -t, --test        Test mode - output to temporary file
   --no-progress     Disable progress indicators
+  --restore-lastplayed
+                    Read LastTimePlayed from each file's Songs-DB_Custom1 tag
+                    via kid3-cli.  Use when rebuilding an existing library so
+                    play history is preserved.  Adds one kid3-cli call per
+                    file; omit for faster builds on new libraries.
 
 Examples:
   # Preview what would be rebuilt
   musiclib-cli build /mnt/music --dry-run
 
-  # Rebuild entire database
+  # Rebuild entire database (new library — no play history)
   musiclib-cli build /mnt/music
 
-  # Rebuild with backup
-  musiclib-cli build /mnt/music -b
+  # Rebuild with backup and include restoring play history
+  musiclib-cli build /mnt/music -b --restore-lastplayed
 
   # Test on subdirectory
   musiclib-cli build /mnt/music/Rock -t
@@ -91,7 +98,7 @@ Notes:
   - This will REPLACE the existing database unless -t or --dry-run is used
   - Album IDs (IDAlbum) will be regenerated
   - Track IDs will be sequential starting from 1
-  - LastTimePlayed will be set to 0 (never played)
+  - LastTimePlayed defaults to 0; use --restore-lastplayed to read from file tags
   - Takes a long time to process for large libraries (10,000+ tracks)
   - Use --dry-run in a subdirectory first to preview changes safely
 
@@ -160,6 +167,10 @@ while [ $# -gt 0 ]; do
             SHOW_PROGRESS=false
             shift
             ;;
+        --restore-lastplayed)
+            RESTORE_LASTPLAYED=true
+            shift
+            ;;
         -*)
             show_usage
             error_exit 1 "Unknown option" "option" "$1"
@@ -198,6 +209,77 @@ if ! check_required_tools kid3-cli exiftool; then
 fi
 
 #############################################
+# exiftool stay_open Daemon
+# Keeps one Perl process alive for the entire
+# build run, eliminating per-file startup
+# overhead (~100 ms saved per file).
+#############################################
+start_exiftool_daemon() {
+    # bash coproc gives us bidirectional pipes to exiftool's stdin/stdout
+    coproc EXIFTOOL_COPROC { exec exiftool -stay_open True -@ - 2>/dev/null; }
+
+    # Immediately dup coproc FDs to dedicated numbers (7=read, 8=write)
+    # so they survive any bash coproc housekeeping or FD shuffling.
+    exec 7<&"${EXIFTOOL_COPROC[0]}" 8>&"${EXIFTOOL_COPROC[1]}"
+    ET_DAEMON_PID=$EXIFTOOL_COPROC_PID
+
+    [ "$QUIET" = false ] && echo "exiftool daemon started (PID $ET_DAEMON_PID)"
+}
+
+stop_exiftool_daemon() {
+    if [[ -v ET_DAEMON_PID ]] && kill -0 "$ET_DAEMON_PID" 2>/dev/null; then
+        printf '%s\n' '-stay_open' 'False' >&8 2>/dev/null || true
+        exec 8>&- 2>/dev/null || true
+        wait "$ET_DAEMON_PID" 2>/dev/null || true
+    fi
+    exec 7<&- 2>/dev/null || true
+}
+
+# Query a single file via the daemon.  Sets global ET_* variables.
+# Uses exiftool -s output (padded "TagName : Value" lines) so that
+# missing tags simply produce no line and grep returns empty string.
+# A 30-second read timeout guards against daemon hangs.
+query_exiftool_daemon() {
+    local filepath="$1"
+    local raw="" line
+
+    # Send tag request + filepath, then -execute to trigger processing.
+    # The filepath MUST come before -execute (exiftool's stay_open mode
+    # treats -execute as "process everything accumulated so far").
+    printf '%s\n' \
+        '-Artist' '-Album' '-AlbumArtist' '-Title' '-Genre' \
+        '-Duration' '-Popularimeter' '-Grouping' '-Comment' \
+        '-Comment-xxx' '-Songs-DB_Custom2' \
+        '-s' \
+        "$filepath" \
+        '-execute' >&8
+
+    while IFS= read -r -t 30 -u 7 line; do
+        [[ "$line" == "{ready}" ]] && break
+        raw+="$line"$'\n'
+    done
+
+    # Extract each tag by name; missing tags yield empty strings
+    ET_ARTIST=$(printf '%s'      "$raw" | grep -m1 '^Artist'           | sed 's/^[^:]*:[[:space:]]*//')
+    ET_ALBUM=$(printf '%s'       "$raw" | grep -m1 '^Album[[:space:]]' | sed 's/^[^:]*:[[:space:]]*//')
+    ET_ALBUMARTIST=$(printf '%s' "$raw" | grep -m1 '^AlbumArtist'      | sed 's/^[^:]*:[[:space:]]*//')
+    ET_TITLE=$(printf '%s'       "$raw" | grep -m1 '^Title'            | sed 's/^[^:]*:[[:space:]]*//')
+    ET_GENRE=$(printf '%s'       "$raw" | grep -m1 '^Genre'            | sed 's/^[^:]*:[[:space:]]*//')
+    ET_DURATION=$(printf '%s'    "$raw" | grep -m1 '^Duration'         | sed 's/^[^:]*:[[:space:]]*//')
+    ET_POPM=$(printf '%s'        "$raw" | grep -m1 '^Popularimeter'    | sed 's/^[^:]*:[[:space:]]*//')
+    ET_GROUPDESC=$(printf '%s'      "$raw" | grep -m1 '^Grouping'              | sed 's/^[^:]*:[[:space:]]*//')
+    # ET_CUSTOM2_TXXX: dedicated TXXX frame "Songs-DB_Custom2" (kid3-cli
+    # canonical format).  Authoritative — takes priority over COMM fallback.
+    ET_CUSTOM2_TXXX=$(printf '%s'   "$raw" | grep -m1 '^Songs-DB_Custom2'     | sed 's/^[^:]*:[[:space:]]*//')
+    # ET_COMMENT_C2: any COMM frame (plain or language-coded, e.g. Comment-xxx)
+    # whose value begins with the literal "(Songs-DB_Custom2)" prefix.
+    # Matching on the value text ensures unrelated comments/lyrics are ignored.
+    ET_COMMENT_C2=$(printf '%s'     "$raw" | grep -m1 '^Comment[[:space:]-].*:[[:space:]]*(Songs-DB_Custom2)' | sed 's/^[^:]*:[[:space:]]*//')
+}
+
+start_exiftool_daemon
+
+#############################################
 # Backup Existing Database
 #############################################
 if [ "$CREATE_BACKUP" = true ] && [ -f "$MUSICDB" ] && [ "$TEST_MODE" = false ] && [ "$DRY_RUN" = false ]; then
@@ -224,26 +306,26 @@ fi
 # Create temporary file for raw export
 TEMP_EXPORT=$(mktemp)
 CLEANUP_FILES="$TEMP_EXPORT"
-trap 'rm -f $CLEANUP_FILES' EXIT
+trap 'stop_exiftool_daemon; rm -f $CLEANUP_FILES' EXIT
 
-# Scan for audio files and capture output
+# Scan for audio files — write directly to temp file so the file list
+# lives on disk rather than in a shell variable.  This avoids any FD
+# interaction between bash herestrings and the exiftool coproc.
 [ "$QUIET" = false ] && echo "Scanning for audio files..."
-SCAN_OUTPUT=$(find "$MUSIC_DIR" -mindepth "$MIN_DEPTH" -type f \( \
+SCAN_FILE="$TEMP_EXPORT"
+find "$MUSIC_DIR" -mindepth "$MIN_DEPTH" -type f \( \
     -iname "*.mp3" -o -iname "*.flac" -o -iname "*.m4a" -o \
-    -iname "*.ogg" -o -iname "*.opus" -o -iname "*.wma" \) 2>>"$ERROR_LOG")
+    -iname "*.ogg" -o -iname "*.opus" -o -iname "*.wma" \) > "$SCAN_FILE" 2>>"$ERROR_LOG"
 
 SCAN_EXIT_CODE=$?
 if [ $SCAN_EXIT_CODE -ne 0 ]; then
-    error_exit 2 "Filesystem scan failed" "directory" "$MUSIC_DIR" "error" "${SCAN_OUTPUT:-unknown error}"
+    error_exit 2 "Filesystem scan failed" "directory" "$MUSIC_DIR" "error" "exit code $SCAN_EXIT_CODE"
     exit 2
 fi
 
 # Count total files
-if [ -z "$SCAN_OUTPUT" ]; then
-    TOTAL_FILES=0
-else
-    TOTAL_FILES=$(echo "$SCAN_OUTPUT" | wc -l)
-fi
+TOTAL_FILES=$(wc -l < "$SCAN_FILE")
+TOTAL_FILES=${TOTAL_FILES##* }   # strip any leading whitespace from wc
 
 [ "$QUIET" = false ] && echo "Found $TOTAL_FILES audio files"
 [ "$QUIET" = false ] && echo ""
@@ -260,7 +342,7 @@ if [ "$DRY_RUN" = true ]; then
     [ "$QUIET" = false ] && echo "Preview: Analyzing files without making changes..."
     [ "$QUIET" = false ] && echo ""
     
-    declare -A ALBUM_PREVIEW
+    declare -A ALBUM_PREVIEW=()
     PREVIEW_COUNT=0
     MISSING_TAGS_COUNT=0
     SAMPLE_FILES=()
@@ -271,10 +353,11 @@ if [ "$DRY_RUN" = true ]; then
         
         PREVIEW_COUNT=$((PREVIEW_COUNT + 1))
         
-        # Extract basic metadata for preview
-        ARTIST=$(exiftool -Artist -s3 "$filepath" 2>/dev/null || echo "")
-        ALBUM=$(exiftool -Album -s3 "$filepath" 2>/dev/null || echo "")
-        TITLE=$(exiftool -Title -s3 "$filepath" 2>/dev/null || echo "")
+        # Extract basic metadata for preview via daemon (1 round-trip)
+        query_exiftool_daemon "$filepath"
+        ARTIST="$ET_ARTIST"
+        ALBUM="$ET_ALBUM"
+        TITLE="$ET_TITLE"
         
         # Track files with missing critical tags
         if [ -z "$ARTIST" ] || [ -z "$TITLE" ]; then
@@ -293,8 +376,8 @@ if [ "$DRY_RUN" = true ]; then
         if [ "$QUIET" = false ] && [ "$SHOW_PROGRESS" = true ] && [ $((PREVIEW_COUNT % 100)) -eq 0 ]; then
             echo "  Analyzed $PREVIEW_COUNT of $TOTAL_FILES files..."
         fi
-    done <<< "$SCAN_OUTPUT"
-    
+    done < "$SCAN_FILE"
+
     [ "$QUIET" = false ] && echo ""
     echo "=== Dry Run Summary ==="
     echo "Total files found: $TOTAL_FILES"
@@ -341,7 +424,8 @@ fi
 [ "$QUIET" = false ] && echo "Processing files..."
 
 CURRENT_ID=1
-declare -A ALBUM_ID_MAP
+declare -A ALBUM_ID_MAP=()
+NEXT_ALBUM_ID=1
 PROCESSING_ERRORS=0
 
 # Determine working file: test mode writes directly, production uses temp file
@@ -370,18 +454,16 @@ fi
 while IFS= read -r filepath; do
     [ -z "$filepath" ] && continue
     
-    # Extract metadata using exiftool
-    ARTIST=$(exiftool -Artist -s3 "$filepath" 2>/dev/null || echo "")
-    ALBUM=$(exiftool -Album -s3 "$filepath" 2>/dev/null || echo "")
-    ALBUMARTIST=$(exiftool -AlbumArtist -s3 "$filepath" 2>/dev/null || echo "")
-    TITLE=$(exiftool -Title -s3 "$filepath" 2>/dev/null || echo "$(basename "$filepath" | sed 's/\.[^.]*$//')")
-    GENRE=$(exiftool -Genre -s3 "$filepath" 2>/dev/null || echo "")
+    # Extract all metadata in a single daemon round-trip (stay_open mode)
+    query_exiftool_daemon "$filepath"
+    ARTIST="$ET_ARTIST"
+    ALBUM="$ET_ALBUM"
+    ALBUMARTIST="$ET_ALBUMARTIST"
+    TITLE="${ET_TITLE:-$(basename "$filepath" | sed 's/\.[^.]*$//')}"
+    GENRE="$ET_GENRE"
 
-    # Get song length in milliseconds, then format as seconds000
-    DURATION_STR=$(exiftool -Duration -s3 "$filepath" 2>/dev/null)
-
-    # Strip any trailing annotation like " (approx)"
-    DURATION_STR=${DURATION_STR%% *}
+    # Duration: strip any trailing annotation like " (approx)"
+    DURATION_STR="${ET_DURATION%% *}"
 
     if [ -n "$DURATION_STR" ]; then
         if [[ "$DURATION_STR" == *:* ]]; then
@@ -402,35 +484,51 @@ while IFS= read -r filepath; do
         SONGLENGTH=0
     fi
 
-    # Get rating directly from Popularimeter (use POPM byte 0-255 as-is)
-    POPM=$(exiftool -Popularimeter -s3 "$filepath" 2>/dev/null)
-    RATING=$(echo "$POPM" | sed -n 's/.*Rating=\([0-9][0-9]*\).*/\1/p')
+    # Get rating from Popularimeter data already fetched by daemon
+    RATING=$(printf '%s' "$ET_POPM" | sed -n 's/.*Rating=\([0-9][0-9]*\).*/\1/p')
 
     # Fallback to 0 if no POPM rating present
     [ -z "$RATING" ] && RATING="0"
 
     # GROUPDESC from Grouping
-    GROUPDESC=$(exiftool -Grouping -s3 "$filepath" 2>/dev/null)
-    [ -z "$GROUPDESC" ] && GROUPDESC="0"
+    GROUPDESC="${ET_GROUPDESC:-0}"
 
-    # CUSTOM2 from Comment (strip Songs-DB prefix if present)
-    CUSTOM2_RAW=$(exiftool -Comment -s3 "$filepath" 2>/dev/null)
+    # LASTPLAYED from Songs-DB_Custom1 tag (Excel serial float, e.g. 46048.762396).
+    # exiftool silently skips this TXXX frame on many files; kid3-cli reads it reliably.
+    # Only attempted when --restore-lastplayed is set; new libraries skip this for speed.
+    if [[ "$RESTORE_LASTPLAYED" == true ]]; then
+        KID3_CUSTOM1=$(kid3-cli -c "get Songs-DB_Custom1" "$filepath" 2>/dev/null)
+        if [[ -n "$KID3_CUSTOM1" ]] && [[ "$KID3_CUSTOM1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            LASTPLAYED="$KID3_CUSTOM1"
+        else
+            LASTPLAYED="0.000000"
+        fi
+    else
+        LASTPLAYED="0.000000"
+    fi
 
-    # Remove leading/trailing whitespace
-    CUSTOM2_RAW=$(echo "$CUSTOM2_RAW" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-
-    # If it starts with "(Songs-DB_Custom2)", strip that plus any following spaces
-    CUSTOM2=$(echo "$CUSTOM2_RAW" | sed 's/^(Songs-DB_Custom2)[[:space:]]*//')
-
-    # Fallback if empty
-    [ -z "$CUSTOM2" ] && CUSTOM2="$CUSTOM2_RAW"
+    # CUSTOM2 resolution — three storage formats are handled in priority order:
+    #  1. TXXX frame "Songs-DB_Custom2"  (kid3-cli canonical format)
+    #  2. COMM frame (plain or language-coded) whose value carries the
+    #     "(Songs-DB_Custom2)" prefix — the grep already screens for this,
+    #     so ET_COMMENT_C2 is empty whenever no matching frame exists.
+    # Unrelated comments/lyrics are never mistaken for Custom2.
+    if [ -n "$ET_CUSTOM2_TXXX" ]; then
+        # Priority 1: dedicated TXXX frame — use value directly
+        CUSTOM2="$ET_CUSTOM2_TXXX"
+    elif [ -n "$ET_COMMENT_C2" ]; then
+        # Priority 2: COMM frame with prefix — strip the prefix to get the value
+        CUSTOM2=$(printf '%s' "$ET_COMMENT_C2" | sed 's/^(Songs-DB_Custom2)[[:space:]]*//')
+    else
+        CUSTOM2=""
+    fi
 
     # Generate or lookup album ID
     if [ -n "$ALBUM" ]; then
         if [ -z "${ALBUM_ID_MAP[$ALBUM]:-}" ]; then
             # New album - assign next ID
-            IDALBUM=${#ALBUM_ID_MAP[@]}
-            IDALBUM=$((IDALBUM + 1))
+            IDALBUM=$NEXT_ALBUM_ID
+            NEXT_ALBUM_ID=$((NEXT_ALBUM_ID + 1))
             ALBUM_ID_MAP[$ALBUM]=$IDALBUM
         else
             IDALBUM=${ALBUM_ID_MAP[$ALBUM]}
@@ -447,7 +545,7 @@ while IFS= read -r filepath; do
     GENRE="$(sanitize_tag_value "$GENRE")"
 
     # Build database entry
-    ENTRY="${CURRENT_ID}^${ARTIST}^${IDALBUM}^${ALBUM}^${ALBUMARTIST}^${TITLE}^${filepath}^${GENRE}^${SONGLENGTH}^${RATING}^${CUSTOM2}^${GROUPDESC}^0.000000^^"
+    ENTRY="${CURRENT_ID}^${ARTIST}^${IDALBUM}^${ALBUM}^${ALBUMARTIST}^${TITLE}^${filepath}^${GENRE}^${SONGLENGTH}^${RATING}^${CUSTOM2}^${GROUPDESC}^${LASTPLAYED}^^"
 
     if ! validate_entry_fields "$ENTRY"; then
         PROCESSING_ERRORS=$((PROCESSING_ERRORS + 1))
@@ -470,7 +568,7 @@ while IFS= read -r filepath; do
     fi
 
     CURRENT_ID=$((CURRENT_ID + 1))
-done <<< "$SCAN_OUTPUT"
+done < "$SCAN_FILE"
 
 TOTAL_PROCESSED=$((CURRENT_ID - 1))
 
@@ -482,7 +580,7 @@ fi
 [ "$QUIET" = false ] && echo ""
 [ "$QUIET" = false ] && echo "=== Rebuild Complete ==="
 [ "$QUIET" = false ] && echo "Total tracks processed: $TOTAL_PROCESSED"
-[ "$QUIET" = false ] && echo "Unique albums: ${#ALBUM_ID_MAP[@]}"
+[ "$QUIET" = false ] && echo "Unique albums: $((NEXT_ALBUM_ID - 1))"
 
 if [ "$TEST_MODE" = true ]; then
     [ "$QUIET" = false ] && echo "Database file: $OUTPUT_FILE"
