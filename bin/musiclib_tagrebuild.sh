@@ -179,10 +179,7 @@ process_file() {
     if with_db_lock "$DB_LOCK_TIMEOUT" rebuild_tag "$filepath"; then
         TAGS_REBUILT=$((TAGS_REBUILT + 1))
         [ "$VERBOSE" = true ] && echo "  Tags rebuilt successfully"
-        
-        # Remove backup after successful rebuild
-        remove_backup "$backup_file"
-        echo "  Complete"
+        echo "  Complete (backup retained: $(basename "$backup_file"))"
         return 0
     else
         rebuild_result=$?
