@@ -628,28 +628,47 @@ This scans your entire music repository and rebuilds `musiclib.dsv`. Your existi
 
 ### Cleaning Tags
 
-To normalize ID3 tags across your collection:
+Use **Clean Tags** for format-level tag repair: merging legacy ID3v1 data into ID3v2, removing APE tags, and embedding album art. It is best suited for files that have not yet been imported into the library, or when format corruption is suspected.
 
 1. Open the **Maintenance Panel**
-2. Click **Clean Tags**
-3. Select a directory or file
-4. Choose a mode:
-   - **Merge** — Merge ID3v1 into ID3v2, remove APE tags, embed album art
+2. In the **Clean Tags** group, browse to a file or directory
+3. Choose a mode:
+   - **Merge** — Merge ID3v1 into ID3v2, remove APE tags, embed album art (default)
    - **Strip** — Remove ID3v1 and APE tags only
-   - **Embed Art** — Embeds `folder.jpg`, if in the album directory, into the tag as album art, if missing
-5. Click **Execute**
+   - **Embed Art** — Embed `folder.jpg` as album art if art is missing from the tag
+4. Set options as needed:
+   - **Recursive** — Process subdirectories (checked by default)
+   - **Verbose** — Show per-file detail in the output log
+   - **Keep backup after success** — Retain the pre-operation backup in `TAG_BACKUP_DIR` rather than removing it automatically on success
+5. Click **Execute** (or **Preview** to dry-run first)
 
-Alternatively, just open the track(s) in Kid3 and use it to edit the tag(s) directly. 
+Alternatively, open the track(s) in Kid3 and edit the tag(s) directly.
 
-### Repairing Corrupted Tags
+### Conforming Tags (Frame Normalization)
 
-If a file's tags are corrupted, you can easily rebuild it using data from the file's associated database record:
+**Conform Tags** is the primary day-to-day tag maintenance tool. It normalizes tag frames on in-library files to the MusicLib schema, rewriting field values (artist, album, title, rating, etc.) from `musiclib.dsv`. Use it after bulk edits or whenever tag fields drift out of sync with the database. Files must already exist in `musiclib.dsv` — unregistered files are skipped.
 
-1. Right-click the track/tracks in the library view
-2. Select **Rebuild Tag/Tags**
-3. Confirm the operation
+**Quick-repair from the library view:**
 
-MusicLib will look up the track(s) in the database and rewrite tag(s) from stored values.
+1. Right-click one or more tracks in the library view
+2. Select **Rebuild Tag / Tags**
+3. Confirm — MusicLib rewrites the tag(s) from database-authoritative values immediately
+
+**Full control via the Maintenance Panel:**
+
+1. Open the **Maintenance Panel**
+2. In the **Conform Tags** group, browse to a file or directory (the Browse button offers both file and directory picking)
+3. Set options as needed:
+   - **Recursive** — Process subdirectories
+   - **Verbose** — Show per-file detail in the output log
+   - **Keep backup after success** — Retain the pre-operation backup in `TAG_BACKUP_DIR`
+4. Click **Preview** first to confirm scope, then **Execute**
+
+> **Library-wide warning**: If you set the path to your library root, enable Recursive, and click Execute, MusicLib will show a confirmation dialog. It is strongly recommended to run Preview first before applying a library-wide conform. The dialog also offers a **Run Preview Instead** button as a shortcut.
+
+**Restoring a tag backup**: If you ran a conform with **Keep backup after success** checked and want to roll back a specific file, enter that file's path in the path field and click **Restore Last Backup**. MusicLib will locate the most recent backup for that file and copy it back over the original. The backup is not deleted after restore, so you can restore again if needed.
+
+> **Note**: Conform Tags reads from `musiclib.dsv` but never writes back to it. Running it after a manual kid3 edit would overwrite those changes with stale database values. To sync a kid3 edit into the database, use the Edit Field workflow instead.
 
 ### Boosting Album Loudness
 
@@ -1332,6 +1351,7 @@ musiclib-cli tagclean [COMMAND] [TARGET] [options]
 - `-n, --dry-run` — Show what would be done without making any changes
 - `-v, --verbose` — Show detailed processing information per file
 - `-b, --backup-dir DIR` — Custom backup directory (default: configured `BACKUP_DIR`)
+- `--keep-backup` — Retain the per-file backup after a successful run (default: removed on success)
 - `--mode MODE` — Operation mode: `merge` (default), `strip`, or `embed-art`
 - `--art-only` — Alias for `--mode embed-art`
 - `--ape-only` — Remove APE tags only (legacy mode)
@@ -1379,7 +1399,7 @@ musiclib-cli tagclean troubleshoot
 
 #### `musiclib-cli tagrebuild`
 
-**Purpose**: Repair corrupted or malformed ID3 tags on MP3 files by restoring values from the MusicLib database.
+**Purpose**: Normalize ID3 tag frames on MP3 files to the MusicLib schema, rewriting field values (artist, album, title, rating, etc.) from the MusicLib database. Use for in-library files whose tags have drifted out of sync with `musiclib.dsv`. Files not present in the database are skipped non-fatally.
 
 **Usage**:
 
@@ -1396,7 +1416,8 @@ musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 - `-r, --recursive` — Process directories recursively
 - `-n, --dry-run` — Preview changes without modifying any files
 - `-v, --verbose` — Show detailed processing information per file
-- `-b, --backup-dir DIR` — Custom backup directory for pre-repair copies
+- `-b, --backup-dir DIR` — Custom backup directory for pre-operation copies
+- `--keep-backup` — Retain the per-file backup after a successful run (default: removed on success)
 - `-h, --help` — Show help message
 
 **What it does**:
@@ -1406,8 +1427,10 @@ musiclib-cli tagrebuild <TARGET> [<TARGET> ...] [options]
 3. Strips all existing (corrupted) tags from the file
 4. Rewrites tags using database-authoritative values: artist, album, title, track number, rating, etc.
 5. Restores non-database fields that are preserved during the process: ReplayGain tags and embedded album art
-6. On success: retains the backup for 30 days in `TAG_BACKUP_DIR` (default: `~/.local/share/musiclib/data/tag_backups/`), then automatically cleans it up on the next run after expiry
+6. On success: removes the backup automatically (default); pass `--keep-backup` to retain it in `TAG_BACKUP_DIR` (default: `~/.local/share/musiclib/data/tag_backups/`). Backups older than `MAX_BACKUP_AGE_DAYS` (default 30) are purged at the start of each run.
 7. On failure: automatically restores the backup over the file, leaving it unchanged
+
+> **Note**: `musiclib_tagrebuild.sh` reads from `musiclib.dsv` but never writes back to it. Running it after a manual kid3 edit would overwrite those changes with stale database values.
 
 **Examples**:
 
@@ -1436,6 +1459,61 @@ musiclib-cli tagrebuild /path/to/music -r -n -v
 
 # Step 2: Review the output, then apply
 musiclib-cli tagrebuild /path/to/music -r
+```
+
+---
+
+#### `musiclib-cli tagrestore`
+
+**Purpose**: Restore an MP3 file's tags from the most recent backup created by `musiclib_tagrebuild.sh` or `musiclib_tagclean.sh` when either was run with `--keep-backup`.
+
+**Usage**:
+
+```bash
+musiclib-cli tagrestore FILEPATH [options]
+```
+
+**Arguments**:
+
+- `FILEPATH` — Path to the MP3 file whose tags should be restored (required)
+
+**Options**:
+
+- `-n, --dry-run` — Show what would be restored without writing anything
+- `-v, --verbose` — List all available backups with modification times
+- `-l, --list` — Enumerate all backups for the file and exit without restoring
+- `-h, --help` — Show help message
+
+**Exit codes**:
+
+| Code | Meaning |
+|---|---|
+| 0 | Restore successful (or dry-run / list with no error) |
+| 1 | No backup found, file not found, or invalid arguments |
+| 2 | Backup found but restore failed (copy error or verification mismatch) |
+
+**What it does**:
+
+1. Resolves `TAG_BACKUP_DIR` from config (default: `~/.local/share/musiclib/data/tag_backups/`)
+2. Finds all backup files matching `<basename>.backup.*` in that directory
+3. Selects the most recent by lexicographic sort of the `YYYYMMDD_HHMMSS` timestamp suffix
+4. Copies the backup over the original with `cp` and verifies with `cmp`
+5. Leaves the backup in place after restore (so you can restore again or clean up manually)
+6. Does not modify `musiclib.dsv`
+
+**Prerequisite**: Backups only exist if `--keep-backup` was passed to a prior `tagrebuild` or `tagclean` run on the same file.
+
+**Examples**:
+
+```bash
+# Preview what would be restored (no changes made)
+musiclib-cli tagrestore "/mnt/music/pink_floyd/the_wall/01_in_the_flesh.mp3" -n
+
+# Restore the most recent backup
+musiclib-cli tagrestore "/mnt/music/pink_floyd/the_wall/01_in_the_flesh.mp3"
+
+# List all available backups for a file
+musiclib-cli tagrestore "/mnt/music/pink_floyd/the_wall/01_in_the_flesh.mp3" -l
 ```
 
 ---
