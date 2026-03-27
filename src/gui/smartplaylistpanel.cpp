@@ -361,10 +361,22 @@ void SmartPlaylistPanel::resetToDefaults()
 
 void SmartPlaylistPanel::checkAudaciousRunning()
 {
-    // pgrep -x audacious returns 0 if at least one matching process exists.
-    const bool running =
-        (QProcess::execute(QStringLiteral("pgrep"),
-                           { QStringLiteral("-x"), QStringLiteral("audacious") }) == 0);
+    // Check /proc/<pid>/comm directly — avoids spawning a child process and
+    // eliminates the PID output that pgrep was sending to the console.
+    bool running = false;
+    const QStringList entries =
+        QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &entry : entries) {
+        if (entry.toInt() == 0)
+            continue; // skip non-numeric entries (e.g. "net", "sys")
+        QFile commFile(QStringLiteral("/proc/%1/comm").arg(entry));
+        if (commFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (commFile.readAll().trimmed() == QStringLiteral("audacious")) {
+                running = true;
+                break;
+            }
+        }
+    }
 
     if (!running) {
         // Dim and uncheck — generating with --load-audacious would fail anyway.

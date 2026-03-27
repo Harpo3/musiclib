@@ -22,6 +22,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QUrl>
+#include <QApplication>
+#include <QClipboard>
 
 // ---------------------------------------------------------------------------
 // Custom proxy: adds "exclude unrated" filtering on top of the standard
@@ -444,6 +446,14 @@ void LibraryView::showContextMenu(const QPoint &pos)
         QString folder = QFileInfo(track.songPath).absolutePath();
         if (!QProcess::startDetached("dolphin", {folder}))
             emit statusMessage(tr("Failed to launch Dolphin"));
+    });
+
+    QAction *copyPathAct = menu.addAction(tr("Copy location to clipboard"));
+    copyPathAct->setToolTip(tr("Copy the file path of this track to the clipboard"));
+
+    connect(copyPathAct, &QAction::triggered, this, [this, track]() {
+        QApplication::clipboard()->setText(track.songPath);
+        emit statusMessage(tr("Copied: %1").arg(track.songPath));
     });
 
     QString rebuildLabel = tracks.size() == 1 ? tr("Rebuild Tag") : tr("Rebuild Tags") + countLabel;
