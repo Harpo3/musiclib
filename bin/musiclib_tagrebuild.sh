@@ -16,6 +16,7 @@
 #   -n, --dry-run        Preview changes without modifying files
 #   -v, --verbose        Show detailed processing information
 #   -b, --backup-dir DIR Custom backup directory
+#   --keep-backup        Retain per-file backup after a successful rebuild
 #   -h, --help           Show this help message
 #
 
@@ -47,6 +48,7 @@ DB_LOCK_TIMEOUT="${LOCK_TIMEOUT:-5}"
 DRY_RUN=false
 VERBOSE=false
 RECURSIVE=false
+KEEP_BACKUP=false
 TARGET=""
 
 # Statistics
@@ -76,6 +78,8 @@ Options:
   -n, --dry-run     Preview changes without modifying files
   -v, --verbose     Show detailed processing information
   -b, --backup-dir DIR  Custom backup directory
+  --keep-backup     Retain per-file backup after a successful rebuild
+                    (default: backup is removed on success)
   -h, --help        Show this help message
 
 Examples:
@@ -179,7 +183,12 @@ process_file() {
     if with_db_lock "$DB_LOCK_TIMEOUT" rebuild_tag "$filepath"; then
         TAGS_REBUILT=$((TAGS_REBUILT + 1))
         [ "$VERBOSE" = true ] && echo "  Tags rebuilt successfully"
-        echo "  Complete (backup retained: $(basename "$backup_file"))"
+        if [ "$KEEP_BACKUP" = "true" ]; then
+            echo "  Complete (backup retained: $(basename "$backup_file"))"
+        else
+            remove_backup "$backup_file"
+            echo "  Complete"
+        fi
         return 0
     else
         rebuild_result=$?
@@ -285,6 +294,10 @@ while [ $# -gt 0 ]; do
             BACKUP_DIR="$2"
             shift 2
             ;;
+        --keep-backup)
+            KEEP_BACKUP=true
+            shift
+            ;;
         -h|--help|help)
             show_usage
             exit 0
@@ -385,6 +398,10 @@ echo "Skipped (not in DB): $TAGS_SKIPPED"
 echo "Errors: $ERRORS"
 echo ""
 echo "Backup location: $BACKUP_DIR"
+
+if [ "$KEEP_BACKUP" = "true" ]; then
+    echo "(--keep-backup: backups retained for successful rebuilds)"
+fi
 
 if [ "$DRY_RUN" = true ]; then
     echo ""

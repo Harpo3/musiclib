@@ -41,6 +41,7 @@ REMOVE_RG=false
 DRY_RUN=false
 VERBOSE=false
 RECURSIVE=false
+KEEP_BACKUP=false
 
 # Operation modes: merge, strip, embed-art
 # Legacy internal modes: full, art-only, ape-only, rg-only (for backward compatibility)
@@ -110,6 +111,8 @@ Options:
   -n, --dry-run     Show what would be done without making changes
   -v, --verbose     Show detailed processing information
   -b, --backup-dir DIR  Custom backup directory (default: $BACKUP_DIR)
+  --keep-backup     Retain per-file backup after a successful clean
+                    (default: backup is removed on success)
   --mode MODE       Operation mode: merge (default), strip, embed-art
 
   --art-only        Alias for --mode embed-art
@@ -522,6 +525,10 @@ while [ $# -gt 0 ]; do
             MODE="rg-only"
             REMOVE_RG=true
             LEGACY_MODE_SET=true
+            shift
+            ;;
+        --keep-backup)
+            KEEP_BACKUP=true
             shift
             ;;
         -*)
@@ -972,8 +979,12 @@ process_file() {
     if [ "$DRY_RUN" = false ]; then
         if [ -f "$filepath" ] && [ -s "$filepath" ]; then
             # File exists and has size - assume success
-            remove_backup "$backup_file"
-            echo "  ✓ Complete"
+            if [ "$KEEP_BACKUP" = "true" ]; then
+                echo "  ✓ Complete (backup retained: $(basename "$backup_file"))"
+            else
+                remove_backup "$backup_file"
+                echo "  ✓ Complete"
+            fi
         else
             # Restore from backup
             echo "  Error: File corrupted, restoring from backup" >&2
