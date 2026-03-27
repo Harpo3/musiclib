@@ -60,6 +60,7 @@ private:
     void launchBuild(bool dryRun);
     void launchTagClean(bool dryRun);
     void launchTagRebuild(bool dryRun);
+    void launchTagRestore();
     void launchBoost();
     void launchNewTracks();
 
@@ -116,18 +117,23 @@ private:
     QPushButton *m_buildExecuteBtn  = nullptr;
 
     // Clean Tags controls
-    QLineEdit   *m_tagCleanPath     = nullptr;
-    QPushButton *m_tagCleanBrowse   = nullptr;
-    QComboBox   *m_tagCleanMode     = nullptr;
-    QPushButton *m_tagCleanPreview  = nullptr;
-    QPushButton *m_tagCleanExecute  = nullptr;
+    QLineEdit   *m_tagCleanPath       = nullptr;
+    QPushButton *m_tagCleanBrowse     = nullptr;
+    QComboBox   *m_tagCleanMode       = nullptr;
+    QCheckBox   *m_tagCleanRecursive  = nullptr;
+    QCheckBox   *m_tagCleanVerbose    = nullptr;
+    QCheckBox   *m_tagCleanKeepBackup = nullptr;
+    QPushButton *m_tagCleanPreview    = nullptr;
+    QPushButton *m_tagCleanExecute    = nullptr;
 
     // Rebuild Tags controls
     QLineEdit   *m_tagRebuildPath     = nullptr;
     QPushButton *m_tagRebuildBrowse   = nullptr;
-    QCheckBox   *m_tagRebuildRecursive = nullptr;
-    QCheckBox   *m_tagRebuildVerbose  = nullptr;
-    QPushButton *m_tagRebuildPreview  = nullptr;
+    QCheckBox   *m_tagRebuildRecursive  = nullptr;
+    QCheckBox   *m_tagRebuildVerbose   = nullptr;
+    QCheckBox   *m_tagRebuildKeepBackup = nullptr;
+    QPushButton *m_tagRebuildRestoreBtn = nullptr;
+    QPushButton *m_tagRebuildPreview   = nullptr;
     QPushButton *m_tagRebuildExecute  = nullptr;
 
     // Boost Album controls

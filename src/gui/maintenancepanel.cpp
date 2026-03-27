@@ -21,6 +21,9 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QTimer>
+#include <QMenu>
+#include <QCursor>
+#include <QMessageBox>
 
 // ============================================================================
 //  Construction
@@ -245,7 +248,8 @@ QGroupBox *MaintenancePanel::createTagCleanGroup()
     auto *layout = new QVBoxLayout(group);
 
     auto *desc = new QLabel(
-        "Merge ID3v1 → ID3v2, remove APE tags, embed album art.  "
+        "Format-level tag repair: merge ID3v1 into ID3v2, remove APE tags, embed album art.  "
+        "Use before importing files into the library, or when format corruption is suspected.  "
         "Operates on a file or directory.  Creates tag backups before modifying.");
     desc->setWordWrap(true);
     layout->addWidget(desc);
@@ -276,6 +280,18 @@ QGroupBox *MaintenancePanel::createTagCleanGroup()
     modeRow->addWidget(m_tagCleanMode, 1);
     layout->addLayout(modeRow);
 
+    // Options row
+    auto *optRow = new QHBoxLayout;
+    m_tagCleanRecursive  = new QCheckBox("Recursive (-r)");
+    m_tagCleanRecursive->setChecked(true);
+    m_tagCleanVerbose    = new QCheckBox("Verbose (-v)");
+    m_tagCleanKeepBackup = new QCheckBox("Keep backup after success (--keep-backup)");
+    optRow->addWidget(m_tagCleanRecursive);
+    optRow->addWidget(m_tagCleanVerbose);
+    optRow->addWidget(m_tagCleanKeepBackup);
+    optRow->addStretch();
+    layout->addLayout(optRow);
+
     // Buttons
     auto *btnRow = new QHBoxLayout;
     m_tagCleanPreview = new QPushButton("Preview (dry-run)");
@@ -302,8 +318,9 @@ QGroupBox *MaintenancePanel::createTagRebuildGroup()
     auto *layout = new QVBoxLayout(group);
 
     auto *desc = new QLabel(
-        "Repair corrupted tags by restoring values from the database.  "
-        "Targets must already exist in musiclib.dsv.  Creates tag backups.");
+        "Primary tag maintenance tool: normalizes tag frames to the musiclib schema, "
+        "restoring field values (artist, album, title, rating, etc.) from the database.  "
+        "Files must already exist in musiclib.dsv.  Creates tag backups before modifying.");
     desc->setWordWrap(true);
     layout->addWidget(desc);
 
@@ -318,30 +335,46 @@ QGroupBox *MaintenancePanel::createTagRebuildGroup()
     layout->addLayout(pathRow);
 
     connect(m_tagRebuildBrowse, &QPushButton::clicked, this, [this]() {
-        QString dir = pickDirectory("Select directory for tag rebuild");
-        if (!dir.isEmpty())
-            m_tagRebuildPath->setText(dir);
+        QMenu menu(this);
+        QAction *fileAct = menu.addAction("Select file…");
+        QAction *dirAct  = menu.addAction("Select directory…");
+        QAction *chosen  = menu.exec(QCursor::pos());
+        if (chosen == fileAct) {
+            QString f = pickFile("Select MP3 for tag rebuild");
+            if (!f.isEmpty())
+                m_tagRebuildPath->setText(f);
+        } else if (chosen == dirAct) {
+            QString d = pickDirectory("Select directory for tag rebuild");
+            if (!d.isEmpty())
+                m_tagRebuildPath->setText(d);
+        }
     });
 
     // Options row
     auto *optRow = new QHBoxLayout;
-    m_tagRebuildRecursive = new QCheckBox("Recursive (-r)");
+    m_tagRebuildRecursive  = new QCheckBox("Recursive (-r)");
     m_tagRebuildRecursive->setChecked(true);
-    m_tagRebuildVerbose   = new QCheckBox("Verbose (-v)");
+    m_tagRebuildVerbose    = new QCheckBox("Verbose (-v)");
+    m_tagRebuildKeepBackup = new QCheckBox("Keep backup after success");
     optRow->addWidget(m_tagRebuildRecursive);
     optRow->addWidget(m_tagRebuildVerbose);
+    optRow->addWidget(m_tagRebuildKeepBackup);
     optRow->addStretch();
     layout->addLayout(optRow);
 
     // Buttons
     auto *btnRow = new QHBoxLayout;
-    m_tagRebuildPreview = new QPushButton("Preview (dry-run)");
-    m_tagRebuildExecute = new QPushButton("Execute");
+    m_tagRebuildRestoreBtn = new QPushButton("Restore Last Backup");
+    m_tagRebuildPreview    = new QPushButton("Preview (dry-run)");
+    m_tagRebuildExecute    = new QPushButton("Execute");
+    btnRow->addWidget(m_tagRebuildRestoreBtn);
     btnRow->addStretch();
     btnRow->addWidget(m_tagRebuildPreview);
     btnRow->addWidget(m_tagRebuildExecute);
     layout->addLayout(btnRow);
 
+    connect(m_tagRebuildRestoreBtn, &QPushButton::clicked,
+            this, [this]() { launchTagRestore(); });
     connect(m_tagRebuildPreview, &QPushButton::clicked,
             this, [this]() { launchTagRebuild(true); });
     connect(m_tagRebuildExecute, &QPushButton::clicked,
@@ -554,8 +587,14 @@ void MaintenancePanel::launchTagClean(bool dryRun)
 
     QStringList args;
     args << path << "--mode" << mode;
+    if (m_tagCleanRecursive->isChecked())
+        args << "-r";
+    if (m_tagCleanVerbose->isChecked())
+        args << "-v";
     if (dryRun)
         args << "-n";          // tagclean uses -n for dry-run
+    if (m_tagCleanKeepBackup->isChecked())
+        args << "--keep-backup";
 
     setButtonsEnabled(false);
     m_runner->runScript(opId, "musiclib_tagclean.sh", args);
@@ -569,6 +608,57 @@ void MaintenancePanel::launchTagRebuild(bool dryRun)
         return;
     }
 
+    // --- Library-root warning (Execute + Recursive only) -------------------
+    // If the user is about to run a recursive Execute on the entire library
+    // root, intercept with a confirmation dialog.  Preview runs and runs
+    // scoped to a subdirectory or single file are passed through unchanged.
+    if (!dryRun && m_tagRebuildRecursive->isChecked()) {
+        bool isLibraryRoot = false;
+        QString musicRoot = configValue("MUSIC_ROOT_DIR");
+        if (musicRoot.isEmpty())
+            musicRoot = configValue("MUSIC_REPO");
+        if (!musicRoot.isEmpty()) {
+            QFileInfo fi1(path);
+            QFileInfo fi2(musicRoot);
+            isLibraryRoot = (fi1.canonicalFilePath() == fi2.canonicalFilePath());
+        }
+
+        if (isLibraryRoot) {
+            QMessageBox msgBox(this);
+            msgBox.setWindowTitle("Library-Wide Tag Rebuild");
+            msgBox.setIcon(QMessageBox::Warning);
+            msgBox.setText(
+                QString("You are about to rebuild tags recursively on your entire library root:\n%1")
+                    .arg(path));
+            msgBox.setInformativeText(
+                "This will modify every MP3 file in the library.  Per-file backups will be "
+                "created and deleted automatically on success unless \"Keep backup after "
+                "success\" is checked.\n\n"
+                "Recommended: run Preview (dry-run) first to confirm scope.\n\n"
+                "Do you want to proceed?");
+
+            QPushButton *cancelBtn  = msgBox.addButton("Cancel",
+                                          QMessageBox::RejectRole);
+            QPushButton *previewBtn = msgBox.addButton("Run Preview Instead",
+                                          QMessageBox::ActionRole);
+            /*QPushButton *proceedBtn =*/ msgBox.addButton("Proceed",
+                                          QMessageBox::AcceptRole);
+            msgBox.setDefaultButton(cancelBtn);
+            msgBox.exec();
+
+            QAbstractButton *clicked = msgBox.clickedButton();
+            if (clicked == previewBtn) {
+                launchTagRebuild(true);   // re-enter as dry-run
+                return;
+            }
+            if (clicked == cancelBtn || clicked == nullptr) {
+                return;                   // user cancelled — do nothing
+            }
+            // "Proceed" falls through to the script launch below
+        }
+    }
+    // -----------------------------------------------------------------------
+
     QString opId = dryRun ? "tagrebuild-preview" : "tagrebuild";
     logStatus(dryRun ? "=== Rebuild Tags (preview) ===" : "=== Rebuild Tags ===");
 
@@ -580,9 +670,28 @@ void MaintenancePanel::launchTagRebuild(bool dryRun)
         args << "-n";
     if (m_tagRebuildVerbose->isChecked())
         args << "-v";
+    if (m_tagRebuildKeepBackup->isChecked())
+        args << "--keep-backup";
 
     setButtonsEnabled(false);
     m_runner->runScript(opId, "musiclib_tagrebuild.sh", args);
+}
+
+void MaintenancePanel::launchTagRestore()
+{
+    QString path = m_tagRebuildPath->text().trimmed();
+    if (path.isEmpty()) {
+        logStatus("ERROR: No path specified for restore.");
+        return;
+    }
+    if (QFileInfo(path).isDir()) {
+        logStatus("ERROR: Restore requires a single file path, not a directory.");
+        return;
+    }
+
+    logStatus("=== Restore Last Tag Backup ===");
+    setButtonsEnabled(false);
+    m_runner->runScript("tagrestore", "musiclib_tagrestore.sh", QStringList() << path);
 }
 
 void MaintenancePanel::launchBoost()
@@ -764,8 +873,14 @@ void MaintenancePanel::setButtonsEnabled(bool enabled)
     m_buildExecuteBtn->setEnabled(enabled);
     m_tagCleanPreview->setEnabled(enabled);
     m_tagCleanExecute->setEnabled(enabled);
+    m_tagCleanRecursive->setEnabled(enabled);
+    m_tagCleanVerbose->setEnabled(enabled);
+    m_tagCleanKeepBackup->setEnabled(enabled);
     m_tagRebuildPreview->setEnabled(enabled);
     m_tagRebuildExecute->setEnabled(enabled);
+    m_tagRebuildKeepBackup->setEnabled(enabled);
+    if (m_tagRebuildRestoreBtn)
+        m_tagRebuildRestoreBtn->setEnabled(enabled);
     // m_boostExecuteBtn may be null when rsgain is not installed
     if (m_boostExecuteBtn)
         m_boostExecuteBtn->setEnabled(enabled);
