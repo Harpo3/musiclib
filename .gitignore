@@ -42,6 +42,7 @@ Makefile
 data/
 playlists/
 logs/
+skills/
 
 # ----- Test output -----
 Testing/

@@ -1,4 +1,4 @@
-# MusicLib Backend API Contract v1.5
+# MusicLib Backend API Contract v1.6
 
 ## Document Purpose
 
@@ -175,8 +175,8 @@ release_db_lock
 
 - Default timeout: **5 seconds**
 - Configurable via `LOCK_TIMEOUT` in `musiclib.conf`
-- On timeout (current): exit 2, JSON error
-- On timeout (future): exit 3, queue to pending operations file
+- On timeout: exit 3, write operation to `.pending_operations`, auto-retry via `musiclib_process_pending.sh`
+- Both `rate` and `add_track` operations are fully retried by the processor (see §1.6 for operation type details)
 
 #### 1.3.3 Lock File Location
 
@@ -271,6 +271,42 @@ echo "Music repo: $MUSIC_REPO"
 echo "RSGain available: $RSGAIN_INSTALLED"
 echo "Kid3 GUI variant: $KID3_GUI_INSTALLED"
 ```
+
+---
+
+### 1.6 Pending Operations File Format
+
+`~/.local/share/musiclib/data/.pending_operations` is a plain-text queue used to defer operations that fail due to a database lock timeout. It is written by individual scripts on lock failure and consumed by `musiclib_process_pending.sh` on the next retry cycle.
+
+**Wire format** — one operation per line, pipe-delimited:
+
+```
+TIMESTAMP|script|operation|remaining_args
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `TIMESTAMP` | Unix epoch (integer) | Time the operation was queued (`date +%s`) |
+| `script` | string | Originating script filename, e.g. `musiclib_rate.sh` |
+| `operation` | string | Operation type key; see table below |
+| `remaining_args` | string | Operation-specific payload; itself pipe-delimited |
+
+**Defined operation types and their `remaining_args` layouts**:
+
+| `operation` | `remaining_args` layout | Writer | Handled by processor? |
+|-------------|------------------------|--------|-----------------------|
+| `rate` | `filepath\|star_rating` | `musiclib_rate.sh` | Yes |
+| `add_track` | `filepath\|lastplayed` | `musiclib_new_tracks.sh` | Yes |
+
+**All operation types are handled.** Both `rate` and `add_track` operations are retried by the processor. Unknown operation types are logged and removed (not re-queued).
+
+**Constraints**:
+- The `|` character is the field delimiter. A filepath containing a literal `|` would corrupt the record; no current validation guards against this.
+- Lines are removed by `musiclib_process_pending.sh` after successful retry via `grep -xvFf` exact-line matching — the full raw line must round-trip identically.
+- Unknown `operation` values are logged and removed (not re-queued).
+
+**Writers**: `musiclib_rate.sh`, `musiclib_new_tracks.sh`
+**Reader**: `musiclib_process_pending.sh`
 
 ---
 
@@ -452,6 +488,41 @@ musiclib_mobile.sh upload workout.audpl --end-time "02/15/2026 21:00:00"
 | `MIN_PLAY_WINDOW` | `3600` (1 hour) | Minimum time window in seconds for accounting to proceed |
 | `MOBILE_WINDOW_DAYS` | `40` | Maximum time window in days before warning |
 
+**stdout format (GUI-parsed)**:
+
+All progress lines are written to stdout, one per newline. The GUI (`mobile_panel.cpp :: parseProgressLine()`) identifies lines by prefix and ignores all others for progress purposes (they are still displayed verbatim in the log area with color-coding by prefix).
+
+Two line patterns drive the progress bar:
+
+```
+ACCOUNTING: Track N/M: <message>
+UPLOAD: [N/M] <filename>
+```
+
+Where `N` is the current track number and `M` is the total. These are parsed via the regexes `ACCOUNTING:\s*Track\s+(\d+)/(\d+):` and `UPLOAD:\s*\[(\d+)/(\d+)\]`.
+
+One additional pattern signals upload completion:
+
+```
+UPLOAD: Complete — N files transferred (X.X MB)
+```
+
+The GUI matches this by string prefix (`UPLOAD: Complete`) to set the progress bar label to "Complete". Any change to these prefix spellings, bracket style `[N/M]`, or the `Track N/M:` substring will silently break the GUI's progress bar without a compile error.
+
+**Recovery file formats** (written by this subcommand, read by `retry` — see §2.2.3):
+
+`.pending_tracks` — tracks that were not found in the database during accounting:
+```
+filepath^synthetic_sql^synthetic_human
+```
+Three caret-delimited fields. `synthetic_sql` is the SQL-serial timestamp string written to the DSV; `synthetic_human` is the human-readable equivalent for display. No field may contain a literal `^`.
+
+`.failed` — tracks where the DB write or tag write failed:
+```
+filepath^synthetic_sql^synthetic_human^failure_reason
+```
+Four caret-delimited fields. `failure_reason` is one of `db_write_failed` or `tag_write_failed`. This is the same layout as `.pending_tracks` with one appended field — do not conflate the two schemas.
+
 ---
 
 #### 2.2.2 `musiclib-cli mobile status` → `musiclib_mobile.sh status`
@@ -513,6 +584,13 @@ musiclib_mobile.sh retry <playlist_name>
 
 **Parameters**:
 - `<playlist_name>`: Playlist basename (without extension), matching the recovery file prefix
+
+**Recovery file formats consumed** (written by `upload` — see §2.2.1 for authoritative format spec):
+
+`.pending_tracks`: `filepath^synthetic_sql^synthetic_human` (3 caret-delimited fields)
+`.failed`: `filepath^synthetic_sql^synthetic_human^failure_reason` (4 caret-delimited fields)
+
+If `upload` ever changes either format, `retry` must be updated in the same commit or accounting data will be silently misread.
 
 **Behavior**:
 - For `.pending_tracks` entries: checks whether the track now exists in the database (user may have imported it via `musiclib_new_tracks.sh`), then applies the stored synthetic timestamp
@@ -1857,26 +1935,16 @@ mv musiclib.dsv.new musiclib.dsv
 
 ## 8. Future Evolution Path
 
-### 8.1 Exit Code 3 Implementation (Deferred Operations)
+### 8.1 Exit Code 3 — Deferred Operations (Implementation Status)
 
-**Design**:
-1. On lock timeout, write operation to `~/.local/share/musiclib/data/pending_ops.json`:
-   ```json
-   {
-     "timestamp": "2026-02-07T18:45:23Z",
-     "operation": "rate",
-     "args": ["/path/to/file.mp3", "4"],
-     "retry_count": 0
-   }
-   ```
-2. Background daemon (`musiclibd`) or periodic cron job retries pending operations
-3. On success, remove from pending queue, send delayed KNotification
-4. On repeated failure (3+ retries), mark as failed, log error
+**Status**: Fully implemented. Queuing and retry are wired for all defined operation types (`rate` and `add_track`).
 
-**Benefits**:
-- No user-facing lock timeout errors
-- Operations never lost
-- Better UX during concurrent access
+**What is implemented**:
+- `musiclib_rate.sh`: on lock timeout after 3 retries, writes a `rate` record to `.pending_operations` and exits 3. After any successful DB write, it auto-triggers `musiclib_process_pending.sh` in the background.
+- `musiclib_new_tracks.sh`: on lock timeout in `add_track_to_database()`, writes an `add_track` record to `.pending_operations` and returns 3. When deferred count > 0, it auto-triggers `musiclib_process_pending.sh` in the background.
+- `musiclib_process_pending.sh`: fully handles both `rate` and `add_track` operations. For `add_track`: re-extracts metadata from the file via `kid3-cli`, acquires DB lock, appends the DSV entry, updates file tags, sends a kdialog passive popup, and removes the line from the queue. Stale entries (file no longer exists, track already in database) are removed without error.
+
+**Pending file format**: plain text, pipe-delimited — see §1.6 for full specification.
 
 ---
 

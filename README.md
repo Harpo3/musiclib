@@ -75,14 +75,14 @@ The setup wizard detects your system (Audacious, music directories, KDE Connect,
 **Launch**: `musiclib` or via application menu (MusicLib)
 
 **Features**:
-- **Library View**: Browse, filter, sort tracks; inline star rating, remove records, edit tags via kid3, play tracks via audacious
+- **Library View**: Browse, filter, sort tracks; inline star rating, remove records, edit tags via kid3, play tracks via audacious; copy track file path to clipboard via context menu
 - **Maintenance Panel**: Rebuild DB, clean tags, boost loudness, scan playlists
 - **Mobile Panel**: Upload playlists to Android via KDE Connect
 - **Settings**: Configure paths, device ID, global shortcuts
 - **CD Ripping**: Configure and launch k3b CD Ripper 
 - **System Tray**: Quick-rate current track (0–5 stars), open to maintenance
 
-**Global Shortcuts** (configurable in Settings):
+**Global Shortcuts** (configurable in KDE Menu Editor and System Settings):
 - `Meta+1` through `Meta+5`: Rate current track
 - `Meta+0`: Clear rating
 
@@ -102,8 +102,11 @@ musiclib-cli build
 # Import new music downloads
 musiclib-cli new-tracks "radiohead"
 
-# Rate a track (0–5 stars)
+# Rate a specific track (0–5 stars)
 musiclib-cli rate "/path/to/song.mp3" 4
+
+# Rate the currently playing track (0–5 stars)
+musiclib-cli rate 4
 
 # Clean and normalize ID3 tags
 musiclib-cli tagclean "/mnt/music/Artist/Album/"
@@ -111,8 +114,11 @@ musiclib-cli tagclean "/mnt/music/Artist/Album/"
 # Rebuild corrupted tags from database values
 musiclib-cli tagrebuild "/mnt/music/Artist/Album/"
 
-# Upload playlist to Android device
-musiclib-cli mobile upload /path/to/playlist.m3u
+# Restore tags from a pre-operation backup
+musiclib-cli tagrestore "/mnt/music/Artist/Album/song.mp3"
+
+# Upload Audacious playlist to Android device as .m3u file
+musiclib-cli mobile upload /path/to/playlist.audpl
 
 # Show mobile sync status
 musiclib-cli mobile status
@@ -140,15 +146,20 @@ musiclib-cli rate --help
 ```bash
 MUSICDB="~/.local/share/musiclib/data/musiclib.dsv"
 MUSIC_REPO="/mnt/music"
-DEVICE_ID="abc123def456"  # KDE Connect device (from kdeconnect-cli -l)
+DEVICE_ID="abc123def456"       # KDE Connect device (from kdeconnect-cli -l)
+KID3_CONFIG_FILE="~/.config/kid3/kid3rc"  # kid3 config path (auto-synced at setup and rating time)
+POPM_STAR1=1                   # POPM byte written for 1-star rating (default 1)
+POPM_STAR5=255                 # POPM byte written for 5-star rating (default 255)
 ```
+
+**Tag Schema** (`~/.config/musiclib/tag_schema.conf`): Declarative allowlist controlling which ID3v2 frames survive a tag rebuild. Frames are divided into `[db_written]` (sourced from `musiclib.dsv` and written fresh) and `[file_preserved]` (read from the file before strip and restored unchanged). Everything else is silently dropped. Installed at setup time; edit this file to preserve vendor or custom frames.
 
 **Audacious Hook** (for Conky, database and tag updates):
 Configured automatically during `musiclib-cli setup`. Run Audacious at least one time before running MusicLib setup so its plugins are initialized.
 
 **Conky Integration**:
-- If you use Conky as a desktop panel, you can configure it to display your library elements, like cover art, and other track information while playing music with Audacious. Musiclib place the data elements at `~/.local/share/musiclib/data/conky_output/` for this use.
-- Example: `${cat ~/.local/share/musiclib/data/conky_output/artist.txt}`
+- If you use Conky (or similar) as a desktop panel, you can configure it to display your library elements, like cover art, and other track information while playing music with Audacious. Musiclib places the data elements at `~/.local/share/musiclib/data/conky_output/` for this use.
+- conky.conf example: `${cat ~/.local/share/musiclib/data/conky_output/artist.txt}`
 
 ---
 
@@ -202,7 +213,7 @@ If `musiclib.dsv` becomes corrupted:
 cp ~/.local/share/musiclib/data/musiclib.dsv.backup.YYYYMMDD_HHMMSS \
    ~/.local/share/musiclib/data/musiclib.dsv
 
-# Or rebuild from filesystem (preserves ratings where possible)
+# Or rebuild from filesystem (preserves any POPM ratings stored in file tags)
 musiclib-cli build -b
 ```
 

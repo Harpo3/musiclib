@@ -2,7 +2,7 @@
 
 **For**: Solo developers and contributors working on MusicLib
 **Audience**: Casual coders with basic knowledge of bash, C++, and CMake
-**Last Updated**: 2026-03-05
+**Last Updated**: 2026-04-04
 
 ---
 
@@ -215,8 +215,8 @@ sudo make install
 ```
 
 **What gets installed**:
-- `/usr/bin/musiclib-cli`
-- `/usr/bin/musiclib` (if GUI built)
+- `build/bin/musiclib-cli`
+- `build/bin/musiclib` (if GUI built)
 - `/usr/lib/musiclib/bin/` — shell scripts
 - `/usr/lib/musiclib/config/` — reference configs
 - `/usr/share/musiclib/` — example files
@@ -318,7 +318,7 @@ gdb ./musiclib
 **Shell Script Backend**:
 ```bash
 # Enable bash tracing
-bash -x /usr/lib/musiclib/bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
+bash -x bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
 
 # Or add to script temporarily
 set -x  # Enable tracing
@@ -365,7 +365,7 @@ musiclib/
 │       ├── script_executor.cpp
 │       └── utils.cpp
 │
-├── scripts/                    # Shell script backend
+├── bin/                        # Shell script backend
 │   ├── build.sh                # Convenience build wrapper
 │   ├── clean.sh                # Remove build artifacts
 │   ├── install-deps.sh         # Install build + runtime dependencies
@@ -522,19 +522,19 @@ Shell scripts can be tested **independently** of the C++ layer:
 
 ```bash
 # Test rating script directly
-/usr/lib/musiclib/bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
+bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
 echo $?
 
 # Test with invalid input (should exit 1)
-/usr/lib/musiclib/bin/musiclib_rate.sh "/mnt/music/test.mp3" 99
+bin/musiclib_rate.sh "/mnt/music/test.mp3" 99
 echo $?
 
 # Test setup wizard
-/usr/lib/musiclib/bin/musiclib_init_config.sh --force
+bin/musiclib_init_config.sh --force
 echo $?
 
 # Test new-tracks import (dry run)
-/usr/lib/musiclib/bin/musiclib_new_tracks.sh "test_artist" --dry-run
+bin/musiclib_new_tracks.sh "test_artist" --dry-run
 echo $?
 
 # Test lock contention
@@ -626,7 +626,7 @@ Example: Adding a "Statistics" panel.
 
 1. **Edit script** (example: changing rating scale to 0–10):
    ```bash
-   vim scripts/musiclib_rate.sh
+   vim bin/musiclib_rate.sh
    # Update validation logic
    ```
 
@@ -638,7 +638,7 @@ Example: Adding a "Statistics" panel.
 
 3. **Test script directly**:
    ```bash
-   bash -x scripts/musiclib_rate.sh "/mnt/music/test.mp3" 7
+   bash -x bin/musiclib_rate.sh "/mnt/music/test.mp3" 7
    ```
 
 4. **Test CLI/GUI** (no recompilation needed—they invoke scripts):
@@ -792,7 +792,7 @@ cmake .. && make -j$(nproc)
 ./musiclib
 
 # Test shell script directly
-bash -x /usr/lib/musiclib/bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
+bash -x bin/musiclib_rate.sh "/mnt/music/test.mp3" 4
 
 # Run automated tests (once written)
 cd build && make test
@@ -808,9 +808,9 @@ cd build && make test
 ~/.local/share/musiclib/data/musiclib.dsv
 ~/.local/share/musiclib/logs/musiclib.log
 
-# Installed binaries
-/usr/bin/musiclib-cli
-/usr/bin/musiclib
+# Executables (working configuration)
+build/bin/musiclib-cli
+build/bin/musiclib
 
 # Installed scripts
 /usr/lib/musiclib/bin/
@@ -826,7 +826,7 @@ If you're new to the codebase, a good reading order:
 2. `docs/BACKEND_API.md` — shell script contract (exit codes, JSON errors, config variables)
 3. `src/gui/mainwindow.h` — main window layout and signal/slot map
 4. `src/gui/scriptrunner.h` — how C++ calls backend scripts
-5. `scripts/musiclib_utils.sh` — the shared utility library all scripts rely on
+5. `bin/musiclib_utils.sh` — the shared utility library all scripts rely on
 
 **As you work**:
 - Keep `BACKEND_API.md` updated if you add or change script invocation signatures
@@ -838,12 +838,13 @@ If you're new to the codebase, a good reading order:
 ## Contributing
 
 1. **Read the docs**: Start with `README.md` → `ARCHITECTURE.md` → this file
-2. **Follow the existing patterns**: C++ code invokes scripts, scripts do the real work
-3. **Test your changes**: Manual testing as described above, plus the test suite
-4. **Update documentation**: If you add features, update `BACKEND_API.md` and `SCRIPTS_SUMMARY.md`
+2. **Load the relevant skill**: Before making any code or script changes, load the relevant skill from `skills/` per the instructions in `CLAUDE.md`
+3. **Follow the existing patterns**: C++ code invokes scripts, scripts do the real work
+4. **Test your changes**: Manual testing as described above, plus the test suite
+5. **Update documentation**: If you add features, update `BACKEND_API.md` and `SCRIPTS_SUMMARY.md`
 
 ---
 
 **Document Version**: 1.2
-**Last Updated**: 2026-03-05
+**Last Updated**: 2026-04-04
 **Status**: Current — reflects MusicLib v1.2

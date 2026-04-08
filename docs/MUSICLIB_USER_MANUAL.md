@@ -1,7 +1,7 @@
 # MusicLib User Manual
 
-**Version**: 1.50
-**Last Updated**: March 2026
+**Version**: 1.6
+**Last Updated**: April 2026
 **For**: MusicLib on Linux with KDE Plasma 6
 
 ---
@@ -50,6 +50,7 @@ It sits between you and the Audacious audio player, and handles all the behind-t
 - **Centralizes Your Music**: Maintains a single database of all your songs, albums, and metadata—and expands each file's tag data to store rating and last-played information
 - **Rates and Organizes**: Star-rate songs and see your ratings everywhere, including Dolphin file manager
 - **Tracks Playback**: Records last-played history across devices—desktop (Audacious) and remote (mobile phone)
+- **Creates Smart Playlists**: Most smart playlist schemes are pretty crude. This one creates **real variety**
 - **Syncs to Mobile**: Pushes playlists/files to Android or iOS devices via KDE Connect, and captures the last-played data from the old playlist when the new one is replaced. Logs actual played timestamps for tracks played from the desktop, and logs synthesized dates for playlists played on mobile
 - **Rips CDs**: Manages K3b's rip configuration (format, bitrate, error correction) and deploys it before each session, so K3b is always ready with the settings you want
 - **Integrates with KDE**: Works seamlessly with Plasma, Dolphin file manager, and system shortcuts
@@ -432,7 +433,7 @@ You can also rate tracks without playing them: find a track's entry using Librar
 
 You can also rate tracks directly from Dolphin. Open Dolphin to your music library and right-click on a track you want to rate. Look for the star symbol on the context menu. Select and bring up the sub-menu to select your chosen rating. If you have not already, right-click on any column heading in Dolphin and enable the rating column. MusicLib integrates all ratings and rating changes to Dolphin immediately, and you can view all current ratings from within Dolphin.
 
-If you prefer keyboard shortcuts, set up `Ctrl+1` through `Ctrl+5` in **KDE System Settings → Shortcuts → Custom Shortcuts** and you can rate anything playing in Audacious without touching MusicLib's window. You can also right-click any audio file in Dolphin and choose **Rate Track** from the context menu — setup installs this automatically. See [Desktop Integration](#desktop-integration) for details.
+If you prefer keyboard shortcuts, set up `META+1` through `META+5` or similar in **KDE** to rate anything playing in Audacious without touching MusicLib's window. You can also right-click any audio file in Dolphin and choose **Rate Track** from the context menu — setup installs this automatically. See [Desktop Integration](#desktop-integration) for details.
 
 ### Step 3: Import a New Album
 
@@ -501,6 +502,8 @@ POPM (Popularimeter) is the ID3v2 frame used to store ratings. The default POPM 
 
 The exact POPM byte written to a file when you rate a track is controlled by `POPM_STAR1`–`POPM_STAR5` in `musiclib.conf`. You can override these in your user config (`~/.config/musiclib/musiclib.conf`) if you prefer different midpoint values. The POPM ranges in the table above (`RatingGroup1`–`RatingGroup5`) are used separately by the smart playlist system for eligibility logic and are not changed by overriding the write values.
 
+**kid3 config auto-sync**: MusicLib automatically propagates your POPM star-mapping, custom TXXX frame names, and UTF-8 text encoding into the kid3 config file (`KID3_CONFIG_FILE` in `musiclib.conf`, default `~/.config/kid3/kid3rc`). This keeps the kid3 GUI aligned with your MusicLib configuration without manual reconfiguration — it runs at rating time and at install time. If you change POPM values or add custom frames in `musiclib.conf`, the kid3 config updates automatically on the next rating or after re-running `musiclib-cli setup`.
+
 ### Mobile Sync Workflow
 
 Mobile sync is a two-phase operation:
@@ -545,7 +548,8 @@ You can select individual entries and:
 - **Play** — Context menu: play or add selected track to Audacious play queue
 - **Edit** — Context menu: open the selected track in Kid3 to edit tag; if editing fields for Artist, Album, Album Artist, Title, and Genre in kid3, after saving in kid3 you can double-click on the matching MusicLib database field and directly edit the record so it matches the kid3 tag change 
 - **Remove** — Context menu: Remove selected record from the database (optionally you can also remove the file)
-- **Open Music Library** — Context menu: Launches/activates the associated Dolphin music folder 
+- **Open Music Library** — Context menu: Launches/activates the associated Dolphin music folder
+- **Copy Location** — Context menu: Copy the selected track's file path to the clipboard; the path is also echoed to the status bar for quick reference
 
 ### Panels
 
@@ -669,6 +673,18 @@ Alternatively, open the track(s) in Kid3 and edit the tag(s) directly.
 **Restoring a tag backup**: If you ran a conform with **Keep backup after success** checked and want to roll back a specific file, enter that file's path in the path field and click **Restore Last Backup**. MusicLib will locate the most recent backup for that file and copy it back over the original. The backup is not deleted after restore, so you can restore again if needed.
 
 > **Note**: Conform Tags reads from `musiclib.dsv` but never writes back to it. Running it after a manual kid3 edit would overwrite those changes with stale database values. To sync a kid3 edit into the database, use the Edit Field workflow instead.
+
+### Tag Schema
+
+The tag schema (`~/.config/musiclib/tag_schema.conf`, installed from `/usr/lib/musiclib/config/`) is a declarative allowlist that controls exactly which ID3v2 frames survive a tag rebuild or normalization. Every frame in an MP3 file falls into one of three tiers:
+
+- **`[db_written]`** — Value is sourced from `musiclib.dsv` and written fresh on every rebuild. Standard fields like `Title`, `Artist`, `Album`, and `POPM` live here.
+- **`[file_preserved]`** — Value is read from the file *before* the strip step and written back unchanged. MusicLib does not modify these frames. ReplayGain tags, embedded album art, and USLT lyrics fall into this tier.
+- **Dropped** — Any frame not listed in either section is silently removed during rebuild. This keeps tags clean and prevents stale or unknown frames from accumulating.
+
+Entries use either kid3 unified names (e.g., `Title`, `Artist`), explicit TXXX descriptions prefixed with `!` (e.g., `!Songs-DB_Custom1`), or raw ID3v2 frame codes prefixed with `!` (e.g., `!RVA2`).
+
+**Customizing the schema**: To preserve a vendor TXXX frame that MusicLib would otherwise drop, add it to `[file_preserved]` in your installed copy. To add a new DB-sourced custom field, add it to `[db_written]` — it will automatically appear as a named field in the kid3 GUI after the next config auto-sync. Edit the file in `/usr/lib/musiclib/config/tag_schema.conf` and re-run `musiclib-cli setup` to redeploy, or edit `~/.config/musiclib/tag_schema.conf` directly.
 
 ### Boosting Album Loudness
 
@@ -859,13 +875,16 @@ Right-click any audio file in Dolphin file manager:
 
 ### Global Shortcuts
 
-Set up keyboard shortcuts in **System Settings** → **Shortcuts** → **Custom Shortcuts**:
+For rating tracks, global keyboard shortcuts are configured using a two-step process.
 
-- `Ctrl+M` — Open MusicLib window
-- `Ctrl+1` through `Ctrl+5` — Quick rate (1-5 stars)
-- `Ctrl+0` — Clear rating
+First, using **KDE Menu Editor**, create a menu item such as `Rating 5`. In the **Program** field, enter: `/usr/bin/musiclib-cli`; in the **Command-line Arguments** field, enter: `rate 5`. Using the **Advanced** tab, you can assign keyboard shortcuts, like `META+5`. Create menu entries for each of the other ratings using different command-line arguments `rate 4`, `rate 3`, etc.
 
-These work system-wide without focusing the MusicLib window.
+Next, under **KDE System Settings**, select **Keyboard** -> **Shortcuts** -> **Add New** -> **Application** and select the menu item for each one added from the previous step.
+
+- `META+1` through `META+5` — Quick rate (1-5 stars)
+- `META+0` — Clear rating
+
+The shortcuts will work system-wide when Audacious is playing, without MusicLib open or focused.
 
 ### Conky Integration
 
@@ -875,10 +894,10 @@ MusicLib generates output files with music data and images for use with a Conky 
 
 **Files generated**:
 
-- `detail.txt` — Artist or album summary
+- `detail.txt` — Artist or album summary (use the track's comment field in kid3 to populate the tag)
 - `starrating.png` — Visual star rating image
 - `artloc.txt` — Path to album art
-- `folder.jpg` — Album art image 
+- `folder.jpg` — Generated album art image named by MusicLib
 
 Add the paths to your `.conkyrc` to display now-playing information on your desktop or for other display purposes.
 
@@ -886,42 +905,54 @@ Add the paths to your `.conkyrc` to display now-playing information on your desk
 
 ## Smart Playlist
 
-The Smart Playlist panel generates variety-optimized playlists from your library using three key variables: track rating (POPM stars), days since last played, and a rolling artist exclusion window. The result is a playlist that surfaces artists and tracks you haven't heard in a while, weighted toward your preferred ratings.
+The Smart Playlist panel generates variety-optimized playlists from your library using **four variables you control**: **track rating** (POPM/stars), **days since last played (see Time Threshold by Rating)**, the size of the **rolling artist exclusion window**, and **Custom Artists** if you set them. The result is a playlist that always surfaces only the artists and tracks you haven't heard in a while, and is weighted with your preferred ratings.
 
 ### How the Algorithm Works
 
-MusicLib divides your library into five rating groups (1★ through 5★). For each group it applies an **age threshold**: tracks played more recently than the threshold are excluded from the candidate pool. Tracks that clear the threshold are eligible; the further past the threshold a track is, the higher its **variance** score. For example, assuming a threshold of 50 days, a track last played 100 days ago will have a much higher variance than one played 60 days ago. 
+MusicLib divides your library into five rating groups (1★ through 5★). For each group it applies an **age threshold**: tracks played more recently than the threshold are excluded from the candidate pool. Tracks that clear the threshold are eligible; the further past the threshold a track is, the higher its **variance** score. For example, assume you set a threshold of 50 days for four-star tracks. A four-star track last played 100 days ago would have a much higher variance than one played 60 days ago, and a track played 40 days ago would ineligible for inclusion because it has not reached the 50 day threshold.
 
-Variance scores are summed per group and used to assign proportional weights. Each batch of `sample_size` tracks is drawn from the pool in proportion to those weights, so rating groups with more eligible, long-unplayed tracks contribute more slots. This lets you tune the playlist mix — for example, raising the 1★ threshold makes 1-star tracks more restrictive (fewer eligible), shifting slots toward higher-rated groups.
+Unrated tracks are excluded from consideration. Rate tracks to include them in the pool.
 
-After each track is selected, its effective artist is added to a rolling exclusion window. The next `artist_exclusion_count` picks will skip any track by an artist already in the window, ensuring the playlist doesn't cluster around the same artists.
+Variance scores are summed per rating group and used to assign proportional weights to each. Each batch of `sample_size` tracks is drawn from the pool in proportion to those weights, so rating groups with more eligible, long-unplayed tracks contribute more slots. This lets you tune the playlist mix — for example, raising the 1★ threshold makes 1-star tracks more restrictive (fewer eligible), shifting slots toward higher-rated groups.
 
-### Tuning Thresholds
+When an eligible track is selected for playlist entry, its artist is newly added to the rolling **exclusion window**, and the oldest artist in the window is removed. The added artist will then be ineligible for selection for 40 tracks (assuming 40 artists is the **exclusion window** size), while the oldest artist already there for 40 tracks is removed and becomes eligible again. This process guarantees the playlist order doesn't cluster around the same artist. Real variety.
 
-Use the **Analyze** section of the Smart Playlist panel to preview how your current thresholds affect each rating group. The table shows eligible track counts, unique artist counts, variance totals, and the resulting sample weights. Adjust the age threshold spinboxes and run another preview to see the effect before generating.
+### Tuning the Algorithm
 
-Good starting points:
-- 1★ tracks need a long threshold (several hundred days) to keep low-rated music from overwhelming the pool.
-- 5★ tracks can have a short threshold (30–60 days) so your favorites cycle back quickly.
-- Use the **Sample breakdown** in the preview table to check that higher-rated groups hold the slots you want. It will show a breakdown of how many tracks per rating group given an assumed sample size of 20. You can modify the sample size, if desired.
+Besides rating each track from zero to five stars, there are three other variables you control that determine how smart playlists will be created.
 
-### The Custom Artist Field
+#### Time Threshold by Rating
 
-The exclusion window works on **effective artist**, not raw Album Artist. If a track has a value in the **Custom Artist** column (Custom2 in the database), that value is used instead of the **Artist** for exclusion purposes.
+Put simply, consider how many days on average should pass before a particular rated track can play again. Generally speaking, you would set lower-rated tracks to a higher value (more days before replay) than higher-rated tracks. Use the **Analyze** section of the Smart Playlist panel to preview how your current thresholds affect each rating group. The table shows eligible track counts, unique artist counts, variance totals, and the resulting sample weights. Adjust the age threshold spinboxes and run another preview to see the effect before generating.
 
-This matters when the same artist appears under multiple names. For example, if you have tracks filed under both *Tom Petty* and *Tom Petty & The Heartbreakers*, the exclusion window normally treats them as two separate artists — meaning both could appear close together in the playlist. Setting **Custom Artist** to `Petty` on all of those tracks causes them to share a single exclusion slot, so excluding `Petty` blocks both groups at once and produces genuine variety.
+**Good starting points**:
+- 1★ tracks would have a long threshold (several hundred days) to keep low-rated music from overwhelming the pool.
+- 5★ tracks would have a shorter threshold (30–60 days) so your favorites cycle back quickly.
+- Use the **Sample breakdown** in the preview table to check that higher-rated groups hold the slots you want. It will show a breakdown of how many tracks per rating group will be chosen, given an assumed sample size of 20. You can modify the sample size, if desired.
 
-To set a Custom Artist value, double-click the Custom Artist cell for any track in the library view. Tracks with no Custom Artist value fall back to their  Artist name automatically.
+#### Artist Exclusion Window
 
-The Analyze preview displays a **Custom Artist coverage** percentage showing what fraction of your eligible tracks have a Custom Artist value set. If coverage is low, partially-mapped artists will appear under two different effective-artist keys (e.g. `Petty` for tagged tracks and `Tom Petty` for untagged ones), and the exclusion window will track them independently. The preview will flag this if it affects your pool.
+This setting determines how many unique artist tracks have to play before that same artist can repeat. When you run a **Preview** (see below), you can determine the right count for you after considering the number of unique artists in your library.
+
+#### Custom Artist Field
+
+The **exclusion window** works on not only the **Artist**, but also the **effective artist** - that is, a **Custom Artist**. Whenever you give a track a value in the **Custom Artist** column (Custom2 in the database), that value is used instead of the **Artist** for exclusion purposes.
+
+**This matters when the same artist appears under multiple names.** For example, if you have tracks for both *Tom Petty* and *Tom Petty & The Heartbreakers* as **Artist**, the exclusion window would normally treat them as separate entries — meaning both could end up too close together in the playlist. Setting **Custom Artist** to `Petty` on all his tracks will cause them to share a single exclusion slot, so the exclusion entry of `Petty` will block both, as if the **Artist** name is identical.
+
+To **set a Custom Artist value**, double-click the Custom Artist cell for any track in the library view. Tracks with no Custom Artist value fall back to their  Artist name automatically.
+
+You could create custom artist groups using any scheme you like. For example, you may have 30 tracks by different artists of the same sub-genre and wish to consider them as a single artist like "Rockabilly". Create custom artists however you like.
+
+The Analyze preview displays a **Custom Artist coverage** percentage showing what fraction of your eligible tracks have a Custom Artist value set. If coverage is low, partially-mapped artists will appear under two different effective-artist keys (e.g. `Petty` for tagged tracks and `Tom Petty` or other variant for untagged ones), and the exclusion window will track them independently. The preview will flag this if it affects your pool.
 
 ### Using the Smart Playlist Panel
 
-**Configuration section** — Set age thresholds for each rating group, playlist size, sample size, and artist exclusion count. Changes are saved immediately to both the settings store and `musiclib.conf`. Use **Reset to defaults** to restore factory values.
+**Configuration section** — Set age thresholds for each rating group, artist **exclusion window** size, and playlist size. Changes are saved immediately to both the settings store and `musiclib.conf`. Use **Reset to defaults** to restore system default values.
 
-**Analyze section** — Click **Preview** to run a full analysis. The table shows per-group statistics including eligible track counts, unique artist counts (raw and after Custom Artist merging), and the expected sample breakdown at your current settings. Groups with fewer than 10 eligible tracks are highlighted and excluded from sampling.
+**Analyze section** — Click **Preview** to run a full analysis. Carefully review the results. The table shows per-group statistics including eligible track counts, unique artist counts (raw and after Custom Artist merging), and the expected sample breakdown at your current settings. Groups with fewer than 10 eligible tracks are highlighted and excluded from sampling.
 
-**Generate section** — Enter a playlist name, optionally check **Load into Audacious after generating**, then click **Generate Playlist**. Progress is shown in the log area. On success, the `.m3u` file is written to your playlists directory and (if selected) loaded directly into Audacious. **Note:** the playlist name can be duplicated in Audacious, so if you never change the default name "Smart Playlist" in MusicLib, or do not rename them in Audacious, you will end up with duplicate tabs with the same name.
+**Generate section** — Enter a playlist name, optionally check **Load into Audacious after generating**, then click **Generate Playlist**. Progress is shown in the log area. On success, the `.m3u` file is written to your playlists directory and (if selected) loaded directly into Audacious. **Note:** the playlist name can be duplicated in Audacious if you never change the default name "Smart Playlist" in MusicLib. You can always rename or delete the old one in Audacious so you won't end up with duplicate playlist tabs.
 
 ### Settings Dialog — Smart Playlist Page
 
@@ -931,7 +962,7 @@ All threshold and generation parameters are also accessible from **Settings → 
 
 ## Command-Line Reference
 
-MusicLib provides a full command-line interface via `musiclib-cli`. All GUI operations can be performed from the terminal.
+MusicLib provides a full, scriptable command-line interface: `musiclib-cli`.
 
 ### Global Options
 
@@ -949,9 +980,10 @@ These options are handled by the `musiclib-cli` wrapper before any subcommand:
 | `build` | Full database build/rebuild from filesystem scan |
 | `new-tracks` | Import new music downloads into the library and database |
 | `tagclean` | Clean and normalize audio file tags |
-| `tagrebuild` | Repair track tags from database values |
+| `tagrebuild` | Rewrite audio file tags from database values; use after database edits to sync tags to files |
+| `tagrestore` | Restore audio file tags from the most recent backup created by `tagrebuild` or `tagclean` |
 | `boost` | Apply ReplayGain loudness targeting to an album |
-| `rate` | Set star rating (0–5) for the current or a specified track |
+| `rate` | Set star rating (0–5) for the currently playing or specified track |
 | `mobile` | Mobile sync and Audacious playlist management |
 | `smart-playlist` | Analyze pool composition or generate a variety-optimized playlist |
 | `process-pending` | Retry deferred operations queued during lock contention |
@@ -979,7 +1011,7 @@ musiclib-cli setup [--force]
 - Detects Audacious installation and configures its integration
 - Scans for music directories
 - Creates XDG directory structure
-- Detects optional dependencies (RSGain, Kid3 GUI)
+- Detects optional dependencies (RSGain, Kid3 GUI, k3b)
 - Generates configuration file
 - Optionally builds initial database
 
@@ -1013,16 +1045,16 @@ musiclib-cli rate RATING [FILEPATH]
 **Behavior**:
 
 - When `FILEPATH` is provided: Rates that specific file
-- When omitted: Rates the currently playing track in Audacious (keyboard shortcut mode)
+- When omitted: Rates track currently playing in Audacious
 
 **Examples**:
 
 ```bash
-# Rate a specific file
+# Rate a specific file four stars 
 musiclib-cli rate 4 "/mnt/music/pink_floyd/dark_side/money.mp3"
 
-# Rate currently playing track (requires Audacious)
-musiclib-cli rate 5
+# Rate track four stars currently playing in Audacious
+musiclib-cli rate 4
 ```
 
 **What changes**:
@@ -1030,7 +1062,7 @@ musiclib-cli rate 5
 - Updates database (`musiclib.dsv`)
 - Writes POPM tag to file
 - Updates Grouping/Work tag (0-5)
-- Regenerates star rating image
+- Regenerates star rating image (for desktop elements)
 
 ---
 
@@ -2047,10 +2079,6 @@ done
 
 MusicLib is actively being developed. Here are features planned for future releases:
 
-### Advanced Playlist Creation (Implemented in v1.5)
-
-Smart playlist generation is now available. See the [Smart Playlist](#smart-playlist) section for full documentation. The feature includes variance-weighted sampling by rating group, configurable last-played age thresholds, a rolling artist exclusion window, and the Custom Artist field for artist-name grouping. Use the Smart Playlist panel to tune thresholds for your library and generate playlists directly into Audacious.
-
 ### KRunner Integration (Planned for v0.3)
 
 Quick actions from KRunner (Alt+Space):
@@ -2085,13 +2113,6 @@ If you find a bug:
 
 ---
 
-## Version History
-
-- **v0.1 Alpha** (Feb 2026) — Initial release with GUI core, ratings, and mobile sync
-- **v1.3** (Mar 2026) — K3b CD ripping integration: CD Ripping Panel, Rip CD toolbar action, drift detection, setup wizard K3b detection and k3brc generation
-
----
-
-**Questions? Suggestions? Visit the MusicLib project on GitHub or post in the Arch Linux forums.**
+**Questions? Suggestions? Version History? Visit the MusicLib project on GitHub or post in the Arch Linux forums.**
 
 Happy listening! 🎵
