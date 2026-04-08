@@ -567,10 +567,8 @@ rebuild_tag() {
 
     log_message "  Stage 3: Removing corrupted tags..."
 
-    # Remove ID3v1, ID3v2, APE
-    $KID3_CMD -c "remove 1" "$filepath" 2>/dev/null || true
-    $KID3_CMD -c "remove 2" "$filepath" 2>/dev/null || true
-    $KID3_CMD -c "remove 3" "$filepath" 2>/dev/null || true
+    # Remove ID3v1, ID3v2, APE — batched into one kid3-cli invocation
+    $KID3_CMD -c "remove 1" -c "remove 2" -c "remove 3" "$filepath" 2>/dev/null || true
 
     # Verify removal
     local tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^\[ID3" | wc -l)
@@ -675,35 +673,30 @@ rebuild_tag() {
     title="$(sanitize_for_kid3 "$title")"
     genre="$(sanitize_for_kid3 "$genre")"
 
+    # Accumulate all text "set" commands into an array; flush with a single
+    # kid3-cli invocation at the end of Stage 4.  Batching eliminates the per-
+    # command process-spawn overhead (Qt + taglib load) for every write.
+    # Commands that cannot be batched (remove, to23, picture) remain separate.
+    local -a kid3_set_cmds=()
+
     # Always write core tags (these are never excluded)
-    [ -n "$artist" ] && $KID3_CMD -c "set Artist '$artist'" "$filepath" 2>/dev/null
-    [ -n "$album" ] && $KID3_CMD -c "set Album '$album'" "$filepath" 2>/dev/null
-    [ -n "$albumartist" ] && $KID3_CMD -c "set AlbumArtist '$albumartist'" "$filepath" 2>/dev/null
-    [ -n "$title" ] && $KID3_CMD -c "set Title '$title'" "$filepath" 2>/dev/null
-    [ -n "$genre" ] && $KID3_CMD -c "set Genre '$genre'" "$filepath" 2>/dev/null
+    [ -n "$artist" ]       && kid3_set_cmds+=(-c "set Artist '$artist'")
+    [ -n "$album" ]        && kid3_set_cmds+=(-c "set Album '$album'")
+    [ -n "$albumartist" ]  && kid3_set_cmds+=(-c "set AlbumArtist '$albumartist'")
+    [ -n "$title" ]        && kid3_set_cmds+=(-c "set Title '$title'")
+    [ -n "$genre" ]        && kid3_set_cmds+=(-c "set Genre '$genre'")
 
     # Rating Tags (DB authoritative)
-    if [ -n "$db_rating" ]; then
-        $KID3_CMD -c "set POPM $db_rating" "$filepath" 2>/dev/null
-    fi
-    if [ -n "$db_groupdesc" ]; then
-        $KID3_CMD -c "set Work $db_groupdesc" "$filepath" 2>/dev/null
-    fi
+    [ -n "$db_rating" ]    && kid3_set_cmds+=(-c "set POPM $db_rating")
+    [ -n "$db_groupdesc" ] && kid3_set_cmds+=(-c "set Work $db_groupdesc")
 
     # Play Tracking Tags (DB authoritative - always allowed)
     # IMPORTANT: Written after Comment to prevent kid3-cli frame confusion
-    if [ -n "$db_lastplayed" ]; then
-        $KID3_CMD -c "set Songs-DB_Custom1 '$db_lastplayed'" "$filepath" 2>/dev/null
+    [ -n "$db_lastplayed" ] && kid3_set_cmds+=(-c "set Songs-DB_Custom1 '$db_lastplayed'")
+    [ -n "$db_custom2" ]    && kid3_set_cmds+=(-c "set Songs-DB_Custom2 '$db_custom2'")
+    if is_frame_allowed "COMM" && [ -n "$comment" ]; then
+        kid3_set_cmds+=(-c "set Comment '$comment'")
     fi
-    if [ -n "$db_custom2" ]; then
-        $KID3_CMD -c "set Songs-DB_Custom2 '$db_custom2'" "$filepath" 2>/dev/null
-    fi
-    if is_frame_allowed "COMM"; then
-        if [ -n "$comment" ]; then
-            $KID3_CMD -c "set Comment '$comment'" "$filepath" 2>/dev/null
-        fi
-    fi
-
 
     # ReplayGain Tags (preserve from extracted - always allowed)
     local rg_track_gain=$(get_extracted_value "REPLAYGAIN_TRACK_GAIN")
@@ -711,29 +704,33 @@ rebuild_tag() {
     local rg_album_gain=$(get_extracted_value "REPLAYGAIN_ALBUM_GAIN")
     local rg_album_peak=$(get_extracted_value "REPLAYGAIN_ALBUM_PEAK")
 
-    [ -n "$rg_track_gain" ] && $KID3_CMD -c "set REPLAYGAIN_TRACK_GAIN '$rg_track_gain'" "$filepath" 2>/dev/null
-    [ -n "$rg_track_peak" ] && $KID3_CMD -c "set REPLAYGAIN_TRACK_PEAK '$rg_track_peak'" "$filepath" 2>/dev/null
-    [ -n "$rg_album_gain" ] && $KID3_CMD -c "set REPLAYGAIN_ALBUM_GAIN '$rg_album_gain'" "$filepath" 2>/dev/null
-    [ -n "$rg_album_peak" ] && $KID3_CMD -c "set REPLAYGAIN_ALBUM_PEAK '$rg_album_peak'" "$filepath" 2>/dev/null
+    [ -n "$rg_track_gain" ] && kid3_set_cmds+=(-c "set REPLAYGAIN_TRACK_GAIN '$rg_track_gain'")
+    [ -n "$rg_track_peak" ] && kid3_set_cmds+=(-c "set REPLAYGAIN_TRACK_PEAK '$rg_track_peak'")
+    [ -n "$rg_album_gain" ] && kid3_set_cmds+=(-c "set REPLAYGAIN_ALBUM_GAIN '$rg_album_gain'")
+    [ -n "$rg_album_peak" ] && kid3_set_cmds+=(-c "set REPLAYGAIN_ALBUM_PEAK '$rg_album_peak'")
 
     # Other Extended Metadata (preserve from extracted, check if allowed)
     if is_frame_allowed "TYER"; then
-        [ -n "$year" ] && $KID3_CMD -c "set Year '$year'" "$filepath" 2>/dev/null
+        [ -n "$year" ]      && kid3_set_cmds+=(-c "set Year '$year'")
     fi
-
     if is_frame_allowed "TRCK"; then
-        [ -n "$track_num" ] && $KID3_CMD -c "set 'Track Number' '$track_num'" "$filepath" 2>/dev/null
+        [ -n "$track_num" ] && kid3_set_cmds+=(-c "set 'Track Number' '$track_num'")
     fi
-
     if is_frame_allowed "TPOS"; then
-        [ -n "$disc_num" ] && $KID3_CMD -c "set 'Disc Number' '$disc_num'" "$filepath" 2>/dev/null
+        [ -n "$disc_num" ]  && kid3_set_cmds+=(-c "set 'Disc Number' '$disc_num'")
+    fi
+    if is_frame_allowed "TBPM"; then
+        [ -n "$bpm" ]       && kid3_set_cmds+=(-c "set BPM '$bpm'")
     fi
 
-    if is_frame_allowed "TBPM"; then
-        [ -n "$bpm" ] && $KID3_CMD -c "set BPM '$bpm'" "$filepath" 2>/dev/null
+    # Flush all accumulated text writes in one kid3-cli invocation
+    if [ "${#kid3_set_cmds[@]}" -gt 0 ]; then
+        $KID3_CMD "${kid3_set_cmds[@]}" "$filepath" 2>/dev/null
     fi
 
     # Album Art (restore from extracted binary - APIC always allowed)
+    # Kept as a separate invocation: picture path arg uses different syntax;
+    # mixing it with text sets is fragile.
     if [ "$has_album_art" = true ]; then
         if $KID3_CMD -c "set picture:'$album_art' ''" "$filepath" 2>/dev/null; then
             log_message "  âœ“ Album art restored"
@@ -749,12 +746,16 @@ rebuild_tag() {
     # DB-authoritative entries (SCHEMA_TXXX_DB) were excluded from the
     # txxx_preserved_values loop above, so they cannot appear here and cannot
     # overwrite the DB-sourced values written earlier in Stage 4.
+    # Batched: accumulate all TXXX writes and flush in one kid3-cli invocation.
+    local -a txxx_set_cmds=()
     for desc in "${!txxx_preserved_values[@]}"; do
         local val_clean
         val_clean="$(sanitize_for_kid3 "${txxx_preserved_values[$desc]}")"
-        [ -n "$val_clean" ] && \
-            $KID3_CMD -c "set '$desc' '$val_clean'" "$filepath" 2>/dev/null
+        [ -n "$val_clean" ] && txxx_set_cmds+=(-c "set '$desc' '$val_clean'")
     done
+    if [ "${#txxx_set_cmds[@]}" -gt 0 ]; then
+        $KID3_CMD "${txxx_set_cmds[@]}" "$filepath" 2>/dev/null
+    fi
 
     # Restore lyrics (USLT) extracted in Stage 1.
     # exiftool cannot write MP3 tags on this system (ver 13.50); use mutagen
@@ -902,10 +903,8 @@ normalize_new_track_tags() {
     # STAGE 2: Remove All Existing Tags
     #########################################
 
-    # Remove ID3v1, ID3v2, APE
-    $KID3_CMD -c "remove 1" "$filepath" 2>/dev/null || true
-    $KID3_CMD -c "remove 2" "$filepath" 2>/dev/null || true
-    $KID3_CMD -c "remove 3" "$filepath" 2>/dev/null || true
+    # Remove ID3v1, ID3v2, APE — batched into one kid3-cli invocation
+    $KID3_CMD -c "remove 1" -c "remove 2" -c "remove 3" "$filepath" 2>/dev/null || true
 
     # Verify removal
     local tags_remaining=$(exiftool -G1 "$filepath" 2>/dev/null | grep "^\[ID3" | wc -l)

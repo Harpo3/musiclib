@@ -59,7 +59,7 @@ FILEPATH=""
 # Show Usage
 #############################################
 show_usage() {
-    cat << 'EOF'
+    cat << EOF
 Usage: musiclib-cli tagrestore <FILE.mp3> [options]
 
 Restore an MP3 file's tags from the most recent backup created by
