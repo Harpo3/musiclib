@@ -21,10 +21,14 @@ public:
      * @param interactive If true, forward stdin/stdout/stderr directly to
      *        the terminal so the script can use read, clear, prompts, etc.
      *        If false (default), capture output and parse JSON errors.
+     * @param streamOutput If true, print stdout to the terminal in real time
+     *        while still accumulating stderr for JSON error parsing on failure.
+     *        Intended for long-running commands like build. Ignored when
+     *        interactive is true.
      * @return Exit code from script (0=success, 1-3=error codes)
      */
     static int executeScript(const QString& scriptName, const QStringList& args,
-                             bool interactive = false);
+                             bool interactive = false, bool streamOutput = false);
     
     /**
      * @brief Resolve full path to a backend script

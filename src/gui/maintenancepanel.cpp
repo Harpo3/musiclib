@@ -219,7 +219,9 @@ QGroupBox *MaintenancePanel::createBuildGroup()
     auto *desc = new QLabel(
         "Full database rebuild from filesystem scan of MUSIC_REPO.  "
         "Backs up the current database before overwriting.  "
-        "NOTE: For large music libraries this can take a long time to process.");
+        "NOTE: For large music libraries this can take a long time to process.  "
+        "See log at bottom of this panel for progress. After completion,  "
+        "restart MusicLib to see Library Panel with populated data.");
     desc->setWordWrap(true);
     layout->addWidget(desc);
 

@@ -12,7 +12,7 @@
 #include <QDebug>
 
 int CLIUtils::executeScript(const QString& scriptName, const QStringList& args,
-                            bool interactive) {
+                            bool interactive, bool streamOutput) {
     // Resolve script path
     QString scriptPath = resolveScriptPath(scriptName);
 
@@ -45,6 +45,39 @@ int CLIUtils::executeScript(const QString& scriptName, const QStringList& args,
         cerr << "Error: Failed to start script: " << scriptPath << Qt::endl;
         cerr << "Reason: " << process.errorString() << Qt::endl;
         return 2;
+    }
+
+    // Streaming mode: print stdout to the terminal in real time while
+    // accumulating stderr for JSON error parsing after the process exits.
+    // Used for long-running commands (e.g. build) so progress lines appear
+    // immediately rather than all at once after waitForFinished.
+    if (streamOutput && !interactive) {
+        while (process.state() != QProcess::NotRunning) {
+            process.waitForReadyRead(100);
+            QByteArray chunk = process.readAllStandardOutput();
+            if (!chunk.isEmpty()) {
+                cout << QString::fromUtf8(chunk);
+                cout.flush();
+            }
+        }
+        // Drain any stdout written between last waitForReadyRead and exit
+        QByteArray remaining = process.readAllStandardOutput();
+        if (!remaining.isEmpty()) {
+            cout << QString::fromUtf8(remaining);
+            cout.flush();
+        }
+        int exitCode = process.exitCode();
+        QString stderrData = QString::fromUtf8(process.readAllStandardError());
+        if (exitCode != 0 && !stderrData.isEmpty()) {
+            if (stderrData.trimmed().startsWith('{')) {
+                displayScriptError(stderrData);
+            } else {
+                cerr << "Script error output:" << Qt::endl;
+                cerr << stderrData;
+                if (!stderrData.endsWith('\n')) cerr << Qt::endl;
+            }
+        }
+        return exitCode;
     }
 
     if (!process.waitForFinished(-1)) {  // Wait indefinitely

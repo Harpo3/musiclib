@@ -335,9 +335,9 @@ If Audacious is detected, the Song Change plugin and script is configured automa
 
 ### Step 7: Build Initial Database
 
-The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take a long time to process, especially for large collections. 
+The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take awhile to process, especially for large collections. For my library of 16,000 files, it took around 10 minutes.
 
-You can't really skip this. Without a database file, MusicLib will have little use.
+You can't really skip this. Without a database file, MusicLib will have little use. Alternatively, you can build it from the GUI. Look for `Build Library` at the top of the `Maintenance` Panel. After the build, restart the GUI and the `Library` Panel will be populated. 
 
 ---
 

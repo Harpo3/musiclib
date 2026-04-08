@@ -25,6 +25,38 @@ if [ -f "$CONFIG_FILE" ]; then
     EXISTING_CONFIG_FILE="$CONFIG_FILE"
 fi
 
+#############################################
+# Helper Functions
+#############################################
+
+print_header() {
+    echo ""
+    echo "═══════════════════════════════════════════════════════════"
+    echo "  $1"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+}
+
+print_step() {
+    echo ""
+    echo "───────────────────────────────────────────────────────────"
+    echo "  [$1] $2"
+    echo "───────────────────────────────────────────────────────────"
+    echo ""
+}
+
+print_success() {
+    echo "✓ $1"
+}
+
+print_info() {
+    echo "→ $1"
+}
+
+print_error() {
+    echo "✗ ERROR: $1" >&2
+}
+
 # Detect Audacious and pre-check plugin-registry readiness
 AUDACIOUS_DETECTED=false
 AUDACIOUS_REGISTRY_READY=false
@@ -65,38 +97,6 @@ K3B_DETECTED=false
 if command -v k3b &>/dev/null; then
     K3B_DETECTED=true
 fi
-
-#############################################
-# Helper Functions
-#############################################
-
-print_header() {
-    echo ""
-    echo "═══════════════════════════════════════════════════════════"
-    echo "  $1"
-    echo "═══════════════════════════════════════════════════════════"
-    echo ""
-}
-
-print_step() {
-    echo ""
-    echo "───────────────────────────────────────────────────────────"
-    echo "  [$1] $2"
-    echo "───────────────────────────────────────────────────────────"
-    echo ""
-}
-
-print_success() {
-    echo "✓ $1"
-}
-
-print_info() {
-    echo "→ $1"
-}
-
-print_error() {
-    echo "✗ ERROR: $1" >&2
-}
 
 prompt_yn() {
     local prompt="$1"
@@ -1044,7 +1044,7 @@ else
     echo "Looks like this is a first time install - no database found at: $DB_FILE"
     echo ""
 
-    if prompt_yn "Build it now?" "n"; then
+    if prompt_yn "Build it now? For 16,000 files, it takes on average 10 minutes." "n"; then
         echo ""
         if command -v musiclib-cli &>/dev/null; then
             musiclib-cli build "$MUSIC_REPO" || print_error "Database build failed"

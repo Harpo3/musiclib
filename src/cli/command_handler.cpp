@@ -457,7 +457,8 @@ int CommandHandler::handleBuild(const QStringList& args) {
     // Supported flags (see musiclib_build.sh show_usage):
     //   [MUSIC_DIR]  -h/--help  -d/--dry-run  -o FILE  -m DEPTH  --no-header
     //   -q/--quiet   -s COLUMN  -b/--backup   -t/--test  --no-progress
-    int exitCode = CLIUtils::executeScript("musiclib_build.sh", args);
+    int exitCode = CLIUtils::executeScript("musiclib_build.sh", args,
+                                           /*interactive=*/false, /*streamOutput=*/true);
 
     // Exit code 1 from --dry-run / -d is informational (preview complete), not an error
     if (exitCode == 1 && (args.contains("--dry-run") || args.contains("-d"))) {
