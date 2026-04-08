@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MusicLib VERSION 1.61 LANGUAGES CXX)
+project(MusicLib VERSION 1.62 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
