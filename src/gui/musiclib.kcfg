@@ -156,7 +156,7 @@
 
     <entry name="CloseToTray" type="Bool">
       <label>Closing the window hides it to the system tray</label>
-      <default>true</default>
+      <default>false</default>
     </entry>
 
     <entry name="StartMinimized" type="Bool">
