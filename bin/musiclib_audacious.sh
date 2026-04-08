@@ -8,6 +8,7 @@
 #   1 - Audacious not running, no track playing
 #   2 - System error (exiftool failed, tag write failed, DB lock timeout)
 #
+set -e
 set -u
 set -o pipefail
 

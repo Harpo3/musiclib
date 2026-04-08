@@ -15,6 +15,10 @@
 #   2 - System error (missing dependencies, I/O failure)
 #   3 - Deferred success (operation queued due to lock contention)
 
+set -e
+set -u
+set -o pipefail
+
 export QT_LOGGING_RULES="qt.*.debug=false;qt.qpa.plugin.debug=false;qt.qpa.wayland.debug=false"
 unset QT_DEBUG_PLUGINS  # Just in case it's set
 

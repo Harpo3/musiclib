@@ -22,6 +22,10 @@
 #   1 - User error (invalid arguments)
 #   2 - System error (missing dependencies, database not found)
 
+set -e
+set -u
+set -o pipefail
+
 export QT_LOGGING_RULES="qt.*.debug=false;qt.qpa.plugin.debug=false;qt.qpa.wayland.debug=false"
 unset QT_DEBUG_PLUGINS
 

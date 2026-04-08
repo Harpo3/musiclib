@@ -25,6 +25,10 @@
 #   1 - User error (no match, multiple matches, missing argument)
 #   2 - System error (config failure, DB not found, I/O error, lock timeout)
 
+set -e
+set -u
+set -o pipefail
+
 export QT_LOGGING_RULES="qt.*.debug=false;qt.qpa.plugin.debug=false;qt.qpa.wayland.debug=false"
 unset QT_DEBUG_PLUGINS
 

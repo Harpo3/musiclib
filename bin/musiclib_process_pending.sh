@@ -11,6 +11,10 @@
 #   2 - System error (cannot access pending file)
 #
 
+set -e
+set -u
+set -o pipefail
+
 export QT_LOGGING_RULES="qt.*.debug=false;qt.qpa.plugin.debug=false;qt.qpa.wayland.debug=false"
 unset QT_DEBUG_PLUGINS
 
@@ -139,6 +143,107 @@ processed_lines=""
 
 while IFS='|' read -r timestamp script operation remaining_args; do
     case "$operation" in
+        add_track)
+            # Extract filepath and lastplayed from remaining_args
+            # Format: filepath|lastplayed
+            filepath=$(echo "$remaining_args" | cut -d'|' -f1)
+            lastplayed=$(echo "$remaining_args" | cut -d'|' -f2)
+
+            # Validate inputs
+            if [ -z "$filepath" ] || [ -z "$lastplayed" ]; then
+                log_message "MALFORMED PENDING OPERATION: Missing filepath or lastplayed for add_track"
+                processed_lines="${processed_lines}${timestamp}|${script}|${operation}|${remaining_args}"$'\n'
+                continue
+            fi
+
+            # Skip if file no longer exists
+            if [ ! -f "$filepath" ]; then
+                log_message "SKIPPING PENDING add_track: File no longer exists: $filepath"
+                processed_lines="${processed_lines}${timestamp}|${script}|${operation}|${remaining_args}"$'\n'
+                continue
+            fi
+
+            # Skip if already in database (may have been added by another path)
+            if tail -n +2 "$MUSICDB" | grep -qF "^${filepath}^" 2>/dev/null; then
+                log_message "SKIPPING PENDING add_track: Already in database: $filepath"
+                processed_lines="${processed_lines}${timestamp}|${script}|${operation}|${remaining_args}"$'\n'
+                continue
+            fi
+
+            # Attempt to acquire DB lock before doing any metadata work
+            if ! acquire_db_lock 5; then
+                # Still locked - leave in queue for next attempt
+                log_message "RETRY FAILED: Cannot add_track $filepath (database locked, will retry later)"
+                continue
+            fi
+
+            # Extract metadata
+            track_title=$(basename "$filepath")
+            artist=""
+            album=""
+            albumartist=""
+            title=""
+            genre=""
+            if command -v kid3-cli >/dev/null 2>&1; then
+                artist=$(kid3-cli -c 'get artist' "$filepath" 2>/dev/null | head -n1 || true)
+                album=$(kid3-cli -c 'get album' "$filepath" 2>/dev/null | head -n1 || true)
+                albumartist=$(kid3-cli -c 'get albumartist' "$filepath" 2>/dev/null | head -n1 || true)
+                title=$(kid3-cli -c 'get title' "$filepath" 2>/dev/null | head -n1 || true)
+                genre=$(kid3-cli -c 'get genre' "$filepath" 2>/dev/null | head -n1 || true)
+                track_title="${title:-$(basename "$filepath")}"
+            fi
+
+            # Get song length
+            songlength_ms=$(get_song_length_ms "$filepath" 2>/dev/null || echo "0")
+            songlength=$(format_song_length "$songlength_ms" 2>/dev/null || echo "0:00")
+
+            # Get next ID and album ID
+            next_id=$(get_next_id "$MUSICDB")
+            idalbum=$(find_or_create_album "$MUSICDB" "${album:-}")
+
+            # Default rating/groupdesc values (mirrors musiclib_new_tracks.sh defaults)
+            local_default_rating="${DEFAULT_RATING:-0}"
+            local_default_groupdesc="${DEFAULT_GROUPDESC:-0}"
+
+            # Build new DSV entry
+            new_entry="${next_id}^${artist:-}^${idalbum}^${album:-}^${albumartist:-}^${title:-}^${filepath}^${genre:-}^${songlength}^${local_default_rating}^${CUSTOM2:-}^${local_default_groupdesc}^${lastplayed}^^"
+
+            # Validate field count
+            if ! validate_entry_fields "$new_entry"; then
+                release_db_lock
+                log_message "ERROR: Rejecting malformed DB entry for pending add_track: $filepath"
+                processed_lines="${processed_lines}${timestamp}|${script}|${operation}|${remaining_args}"$'\n'
+                continue
+            fi
+
+            # Write to database (lock already held); release lock regardless of outcome
+            write_ok=0
+            echo "$new_entry" >> "$MUSICDB" 2>/dev/null || write_ok=1
+            release_db_lock
+
+            if [ "$write_ok" -ne 0 ]; then
+                log_message "ERROR: Failed to write pending add_track to database: $filepath"
+                continue
+            fi
+
+            log_message "COMPLETED PENDING: Added track $filepath (ID: $next_id)"
+
+            # Update file tags
+            if command -v kid3-cli >/dev/null 2>&1 && [ -f "$filepath" ]; then
+                kid3-cli -c "set Songs-DB_Custom1 $lastplayed" "$filepath" 2>/dev/null || true
+                kid3-cli -c "set POPM ${local_default_rating}" "$filepath" 2>/dev/null || true
+                kid3-cli -c "set Work ${local_default_groupdesc}" "$filepath" 2>/dev/null || true
+            fi
+
+            # Show completion notification
+            if command -v kdialog >/dev/null 2>&1; then
+                kdialog --title 'Track Added' --passivepopup \
+                    "\"${track_title}\" added to library" 3 &
+            fi
+
+            # Mark for removal
+            processed_lines="${processed_lines}${timestamp}|${script}|${operation}|${remaining_args}"$'\n'
+            ;;
         rate)
             # Extract filepath and star_rating from remaining_args
             # Format: filepath|star_rating
