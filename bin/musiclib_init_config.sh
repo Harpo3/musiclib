@@ -140,7 +140,9 @@ count_audio_files() {
 read_conf_key() {
     local key="$1"
     local file="$2"
-    grep "^${key}=" "$file" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"'
+    # '|| true' on grep: under 'set -o pipefail' a no-match (exit 1) would
+    # otherwise propagate as the pipeline's exit status and abort the script.
+    { grep "^${key}=" "$file" 2>/dev/null || true; } | head -1 | cut -d'=' -f2- | tr -d '"'
 }
 
 # Return the predominant K3b-supported format (mp3/ogg/flac) found in MUSIC_REPO.
@@ -544,7 +546,7 @@ print_step "1/3" "Locating music repository"
 # Note: EXISTING_MUSIC_REPO may already be pre-set from Audacious detection above;
 # musiclib config takes priority if present, otherwise the Audacious-detected value is kept.
 if [ -n "$EXISTING_CONFIG_FILE" ]; then
-    _conf_repo=$(grep '^MUSIC_REPO=' "$EXISTING_CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"')
+    _conf_repo=$(read_conf_key MUSIC_REPO "$EXISTING_CONFIG_FILE")
     _conf_repo=$(eval echo "$_conf_repo" 2>/dev/null || echo "$_conf_repo")
     [ -n "$_conf_repo" ] && EXISTING_MUSIC_REPO="$_conf_repo"
 fi
@@ -607,7 +609,7 @@ print_step "2/3" "Configuring download directory"
 # Read existing setting
 EXISTING_DOWNLOAD_DIR=""
 if [ -n "$EXISTING_CONFIG_FILE" ]; then
-    EXISTING_DOWNLOAD_DIR=$(grep '^NEW_DOWNLOAD_DIR=' "$EXISTING_CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"')
+    EXISTING_DOWNLOAD_DIR=$(read_conf_key NEW_DOWNLOAD_DIR "$EXISTING_CONFIG_FILE")
     EXISTING_DOWNLOAD_DIR=$(eval echo "$EXISTING_DOWNLOAD_DIR" 2>/dev/null || echo "$EXISTING_DOWNLOAD_DIR")
 fi
 
@@ -657,7 +659,7 @@ DEVICE_ID=""
 # Read existing setting
 EXISTING_DEVICE_ID=""
 if [ -n "$EXISTING_CONFIG_FILE" ]; then
-    EXISTING_DEVICE_ID=$(grep '^DEVICE_ID=' "$EXISTING_CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '"')
+    EXISTING_DEVICE_ID=$(read_conf_key DEVICE_ID "$EXISTING_CONFIG_FILE")
 fi
 
 if command -v kdeconnect-cli &>/dev/null; then
@@ -822,20 +824,17 @@ EOF
     # This runs once at install time; runtime drift is caught by sync_external_tool_config()
     # in musiclib_utils_tag_functions.sh on each subsequent script invocation.
     if command -v kid3-cli &>/dev/null; then
-        # Read POPM_STAR values from system config; fall back to kid3 defaults
+        # Read POPM_STAR values from system config; fall back to kid3 defaults.
+        # Uses read_conf_key() (pipeline starts with 'head -1' so it never
+        # triggers set -o pipefail when the key is absent).
         _sys_conf="/usr/lib/musiclib/config/musiclib.conf"
         _p1=1; _p2=64; _p3=128; _p4=196; _p5=255
         if [ -f "$_sys_conf" ]; then
-            _v=$(grep -E '^POPM_STAR1=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
-            [ -n "$_v" ] && _p1=$_v
-            _v=$(grep -E '^POPM_STAR2=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
-            [ -n "$_v" ] && _p2=$_v
-            _v=$(grep -E '^POPM_STAR3=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
-            [ -n "$_v" ] && _p3=$_v
-            _v=$(grep -E '^POPM_STAR4=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
-            [ -n "$_v" ] && _p4=$_v
-            _v=$(grep -E '^POPM_STAR5=' "$_sys_conf" | cut -d= -f2 | tr -d '"' 2>/dev/null)
-            [ -n "$_v" ] && _p5=$_v
+            _v=$(read_conf_key POPM_STAR1 "$_sys_conf"); [ -n "$_v" ] && _p1=$_v || true
+            _v=$(read_conf_key POPM_STAR2 "$_sys_conf"); [ -n "$_v" ] && _p2=$_v || true
+            _v=$(read_conf_key POPM_STAR3 "$_sys_conf"); [ -n "$_v" ] && _p3=$_v || true
+            _v=$(read_conf_key POPM_STAR4 "$_sys_conf"); [ -n "$_v" ] && _p4=$_v || true
+            _v=$(read_conf_key POPM_STAR5 "$_sys_conf"); [ -n "$_v" ] && _p5=$_v || true
         fi
         # Point kid3-cli at the shared GUI config file (same as KID3_CONFIG_FILE in musiclib.conf)
         export KID3_CONFIG_FILE="$HOME/.config/kid3rc"
@@ -1039,13 +1038,13 @@ DB_FILE="${DATA_DIR}/data/musiclib.dsv"
 if [ -f "$DB_FILE" ]; then
     print_success "Database found"
 else
-    echo "Looks like this is a first time install - no database found at: $MUSIC_REPO"
+    echo "Looks like this is a first time install - no database found at: $DB_FILE"
     echo ""
 
     if prompt_yn "Build it now?" "n"; then
         echo ""
         if command -v musiclib-cli &>/dev/null; then
-            musiclib-cli build || print_error "Database build failed"
+            musiclib-cli build "$MUSIC_REPO" || print_error "Database build failed"
         else
             print_error "musiclib-cli not found - install the musiclib package first"
             print_info "When ready just run 'musiclib-cli build' in the terminal."

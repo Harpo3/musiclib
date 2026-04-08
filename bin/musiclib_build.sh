@@ -22,9 +22,11 @@ if [ -f "$SCRIPT_DIR/musiclib_utils.sh" ]; then
 fi
 
 # Fallback configuration
-MUSICDB="${MUSICDB:-$(get_data_dir)/data/musiclib.dsv}"
+_DATA_DIR_FB="${XDG_DATA_HOME:-$HOME/.local/share}/musiclib"
+MUSICDB="${MUSICDB:-$(get_data_dir 2>/dev/null || echo "$_DATA_DIR_FB")/data/musiclib.dsv}"
 MUSIC_ROOT_DIR="${MUSIC_ROOT_DIR:-/mnt/music}"
-ERROR_LOG="${ERROR_LOG:-${LOGFILE:-$(get_data_dir)/logs/musiclib.log}}"
+ERROR_LOG="${ERROR_LOG:-${LOGFILE:-${_DATA_DIR_FB}/logs/musiclib.log}}"
+unset _DATA_DIR_FB
 
 # Default settings
 MIN_DEPTH=1
