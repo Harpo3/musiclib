@@ -41,7 +41,10 @@ if command -v audacious &>/dev/null; then
     _aud_config="$HOME/.config/audacious/config"
     if [ -f "$_aud_config" ]; then
         _aud_path=$(awk '/^\[search-tool\]/{found=1; next} found && /^path=/{sub(/^path=/, ""); print; exit} found && /^\[/{exit}' "$_aud_config")
-        [ -n "$_aud_path" ] && EXISTING_MUSIC_REPO="$_aud_path"
+        if [ -n "$_aud_path" ]; then
+            EXISTING_MUSIC_REPO="$_aud_path"
+            print_info "Library location found in Audacious settings: $_aud_path"
+        fi
     fi
 fi
 
@@ -1171,7 +1174,7 @@ fi
 
 print_header "Dolphin Service Menu"
 
-SERVICEMENU_SRC="/usr/lib/musiclib/config/servicemenus/musiclib-rate.desktop"
+SERVICEMENU_SRC="/usr/share/kio/servicemenus/musiclib-rate.desktop"
 SERVICEMENU_DEST_DIR="${XDG_DATA_HOME}/kio/servicemenus"
 SERVICEMENU_DEST="${SERVICEMENU_DEST_DIR}/musiclib-rate.desktop"
 

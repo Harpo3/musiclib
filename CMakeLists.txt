@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MusicLib VERSION 1.60 LANGUAGES CXX)
+project(MusicLib VERSION 1.61 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -97,6 +97,14 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/bin/
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/config/
     DESTINATION lib/musiclib/config
     FILES_MATCHING PATTERN "*.conf" PATTERN "*.txt"
+    PERMISSIONS OWNER_READ OWNER_WRITE
+                GROUP_READ
+                WORLD_READ
+)
+
+# Install extension-less config files not matched by FILES_MATCHING above
+install(FILES ${CMAKE_SOURCE_DIR}/config/k3brc
+    DESTINATION lib/musiclib/config
     PERMISSIONS OWNER_READ OWNER_WRITE
                 GROUP_READ
                 WORLD_READ
