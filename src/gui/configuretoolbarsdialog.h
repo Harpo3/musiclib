@@ -26,8 +26,7 @@
 //
 // Copyright (c) 2026 MusicLib Project
 
-#ifndef CONFIGURETOOLBARSDIALOG_H
-#define CONFIGURETOOLBARSDIALOG_H
+#pragma once
 
 #include <QDialog>
 #include <QList>
@@ -128,5 +127,3 @@ private:
     QPushButton *m_moveUpBtn      = nullptr;
     QPushButton *m_moveDownBtn    = nullptr;
 };
-
-#endif // CONFIGURETOOLBARSDIALOG_H

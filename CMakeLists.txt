@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(MusicLib VERSION 1.4 LANGUAGES CXX)
+project(MusicLib VERSION 1.60 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -101,6 +101,33 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/config/
                 GROUP_READ
                 WORLD_READ
 )
+
+# KDE service menu installation (KF6: /usr/share/kio/servicemenus/)
+install(FILES ${CMAKE_SOURCE_DIR}/config/servicemenus/musiclib-rate.desktop
+    DESTINATION share/kio/servicemenus
+    PERMISSIONS OWNER_READ OWNER_WRITE
+                GROUP_READ
+                WORLD_READ
+)
+
+# Desktop entry installation
+install(FILES ${CMAKE_SOURCE_DIR}/desktop/org.musiclib.musiclib.desktop
+    DESTINATION share/applications
+    PERMISSIONS OWNER_READ OWNER_WRITE
+                GROUP_READ
+                WORLD_READ
+)
+
+# Icon installation (XDG hicolor theme)
+foreach(_size 48 128 256)
+    install(FILES ${CMAKE_SOURCE_DIR}/desktop/icons/musiclib_${_size}x${_size}.png
+        DESTINATION share/icons/hicolor/${_size}x${_size}/apps
+        RENAME musiclib.png
+        PERMISSIONS OWNER_READ OWNER_WRITE
+                    GROUP_READ
+                    WORLD_READ
+    )
+endforeach()
 
 # Man page installation
 find_program(GZIP gzip)

@@ -8,6 +8,7 @@ PRIVATE
 musiclib_common
 Qt${QT_VERSION_MAJOR}::Core
 )
+target_compile_definitions(musiclib-cli PRIVATE MUSICLIB_VERSION="${PROJECT_VERSION}")
 set_target_properties(musiclib-cli PROPERTIES
 OUTPUT_NAME musiclib-cli
 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

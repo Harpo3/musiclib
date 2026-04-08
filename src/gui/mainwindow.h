@@ -13,8 +13,7 @@
 //
 // Copyright (c) 2026 MusicLib Project
 
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#pragma once
 
 #include <KXmlGuiWindow>
 
@@ -292,5 +291,3 @@ private:
     QString m_audaciousPlaylistsDir;  // AUDACIOUS_PLAYLISTS_DIR
     QString m_mobileDir;              // MOBILE_DIR (playlists/mobile)
 };
-
-#endif // MAINWINDOW_H

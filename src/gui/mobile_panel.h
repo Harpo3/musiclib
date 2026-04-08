@@ -16,8 +16,7 @@
 //   which checks ~/musiclib/bin/ then /usr/lib/musiclib/bin/.
 //   No scriptsDir parameter needed.
 
-#ifndef MOBILEPANEL_H
-#define MOBILEPANEL_H
+#pragma once
 
 #include <QWidget>
 #include <QComboBox>
@@ -218,5 +217,3 @@ private:
     QGroupBox *m_statusGroup;
     QTextEdit *m_statusText;
 };
-
-#endif // MOBILEPANEL_H

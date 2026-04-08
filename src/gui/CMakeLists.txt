@@ -57,6 +57,7 @@ target_link_libraries(musiclib
 
 # The KConfigXT generator puts musiclibsettings.h in the build dir.
 # We need this on the include path so other sources can #include it.
+target_compile_definitions(musiclib PRIVATE MUSICLIB_VERSION="${PROJECT_VERSION}")
 target_include_directories(musiclib
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}

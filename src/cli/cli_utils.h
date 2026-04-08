@@ -1,8 +1,7 @@
 // cli_utils.h - CLI utility functions
 // Phase 1, Task 2: Argument Parser Implementation
 
-#ifndef CLI_UTILS_H
-#define CLI_UTILS_H
+#pragma once
 
 #include <QString>
 #include <QStringList>
@@ -79,5 +78,3 @@ public:
      */
     static QString readConfigValue(const QString& key);
 };
-
-#endif // CLI_UTILS_H

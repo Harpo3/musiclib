@@ -1,8 +1,7 @@
 // command_handler.h - Command registry and routing for musiclib-cli
 // Phase 1, Task 2: Argument Parser Implementation
 
-#ifndef COMMAND_HANDLER_H
-#define COMMAND_HANDLER_H
+#pragma once
 
 #include <QMap>
 #include <QString>
@@ -63,6 +62,7 @@ private:
     static int handleBuild(const QStringList& args);
     static int handleTagclean(const QStringList& args);
     static int handleTagrebuild(const QStringList& args);
+    static int handleTagrestore(const QStringList& args);
     static int handleNewTracks(const QStringList& args);
     static int handleProcessPending(const QStringList& args);
     static int handleSetup(const QStringList& args);
@@ -73,5 +73,3 @@ private:
     static QMap<QString, CommandInfo> commands_;
     static bool registered_;
 };
-
-#endif // COMMAND_HANDLER_H

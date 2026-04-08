@@ -60,6 +60,15 @@ void CommandHandler::registerCommands() {
         handleTagrebuild
     };
     
+    // Register: tagrestore
+    commands_["tagrestore"] = {
+        "tagrestore",
+        "Restore MP3 tags from a backup created by tagrebuild or tagclean",
+        "<FILE.mp3> [options]",
+        "musiclib_tagrestore.sh",
+        handleTagrestore
+    };
+
     // Register: new-tracks
     commands_["new-tracks"] = {
         "new-tracks",
@@ -224,6 +233,26 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
         cout << "  musiclib-cli tagrebuild \"/mnt/music/corrupted.mp3\"" << Qt::endl;
+    }
+    else if (cmd == "tagrestore") {
+        cout << "Arguments:" << Qt::endl;
+        cout << "  <FILE.mp3>  Path to the MP3 file whose tags you want to restore" << Qt::endl;
+        cout << Qt::endl;
+        cout << "Options:" << Qt::endl;
+        cout << "  -n, --dry-run   Show what would be restored without writing" << Qt::endl;
+        cout << "  -v, --verbose   List all available backups and show extra detail" << Qt::endl;
+        cout << "  -l, --list      List all available backups and exit without restoring" << Qt::endl;
+        cout << Qt::endl;
+        cout << "Description:" << Qt::endl;
+        cout << "  Restores an MP3 file's tags from the most recent backup created by" << Qt::endl;
+        cout << "  tagrebuild or tagclean when run with --keep-backup." << Qt::endl;
+        cout << Qt::endl;
+        cout << "Exit codes: 0=success, 1=no backup or bad args, 2=restore failed" << Qt::endl;
+        cout << Qt::endl;
+        cout << "Examples:" << Qt::endl;
+        cout << "  musiclib-cli tagrestore \"/mnt/music/song.mp3\"" << Qt::endl;
+        cout << "  musiclib-cli tagrestore \"/mnt/music/song.mp3\" --dry-run" << Qt::endl;
+        cout << "  musiclib-cli tagrestore \"/mnt/music/song.mp3\" --list" << Qt::endl;
     }
     else if (cmd == "new-tracks") {
         cout << "Arguments:" << Qt::endl;
@@ -452,6 +481,13 @@ int CommandHandler::handleTagrebuild(const QStringList& args) {
     // argument parsing and validation.
     // Supported: [TARGET] [-r] [-n] [-v] [-b DIR] [-h/--help]
     return CLIUtils::executeScript("musiclib_tagrebuild.sh", args);
+}
+
+int CommandHandler::handleTagrestore(const QStringList& args) {
+    // Pass all arguments directly to musiclib_tagrestore.sh - the script handles its own
+    // argument parsing and validation.
+    // Supported: <FILE.mp3> [-n/--dry-run] [-v/--verbose] [-l/--list] [-h/--help]
+    return CLIUtils::executeScript("musiclib_tagrestore.sh", args);
 }
 
 int CommandHandler::handleNewTracks(const QStringList& args) {

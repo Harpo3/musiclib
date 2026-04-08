@@ -11,8 +11,7 @@
 //
 // Copyright (c) 2026 MusicLib Project
 
-#ifndef ALBUMWINDOW_H
-#define ALBUMWINDOW_H
+#pragma once
 
 #include <QDialog>
 #include <QLabel>
@@ -80,5 +79,3 @@ private:
     QLabel       *m_commentLabel;   ///< detail.txt content
     QTreeWidget  *m_trackList;      ///< Track listing table
 };
-
-#endif // ALBUMWINDOW_H

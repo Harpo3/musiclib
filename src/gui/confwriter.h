@@ -11,8 +11,7 @@
 //
 // Copyright (c) 2026 MusicLib Project
 
-#ifndef CONFWRITER_H
-#define CONFWRITER_H
+#pragma once
 
 #include <QString>
 #include <QMap>
@@ -109,5 +108,3 @@ private:
     /// Parsed key→value map (keys are the shell variable names).
     QMap<QString, QString> m_values;
 };
-
-#endif // CONFWRITER_H

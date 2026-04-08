@@ -13,8 +13,7 @@
 //
 // Copyright (c) 2026 MusicLib Project
 
-#ifndef SETTINGSDIALOG_H
-#define SETTINGSDIALOG_H
+#pragma once
 
 #include <KConfigDialog>
 #include <QPair>
@@ -113,5 +112,3 @@ private:
     // ── Snapshot of conf values at dialog open (for hasChanged) ──
     QMap<QString, QString> m_savedSnapshot;
 };
-
-#endif // SETTINGSDIALOG_H

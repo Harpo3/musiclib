@@ -579,6 +579,57 @@ void MaintenancePanel::launchTagClean(bool dryRun)
         return;
     }
 
+    // --- Library-root warning (Execute + Recursive only) -------------------
+    // Mirror of the same guard in launchTagRebuild(): if the user is about to
+    // run a recursive Execute on the entire library root, intercept with a
+    // confirmation dialog.  Preview runs and sub-directory runs pass through.
+    if (!dryRun && m_tagCleanRecursive->isChecked()) {
+        bool isLibraryRoot = false;
+        QString musicRoot = configValue("MUSIC_ROOT_DIR");
+        if (musicRoot.isEmpty())
+            musicRoot = configValue("MUSIC_REPO");
+        if (!musicRoot.isEmpty()) {
+            QFileInfo fi1(path);
+            QFileInfo fi2(musicRoot);
+            isLibraryRoot = (fi1.canonicalFilePath() == fi2.canonicalFilePath());
+        }
+
+        if (isLibraryRoot) {
+            QMessageBox msgBox(this);
+            msgBox.setWindowTitle("Library-Wide Tag Clean");
+            msgBox.setIcon(QMessageBox::Warning);
+            msgBox.setText(
+                QString("You are about to clean tags recursively on your entire library root:\n%1")
+                    .arg(path));
+            msgBox.setInformativeText(
+                "This will modify every MP3 file in the library.  Per-file backups will be "
+                "created and deleted automatically on success unless \"Keep backup after "
+                "success\" is checked.\n\n"
+                "Recommended: run Preview (dry-run) first to confirm scope.\n\n"
+                "Do you want to proceed?");
+
+            QPushButton *cancelBtn  = msgBox.addButton("Cancel",
+                                          QMessageBox::RejectRole);
+            QPushButton *previewBtn = msgBox.addButton("Run Preview Instead",
+                                          QMessageBox::ActionRole);
+            /*QPushButton *proceedBtn =*/ msgBox.addButton("Proceed",
+                                          QMessageBox::AcceptRole);
+            msgBox.setDefaultButton(cancelBtn);
+            msgBox.exec();
+
+            QAbstractButton *clicked = msgBox.clickedButton();
+            if (clicked == previewBtn) {
+                launchTagClean(true);   // re-enter as dry-run
+                return;
+            }
+            if (clicked == cancelBtn || clicked == nullptr) {
+                return;                 // user cancelled — do nothing
+            }
+            // "Proceed" falls through to the script launch below
+        }
+    }
+    // -----------------------------------------------------------------------
+
     QString mode = m_tagCleanMode->currentData().toString();
     QString opId = dryRun ? "tagclean-preview" : "tagclean";
     logStatus(dryRun
