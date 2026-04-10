@@ -132,6 +132,12 @@ QFileSystemWatcher detects DSV change, triggers model refresh
 Library view updates (rating column shows 5 stars)
 ```
 
+**Write Atomicity**: The DSV update uses two independent guarantees:
+- **Serialization** (`flock` lock): prevents two writers from interleaving their output
+- **Crash safety** (`rename(2)` via `.tmp` + `mv`): if the process is killed mid-write, the original DSV file is untouched; the orphaned `.tmp` is discarded
+
+These are distinct. The lock alone does not protect against a mid-write crash; the rename alone does not prevent two concurrent writers. Both are required for a safe write.
+
 **Error Handling**:
 ```
 musiclib_rate.sh exits with code 2 (lock timeout)
@@ -195,6 +201,8 @@ Shows starrating.png (5-star image)
 Shows folder.jpg (album art)
 ```
 
+**Track-change defense**: `FILEPATH` is captured once at script entry via `audtool --current-song-filename`. The scrobble loop re-queries the current filename on every 3-second tick; if the result differs from the captured `FILEPATH` (track changed or playback stopped), the loop exits immediately without writing a scrobble. This ensures the scrobble threshold is never attributed to the wrong track.
+
 ---
 
 ### 2.4 Mobile Sync Workflow
@@ -242,7 +250,8 @@ On Upload 2, process Upload 1 tracks:
     • Distribute 42 tracks evenly: 345,600 / 42 ≈ 8,229 seconds apart
     • Assign timestamps: Monday + 8229s, Monday + 16458s, ...
     ↓
-Result: Realistic-looking last-played distribution in library view
+Result: Fabricated last-played timestamps in library view (evenly distributed, not
+based on actual playback; real listening pattern during the mobile period is unknown)
 ```
 
 ---

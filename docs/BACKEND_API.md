@@ -184,6 +184,26 @@ release_db_lock
 - Automatically created/removed by utility functions
 - Safe for NFS with kernel ≥2.6.12 (document: local filesystems recommended)
 
+#### 1.3.4 Crash Safety Model
+
+The lock protocol (§1.3.1) serializes concurrent writers. It does **not** guarantee crash atomicity — a process killed mid-write can leave a partially written file. MusicLib uses `rename(2)` (`.tmp` + `mv`) to provide crash-safe DSV updates independent of the lock.
+
+**Scripts using `.tmp` + `mv` (crash-safe)**:
+- `musiclib_rate.sh` — DSV rating/GroupDesc update (`awk` to `.tmp`, then `mv`)
+- `musiclib_utils.sh` — all `update_*` and `delete_record_by_path` helpers
+- `musiclib_edit_field.sh` — single-field in-place update
+- `musiclib_remove_record.sh` — row removal rewrite
+
+On crash or kill between the `awk ... > "$MUSICDB.tmp"` write and the `mv "$MUSICDB.tmp" "$MUSICDB"`, the original `$MUSICDB` is untouched and the `.tmp` file is left orphaned. The `.tmp` file is cleaned up on the next successful run.
+
+**Scripts using direct append (was not crash-safe — fixed)**:
+- `musiclib_new_tracks.sh::add_track_to_database` previously used `echo "$new_entry" >> "$MUSICDB"` (direct append at line 260). This was the one crash hole in the write path. It has been converted to `cat "$MUSICDB" + echo "$new_entry" > "$MUSICDB.tmp"` followed by `mv`, matching the pattern above.
+
+**Unverified paths (audit pending)**:
+- `musiclib_mobile.sh` accounting write paths — whether they use `.tmp` + `mv` or direct appends has not been audited. Treat as potentially unsafe until verified. See TASK_LIST.md.
+
+**Implication for recovery**: A `.tmp` file left from a crash is stale and safe to remove. If `musiclib.dsv.tmp` exists at startup, it can be deleted without data loss — the authoritative state is always in `musiclib.dsv`.
+
 ---
 
 ### 1.4 Path Conventions
@@ -439,7 +459,7 @@ musiclib_mobile.sh upload <playlist_name> [options]
 2. If a previous playlist exists and differs from upload target:
    a. Calculate accounting window (last upload time → end-time parameter or now)
    b. Validate window (minimum 1 hour, warn if >40 days)
-   c. Generate synthetic `LastTimePlayed` timestamps for tracks (exponential distribution)
+   c. Generate fabricated `LastTimePlayed` timestamps for tracks (evenly distributed across the accounting window — see §2.2.1 Synthetic Timestamp Note below)
    d. Update `musiclib.dsv` and file tags (`Songs-DB_Custom1`)
    e. Write recovery files (`.pending_tracks`, `.failed`) if any tracks fail
 3. If accounting fully succeeds, clean up previous playlist metadata
@@ -522,6 +542,13 @@ Three caret-delimited fields. `synthetic_sql` is the SQL-serial timestamp string
 filepath^synthetic_sql^synthetic_human^failure_reason
 ```
 Four caret-delimited fields. `failure_reason` is one of `db_write_failed` or `tag_write_failed`. This is the same layout as `.pending_tracks` with one appended field — do not conflate the two schemas.
+
+**Synthetic Timestamp Note**: The `LastTimePlayed` values written during accounting are **fabricated**. The algorithm distributes timestamps evenly across the accounting window (formula: `offset = window_duration × track_position / total_tracks`). This is a linear approximation — it assumes every track was played exactly once, spread uniformly over the window. The real listening pattern during the mobile period is unknown and unrecorded.
+
+Consequences of fabricated timestamps:
+- Values are written to both `musiclib.dsv` (DSV is authoritative) and the `Songs-DB_Custom1` file tag (permanent — survives a `musiclib-cli build` that reconstructs the DSV from tags)
+- A `musiclib-cli build` run after DSV loss will read these fabricated timestamps back from file tags and restore them as if they were real
+- There is no flag to opt out of synthetic accounting in the current config schema
 
 ---
 
@@ -1127,11 +1154,13 @@ musiclib_audacious.sh
 8. Append to `audacioushist.log`
 9. Optionally send KNotification
 
-**Side Effects** (all atomic via lock):
+**Side Effects**:
 - **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies – all written to `$MUSIC_DISPLAY_DIR/`
-- **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` (only after scrobble threshold met)
+- **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` via `.tmp` + `mv` (crash-safe; see §1.3.4); serialized via `flock` lock (see §1.3.1)
 - **File tags**: Updates `Songs-DB_Custom1` tag with last-played timestamp
 - **Logs**: Appends to `audacioushist.log` and `musiclib.log`
+
+**Atomicity Note**: The `flock` lock (§1.3.1) serializes concurrent writers — it prevents two processes from writing the DSV simultaneously. It does **not** guarantee crash atomicity. Crash safety for the DSV update is provided by the `.tmp` + `mv` pattern (§1.3.4). These are separate guarantees and should not be conflated.
 
 **Exit Codes**:
 
@@ -1189,6 +1218,8 @@ STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
 2. **Non-blocking**: Returns quickly to avoid delaying Audacious playback
 3. **Lock-aware**: Gracefully handles database lock contention (exit 2, not crash)
 4. **Silent operation**: Errors go to stderr (JSON) and log, not user notification
+5. **FILEPATH snapshot-on-entry**: `FILEPATH` is captured once at script entry via `audtool --current-song-filename`. It does not change during the scrobble wait loop.
+6. **Scrobble-loop track-change defense**: Every 3-second tick in the scrobble loop re-verifies `audtool --current-song-filename` against the captured `FILEPATH`. Any mismatch (track changed, playback stopped, Audacious quit) exits the loop without a scrobble write. The scrobble threshold will not fire if track or playback state changes during the wait.
 
 **Troubleshooting**:
 
@@ -1869,19 +1900,16 @@ Test files should live in `tests/fixtures/`:
 
 ### 6.1 Version Compatibility
 
-Scripts indicate API version via internal variable:
+Scripts expose the API version via an internal variable in `musiclib_utils.sh`:
 ```bash
-BACKEND_API_VERSION="1.2"
+BACKEND_API_VERSION="1.60"
 ```
 
-GUI/CLI check this on startup:
-```cpp
-QString apiVersion = getScriptVersion("/usr/lib/musiclib/bin/musiclib_utils.sh");
-if (apiVersion != "1.2") {
-    qWarning() << "Backend API version mismatch:" << apiVersion;
-    // Show warning dialog
-}
-```
+**Status: runtime version check is NOT implemented.** The GUI reads `BACKEND_API_VERSION` and displays it as an informational label in the Settings dialog (Advanced tab). No runtime comparison or compatibility gate exists in the C++ code — there is no `getScriptVersion()` call, no semver comparison, and no warning dialog triggered by a version mismatch.
+
+The §7 semver compatibility rules (major mismatch = hard error, minor bump = backward-compatible) define the intended policy but are not enforced at runtime. Until a version check is implemented, the version number is documentation-only.
+
+See §7 for the intended compatibility rules that a future runtime check should implement.
 
 ### 6.2 Schema Evolution
 

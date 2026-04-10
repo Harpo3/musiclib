@@ -337,6 +337,8 @@ If Audacious is detected, the Song Change plugin and script is configured automa
 
 The script offers to scan your selected music directories and build the initial `musiclib.dsv` database. This may take awhile to process, especially for large collections. For my library of 16,000 files, it took around 10 minutes.
 
+If you say yes to building, a second prompt asks whether to **restore last-played data from ID3 tags**. Choose **yes** only if you are rebuilding an existing MusicLib library whose files already have `Songs-DB_Custom1` tags written by MusicLib — this recovers your play history. It adds one extra tag read per file and makes the build noticeably slower. For a brand-new library, or if your play history was not stored by MusicLib (other applications do not write this tag), choose **no**.
+
 You can't really skip this. Without a database file, MusicLib will have little use. Alternatively, you can build it from the GUI. Look for `Build Library` at the top of the `Maintenance` Panel. After the build, restart the GUI and the `Library` Panel will be populated. 
 
 ---
