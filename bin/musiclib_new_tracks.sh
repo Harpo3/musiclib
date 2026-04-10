@@ -255,9 +255,16 @@ add_track_to_database() {
         return 1
     fi
 
-    # Inner function to perform the actual database write
+    # Inner function to perform the actual database write (crash-safe: tmp+mv)
     db_write_entry() {
-        echo "$new_entry" >> "$MUSICDB"
+        if ! { cat "$MUSICDB"; echo "$new_entry"; } > "$MUSICDB.tmp"; then
+            rm -f "$MUSICDB.tmp"
+            return 1
+        fi
+        if ! mv "$MUSICDB.tmp" "$MUSICDB"; then
+            rm -f "$MUSICDB.tmp"
+            return 1
+        fi
     }
 
     # Attempt to write with lock (5 second timeout)
