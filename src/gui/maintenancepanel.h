@@ -113,8 +113,9 @@ private:
     QPushButton    *m_clearLogBtn = nullptr;
 
     // Build Library controls
-    QPushButton *m_buildPreviewBtn  = nullptr;
-    QPushButton *m_buildExecuteBtn  = nullptr;
+    QPushButton *m_buildPreviewBtn        = nullptr;
+    QPushButton *m_buildExecuteBtn        = nullptr;
+    QCheckBox   *m_buildRestoreLastPlayed = nullptr;
 
     // Clean Tags controls
     QLineEdit   *m_tagCleanPath       = nullptr;

@@ -225,6 +225,18 @@ QGroupBox *MaintenancePanel::createBuildGroup()
     desc->setWordWrap(true);
     layout->addWidget(desc);
 
+    auto *optRow = new QHBoxLayout;
+    m_buildRestoreLastPlayed = new QCheckBox("Restore last-played from tags (--restore-lastplayed)");
+    m_buildRestoreLastPlayed->setChecked(true);
+    m_buildRestoreLastPlayed->setToolTip(
+        "Read LastTimePlayed from the Songs-DB_Custom1 tag in each file via kid3-cli.\n"
+        "Use this when rebuilding an existing MusicLib library to preserve play history.\n"
+        "Adds one tag read per file — build takes noticeably longer.\n"
+        "Uncheck for a new library or if play history was not stored by MusicLib.");
+    optRow->addWidget(m_buildRestoreLastPlayed);
+    optRow->addStretch();
+    layout->addLayout(optRow);
+
     auto *btnRow = new QHBoxLayout;
     m_buildPreviewBtn = new QPushButton("Preview (dry-run)");
     m_buildExecuteBtn = new QPushButton("Execute");
@@ -568,6 +580,8 @@ void MaintenancePanel::launchBuild(bool dryRun)
     QStringList args;
     if (dryRun)
         args << "--dry-run";
+    if (m_buildRestoreLastPlayed->isChecked())
+        args << "--restore-lastplayed";
 
     setButtonsEnabled(false);
     m_runner->runScript(opId, "musiclib_build.sh", args);
@@ -924,6 +938,7 @@ void MaintenancePanel::setButtonsEnabled(bool enabled)
 {
     m_buildPreviewBtn->setEnabled(enabled);
     m_buildExecuteBtn->setEnabled(enabled);
+    m_buildRestoreLastPlayed->setEnabled(enabled);
     m_tagCleanPreview->setEnabled(enabled);
     m_tagCleanExecute->setEnabled(enabled);
     m_tagCleanRecursive->setEnabled(enabled);
