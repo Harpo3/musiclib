@@ -655,6 +655,11 @@ print_success "Download directory: $DOWNLOAD_DIR"
 # Step 3: KDE Connect (Optional)
 #############################################
 
+echo ""
+print_info "Before continuing: ensure your mobile device has KDE Connect open and is paired to this computer if you wish to enable mobile sync."
+print_info "The next step will scan for paired devices to capture the device ID."
+read -rp "Press Enter when ready..."
+echo ""
 print_step "3/3" "KDE Connect configuration (optional)"
 
 DEVICE_ID=""
@@ -1046,8 +1051,19 @@ else
 
     if prompt_yn "Build it now? For 16,000 files, it takes on average 10 minutes." "n"; then
         echo ""
+        BUILD_FLAGS=""
+        echo "Restore last-played data from ID3 tags?"
+        echo "  This reads the Songs-DB_Custom1 tag written by MusicLib to recover"
+        echo "  play history stored in your files. It adds one extra tag read per"
+        echo "  file, so the build will take noticeably longer. Choose 'no' for a"
+        echo "  new library or if last-played data was not stored by MusicLib."
+        if prompt_yn "Restore last-played from tags? (slower)" "n"; then
+            BUILD_FLAGS="--restore-lastplayed"
+        fi
+        echo ""
         if command -v musiclib-cli &>/dev/null; then
-            musiclib-cli build "$MUSIC_REPO" || print_error "Database build failed"
+            # shellcheck disable=SC2086
+            musiclib-cli build "$MUSIC_REPO" $BUILD_FLAGS || print_error "Database build failed"
         else
             print_error "musiclib-cli not found - install the musiclib package first"
             print_info "When ready just run 'musiclib-cli build' in the terminal."
@@ -1221,10 +1237,7 @@ else
     print_info "Install k3b and re-run setup to enable."
 fi
 
-if [ -f "$SERVICEMENU_DEST" ]; then
-    echo ""
-    print_success "Dolphin service menu installed — right-click audio files to rate them."
-else
+if [ ! -f "$SERVICEMENU_DEST" ]; then
     echo ""
     print_info "Dolphin service menu not installed."
     print_info "Install the musiclib package and re-run setup to enable."
