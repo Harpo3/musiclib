@@ -688,6 +688,18 @@ void CDRippingPanel::setControlsEnabled(bool enabled)
 
 void CDRippingPanel::patchAndDeployK3brc()
 {
+    // Guard: abort if K3b has started between MainWindow's pre-launch check and
+    // this write.  Closing the residual Scenario A race window documented in
+    // BACKEND_API.md §3.4.
+    QString k3bCmd = m_confWriter->value(QStringLiteral("K3B_CMD"),
+                                         QStringLiteral("k3b"));
+    QProcess pgrep;
+    pgrep.start(QStringLiteral("pgrep"),
+                QStringList() << QStringLiteral("-x") << k3bCmd);
+    pgrep.waitForFinished(2000);
+    if (pgrep.exitCode() == 0)
+        return;   // K3b is running — do not overwrite its live config
+
     patchK3brc();
     deployK3brc();
 }

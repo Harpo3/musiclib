@@ -68,6 +68,8 @@ public:
     /// Patch the musiclib-managed k3brc with current ConfWriter values, then
     /// deploy it to ~/.config/k3brc.  Called by MainWindow before launching K3b
     /// (Scenario A of the toolbar Rip CD action).
+    /// Guards against the residual Scenario A race window: re-checks via pgrep
+    /// immediately before the write and aborts silently if K3b is already running.
     void patchAndDeployK3brc();
 
 Q_SIGNALS:
