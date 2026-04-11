@@ -85,14 +85,8 @@ fi
 
 do_edit() {
     # Find the column number for the requested field from the DSV header.
-    # grep -n "^FIELDNAME$" gives us an exact match on the field name.
     local colnum
-    colnum=$(head -1 "$MUSICDB" | tr '^' '\n' | grep -n "^${FIELD_NAME}$" | cut -d: -f1)
-
-    if [ -z "$colnum" ]; then
-        echo "Error: Column '$FIELD_NAME' not found in database header" >&2
-        return 2
-    fi
+    colnum=$(get_column_index "$MUSICDB" "$FIELD_NAME") || return 2
 
     # Verify the record ID exists (skip header row with NR > 1)
     local match_count

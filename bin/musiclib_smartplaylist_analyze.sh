@@ -219,33 +219,18 @@ if ! validate_database "$MUSICDB"; then
     exit 2
 fi
 
-# Detect column positions from the DSV header row.
+# Detect column positions from the DSV header row via get_column_index().
 # AlbumArtist is the raw artist column; Custom2 is the effective-artist override.
 # If Custom2 is absent from the schema, custom2colnum=0 and the awk guard
 # (ccol > 0 && $ccol != "") short-circuits to $acol for every track.
-header=$(head -1 "$MUSICDB")
-popmcolnum=$(printf '%s\n' "$header" | tr "$DELIM" '\n' | grep -n "^Rating$"        | cut -d: -f1)
-timecolnum=$(printf '%s\n' "$header" | tr "$DELIM" '\n' | grep -n "^LastTimePlayed$" | cut -d: -f1)
-artistcolnum=$(printf '%s\n' "$header" | tr "$DELIM" '\n' | grep -n "^AlbumArtist$" | cut -d: -f1)
-pathcolnum=$(printf '%s\n' "$header"  | tr "$DELIM" '\n' | grep -n "^SongPath$"     | cut -d: -f1)
-custom2colnum=$(printf '%s\n' "$header" | tr "$DELIM" '\n' | grep -n "^Custom2$"    | cut -d: -f1)
-custom2colnum="${custom2colnum:-0}"   # 0 disables Custom2 lookup in awk guards
-
-if [[ -z "$popmcolnum" ]]; then
-    error_exit 1 "Column 'Rating' not found in database header" "database" "$MUSICDB"; exit 1
-fi
-if [[ -z "$timecolnum" ]]; then
-    error_exit 1 "Column 'LastTimePlayed' not found in database header" "database" "$MUSICDB"; exit 1
-fi
-if [[ -z "$artistcolnum" ]]; then
-    error_exit 1 "Column 'AlbumArtist' not found in database header" "database" "$MUSICDB"; exit 1
-fi
-if [[ -z "$pathcolnum" ]]; then
-    error_exit 1 "Column 'SongPath' not found in database header" "database" "$MUSICDB"; exit 1
-fi
+popmcolnum=$(get_column_index "$MUSICDB" "Rating")        || { error_exit 1 "Column 'Rating' not found in database header" "database" "$MUSICDB"; exit 1; }
+timecolnum=$(get_column_index "$MUSICDB" "LastTimePlayed") || { error_exit 1 "Column 'LastTimePlayed' not found in database header" "database" "$MUSICDB"; exit 1; }
+artistcolnum=$(get_column_index "$MUSICDB" "AlbumArtist")  || { error_exit 1 "Column 'AlbumArtist' not found in database header" "database" "$MUSICDB"; exit 1; }
+pathcolnum=$(get_column_index "$MUSICDB" "SongPath")       || { error_exit 1 "Column 'SongPath' not found in database header" "database" "$MUSICDB"; exit 1; }
+custom2colnum=$(get_column_index "$MUSICDB" "Custom2" 2>/dev/null) || custom2colnum=0  # 0 disables Custom2 lookup in awk guards
 
 # Variance is appended after the last original DSV field
-varcol=$(( $(printf '%s\n' "$header" | tr -cd "$DELIM" | wc -c) + 2 ))
+varcol=$(( $(head -1 "$MUSICDB" | tr -cd "$DELIM" | wc -c) + 2 ))
 
 ###############################################################################
 # Temp directory setup

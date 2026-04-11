@@ -142,6 +142,23 @@ check_required_tools() {
 # DATABASE HELPERS
 #############################################
 
+# Resolve a column name to its 1-based awk field index from the DSV header.
+# Usage: get_column_index <db_file> <col_name>
+# Prints the column number (integer ≥ 1) on success.
+# Prints an error message to stderr and returns 1 if the column is not found.
+# Example: colnum=$(get_column_index "$MUSICDB" "SongPath")
+get_column_index() {
+    local db_file="$1"
+    local col_name="$2"
+    local colnum
+    colnum=$(head -1 "$db_file" | tr '^' '\n' | grep -n "^${col_name}$" | cut -d: -f1)
+    if [ -z "$colnum" ]; then
+        echo "Error: Column '${col_name}' not found in database header of ${db_file}" >&2
+        return 1
+    fi
+    echo "$colnum"
+}
+
 # Get next available ID from database
 get_next_id() {
     local db_file="$1"
@@ -170,16 +187,24 @@ find_or_create_album() {
         return 0
     fi
 
-    # Search for existing album (exact match on second field)
-    local idalbum=$(awk -F'^' -v album="$album_name" '$4 == album {print $3; exit}' "$db_file")
+    # Resolve column indices from header (safe against schema changes).
+    local albumcol idalbumcol
+    albumcol=$(get_column_index "$db_file" "Album")    || return 1
+    idalbumcol=$(get_column_index "$db_file" "IDAlbum") || return 1
+
+    # Search for existing album (exact match on Album column).
+    local idalbum
+    idalbum=$(awk -F'^' -v album="$album_name" -v acol="$albumcol" -v icol="$idalbumcol" \
+        '$acol == album { print $icol; exit }' "$db_file")
 
     if [ -n "$idalbum" ]; then
         echo "$idalbum"
         return 0
     fi
 
-    # Create new IDAlbum (max existing + 1)
-    local max_idalbum=$(tail -n +2 "$db_file" | cut -d'^' -f3 | grep -E '^[0-9]+$' | sort -n | tail -n1)
+    # Create new IDAlbum (max existing + 1).
+    local max_idalbum
+    max_idalbum=$(tail -n +2 "$db_file" | cut -d'^' -f"${idalbumcol}" | grep -E '^[0-9]+$' | sort -n | tail -n1)
 
     if [ -z "$max_idalbum" ]; then
         echo "1"
@@ -536,11 +561,15 @@ delete_record_by_id_and_path() {
         return 1
     fi
 
-    # Use awk to find rows where field 1 (ID) and field 7 (SongPath) both match.
+    # Resolve SongPath column index from header (safe against schema changes).
+    local pathcol
+    pathcol=$(get_column_index "$db_file" "SongPath") || return 1
+
+    # Use awk to find rows where field 1 (ID) and SongPath column both match.
     # FS=^ matches the DSV caret delimiter.  NR==1 (header) is never a match.
     local match_count
-    match_count=$(awk -F'^' -v id="$record_id" -v path="$filepath" \
-        'NR > 1 && $1 == id && $7 == path { count++ } END { print count+0 }' \
+    match_count=$(awk -F'^' -v id="$record_id" -v path="$filepath" -v pcol="$pathcol" \
+        'NR > 1 && $1 == id && $pcol == path { count++ } END { print count+0 }' \
         "$db_file" 2>/dev/null)
 
     if [ "$match_count" -eq 0 ]; then
@@ -554,8 +583,8 @@ delete_record_by_id_and_path() {
 
     # Rewrite the DB, keeping every row that does NOT match both ID and path.
     # The header row (NR==1) is always kept.
-    if ! awk -F'^' -v id="$record_id" -v path="$filepath" \
-        'NR == 1 || !($1 == id && $7 == path) { print }' \
+    if ! awk -F'^' -v id="$record_id" -v path="$filepath" -v pcol="$pathcol" \
+        'NR == 1 || !($1 == id && $pcol == path) { print }' \
         "$db_file" > "${db_file}.tmp" 2>/dev/null; then
         echo "Error: Failed to write temporary database while deleting record" >&2
         rm -f "${db_file}.tmp"
