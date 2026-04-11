@@ -1,6 +1,6 @@
 # MusicLib User Manual
 
-**Version**: 1.6
+**Version**: 1.62
 **Last Updated**: April 2026
 **For**: MusicLib on Linux with KDE Plasma 6
 
@@ -960,6 +960,12 @@ The Analyze preview displays a **Custom Artist coverage** percentage showing wha
 
 All threshold and generation parameters are also accessible from **Settings → Smart Playlist**, letting you adjust values without opening the panel. Changes here sync to `musiclib.conf` on Apply, so the backend scripts pick them up immediately. The Smart Playlist panel reads from the same settings store, so values stay consistent between the two locations.
 
+### New Libraries Without Play History
+
+If your library has no play history yet, the Smart Playlist will still generate successfully. Tracks with no play record are treated as maximally overdue — each receives the highest possible variance score — so every rated track is eligible and all are weighted equally. The playlist will be **rating-weighted but play-history-blind**: higher-rated groups will still receive more slots proportional to their size, but within each group the ordering carries no "most overdue" signal until real play history accumulates.
+
+This is expected behavior. Run Generate normally and the playlist will improve on its own as play timestamps are written after each listening session.
+
 ---
 
 ## Command-Line Reference
@@ -1733,7 +1739,7 @@ MusicLib includes standalone utility scripts that operate outside the normal com
 
 ### conform_musiclib.sh — Filename Conformance Tool
 
-**Location**: `~/.local/share/musiclib/utilities/conform_musiclib.sh`
+**Location**: `/usr/lib/musiclib/bin/conform_musiclib.sh`
 
 **Purpose**: Rename non-conforming music filenames to MusicLib naming standards **before** database creation.
 
@@ -1758,16 +1764,16 @@ The script scans your music directory and applies these naming rules:
 
 ```bash
 # Preview changes (dry-run, default)
-~/.local/share/musiclib/utilities/conform_musiclib.sh /path/to/music
+/usr/lib/musiclib/bin/conform_musiclib.sh /path/to/music
 
 # Actually rename files
-~/.local/share/musiclib/utilities/conform_musiclib.sh --execute /path/to/music
+/usr/lib/musiclib/bin/conform_musiclib.sh --execute /path/to/music
 
 # Verbose output
-~/.local/share/musiclib/utilities/conform_musiclib.sh --verbose /path/to/music
+/usr/lib/musiclib/bin/conform_musiclib.sh --verbose /path/to/music
 
 # Combined: verbose execute
-~/.local/share/musiclib/utilities/conform_musiclib.sh --verbose --execute /path/to/music
+/usr/lib/musiclib/bin/conform_musiclib.sh --verbose --execute /path/to/music
 ```
 
 **Options**:

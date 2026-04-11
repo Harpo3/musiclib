@@ -42,7 +42,6 @@ qt_add_resources(musiclib "app_icons"
 
 target_link_libraries(musiclib
     PRIVATE
-        musiclib_common
         Qt6::Widgets
         Qt6::DBus
         KF6::CoreAddons

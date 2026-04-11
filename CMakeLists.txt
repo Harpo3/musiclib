@@ -56,7 +56,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON) # LTO
 endif()
 
-add_subdirectory(src/common)
 add_subdirectory(src/cli)
 
 option(BUILD_GUI "Build Qt6/KDE GUI application" OFF)

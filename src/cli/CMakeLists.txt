@@ -5,7 +5,6 @@ cli_utils.cpp
 )
 target_link_libraries(musiclib-cli
 PRIVATE
-musiclib_common
 Qt${QT_VERSION_MAJOR}::Core
 )
 target_compile_definitions(musiclib-cli PRIVATE MUSICLIB_VERSION="${PROJECT_VERSION}")
