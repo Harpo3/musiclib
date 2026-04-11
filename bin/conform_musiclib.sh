@@ -95,7 +95,7 @@ WORKFLOW:
     2. Identify non-conforming filenames
     3. For each non-conforming file:
        - Copy to new conforming filename
-       - Verify copy succeeded (size match)
+       - Verify copy succeeded (sha256 checksum match)
        - Delete original file
     4. Log all actions
 
@@ -350,8 +350,8 @@ process_file() {
     local oldname
     local newname
     local newpath
-    local oldsize
-    local newsize
+    local oldsum
+    local newsum
     
     dir="$(dirname "$filepath")"
     oldname="$(basename "$filepath")"
@@ -387,23 +387,23 @@ process_file() {
         return 2
     fi
     
-    # Step 2: Verify copy (check file exists and size matches)
+    # Step 2: Verify copy (check file exists and checksum matches)
     if [ ! -f "$newpath" ]; then
         log_message "ERROR" "Verify failed: $newpath does not exist after copy"
         return 2
     fi
-    
-    oldsize="$(stat -c%s "$filepath" 2>/dev/null || echo "0")"
-    newsize="$(stat -c%s "$newpath" 2>/dev/null || echo "0")"
-    
-    if [ "$oldsize" != "$newsize" ]; then
-        log_message "ERROR" "Verify failed: size mismatch ($oldsize vs $newsize)"
+
+    oldsum="$(sha256sum "$filepath" 2>/dev/null | awk '{print $1}')"
+    newsum="$(sha256sum "$newpath" 2>/dev/null | awk '{print $1}')"
+
+    if [ -z "$oldsum" ] || [ "$oldsum" != "$newsum" ]; then
+        log_message "ERROR" "Verify failed: checksum mismatch for $newname"
         # Remove failed copy
         rm -f -- "$newpath" 2>/dev/null
         return 2
     fi
-    
-    log_message "VERIFY" "$newname (OK: $newsize bytes)"
+
+    log_message "VERIFY" "$newname (OK: sha256 match)"
     
     # Step 3: Delete original
     log_message "DELETE" "$oldname"
