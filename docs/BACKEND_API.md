@@ -21,12 +21,14 @@ All MusicLib backend scripts use a standardized exit code contract:
 | **2** | System/Operational Error | Config missing, tool unavailable, I/O failure, lock timeout | `kid3-cli` not installed, DB file unreadable, permissions denied, `flock` timeout >5s |
 | **3** | Deferred | Operation queued for retry due to lock contention | Lock timeout → operation added to pending queue, success notification delayed |
 
-**Current Status**: Exit code 3 (deferred operations) is **implemented** via `musiclib_process_pending.sh`. When `musiclib_rate.sh` encounters a lock timeout, it writes the pending operation to `.pending_operations` and exits 3. The process pending script retries these automatically.
+**Implementation status**: Exit codes 3 (deferred) is fully implemented — see §8.1 for detail.
+
+**Cross-store divergence caveat (exit 2)**: `musiclib_rate.sh` writes file tags before updating the DSV (tags first, then DB under lock). If a tag write succeeds but the subsequent DSV update fails, the script exits 2 and the two stores are now out of sync: the file tag reflects the new rating, but the DSV still holds the old value. The DSV is authoritative; tags, Conky assets, xattrs, and Baloo are derived views. After any exit-2 incident, re-run the failed operation to bring the DSV back in line, then run `musiclib-cli tagrebuild` or `musiclib-cli build` if a broader resync is needed. See §1.3.5 for the full cross-store consistency model.
 
 **Usage Rules**:
 1. **Exit 0 only on complete success** -- All required side effects must be applied (file tags, DB updates, notifications, Conky artifacts). Partial success is exit 2.
 2. **Exit 1 for user errors** -- Validate arguments and preconditions before operations. Exit 1 immediately with no side effects if validation fails.
-3. **Exit 2 for system failures** -- Config errors, missing tools, permissions, I/O failures, lock timeouts (until exit 3 implemented).
+3. **Exit 2 for system failures** -- Config errors, missing tools, permissions, I/O failures, lock timeouts.
 4. **Exit 3 for deferred work** -- Operation queued to process pending file, user gets "pending" notification now, "completed" notification later.
 5. **No other exit codes** -- Scripts must only use 0, 1, 2, or 3.
 
@@ -99,9 +101,7 @@ On exit codes 1, 2, or 3, scripts must output valid JSON to stderr:
 
 ### 1.3 Database Locking Protocol
 
-MusicLib uses file-based locking via `flock` to serialize concurrent writes and prevent corruption.
-
-**Status**: Deferred operations queue (exit code 3) is **implemented** via `musiclib_process_pending.sh`. Lock timeouts in `musiclib_rate.sh` write to `.pending_operations` and exit 3; the pending processor retries them automatically.
+MusicLib uses file-based locking via `flock` to serialize concurrent writes and prevent corruption. The deferred operations queue (exit code 3) is fully implemented — see §8.1 for the authoritative implementation status.
 
 #### 1.3.1 Utility Functions (Primary Interface)
 
@@ -203,6 +203,34 @@ On crash or kill between the `awk ... > "$MUSICDB.tmp"` write and the `mv "$MUSI
 - `musiclib_mobile.sh` accounting write paths — whether they use `.tmp` + `mv` or direct appends has not been audited. Treat as potentially unsafe until verified. See TASK_LIST.md.
 
 **Implication for recovery**: A `.tmp` file left from a crash is stale and safe to remove. If `musiclib.dsv.tmp` exists at startup, it can be deleted without data loss — the authoritative state is always in `musiclib.dsv`.
+
+---
+
+#### 1.3.5 Cross-Store Consistency
+
+MusicLib maintains rating and playback data across several stores simultaneously. They are not kept in sync atomically.
+
+**Stores and authority**:
+
+| Store | Examples | Authority |
+|-------|----------|-----------|
+| DSV (`musiclib.dsv`) | Rating, GroupDesc, LastTimePlayed | **Authoritative** — always the source of truth |
+| File tags | POPM, TIT1/Work, `Songs-DB_Custom1` | Derived — written on each operation; reconstructable from DSV via `tagrebuild` |
+| Conky assets | `starrating.png`, `currgpnum.txt` | Derived — regenerated on each rating update |
+| Filesystem xattrs | `user.baloo.rating` | Derived — written on each rating update; back-fillable via `musiclib_baloo_sync.sh` |
+| Baloo index | Dolphin Rating column | Derived — reads from `user.baloo.rating`; not written by MusicLib directly |
+
+**Write ordering in `musiclib_rate.sh`**: tags are written first (lines ~220–247), then the DSV is updated under lock (lines ~253–299). This means:
+
+- **Exit 2 on tag failure**: DSV is unchanged. No divergence. Re-running the operation is safe and idempotent.
+- **Exit 2 on DSV failure** (after tag write succeeded): file tags now reflect the new rating; DSV still holds the old value. The two stores are out of sync until the operation is re-run. Re-running is safe — the tag write is idempotent, and the DSV update will succeed on retry.
+
+**Recovery after exit-2 divergence**:
+1. Re-run the failed operation (e.g., `musiclib-cli rate <stars> <filepath>`). The tag re-write is a no-op; the DSV update completes.
+2. If the DSV was lost entirely (deletion or severe corruption), run `musiclib-cli build` to reconstruct it from file tags. Any fabricated mobile timestamps stored in `Songs-DB_Custom1` will be restored as if real — see §2.2.1 Synthetic Timestamp Note.
+3. For a targeted tag-to-file resync without touching the DSV, use `musiclib-cli tagrebuild`.
+
+**Other derived stores**: Conky assets and `user.baloo.rating` are written after the DSV update. An exit-2 before those steps leaves them stale but not wrong — they will be corrected on the next successful rating operation or a `musiclib_baloo_sync.sh` run.
 
 ---
 
@@ -365,6 +393,9 @@ The exact POPM byte written for each star level is driven by `POPM_STAR1`–`POP
 - 0: Success
 - 1: Invalid rating, no track playing (shortcut mode only), file not found
 - 2: `kid3-cli` unavailable, DB lock timeout, tag write failed
+- 3: Lock timeout after 3 retries — operation queued to `.pending_operations`, auto-retried by `musiclib_process_pending.sh`
+
+**Side-effect ordering**: tags are written first, then DSV update is attempted under lock. On exit-2 after a tag write succeeded, the DSV is stale. Re-running the operation is safe and idempotent — see §1.3.5 for the full failure recovery procedure and resync commands.
 
 **Examples**:
 ```bash
@@ -1752,6 +1783,8 @@ connect(watcher, &QFileSystemWatcher::fileChanged, this, [=]() {
 | C — Already running (external) | No PID file or PID mismatch | Raise K3b window. No deploy. Panel shows dimmed state via its own poll timer. |
 | D — Startup with K3b open | Detected at MainWindow init | PID match: treat as Scenario B. PID mismatch: clear stale PID file, no dialog. |
 
+**Config file race**: `patchAndDeployK3brc()` is a non-atomic read-modify-write on `~/.config/k3brc`. The sequence is: read `~/.config/musiclib/k3brc`, patch with current panel values, write to `~/.config/k3brc`. If K3b is already running and writes its in-memory config back to `~/.config/k3brc` between MusicLib's read and write steps, MusicLib's deployment will overwrite K3b's in-flight changes. The Scenario B/C/D checks reduce this window (MusicLib won't deploy if K3b is already running). The residual Scenario A window (between MainWindow's pre-launch `isProcessRunning()` check and the actual `deployK3brc()` write) is closed by a second `pgrep` guard at the entry of `patchAndDeployK3brc()` itself — the function aborts silently if K3b has started in the interim.
+
 ---
 
 ### 3.5 SmartPlaylistPanel Script Interface
@@ -1862,9 +1895,11 @@ int main(int argc, char* argv[]) {
 
 ## 5. Testing Contract
 
+> **Implementation status**: §5.1–5.3 describe the intended test infrastructure. As of v1.6, no `tests/` directory exists and none of the test scripts listed in §5.3 have been written. The idempotency behaviors in §5.2 are specified but not covered by automated tests. §5.4 (Schema-Drift Regression Test) is fully specified and its procedure can be run manually; it is tracked in `TASK_LIST.md` for automation. See `DEVELOPMENT.md §Testing` for the current reality of test coverage.
+
 ### 5.1 Test Input Conventions
 
-Test files should live in `tests/fixtures/`:
+**Intended** — `tests/fixtures/` does not exist yet. When created, test files should include:
 - `test_valid.mp3`: Valid MP3 with complete ID3v2.4 tags
 - `test_no_tags.mp3`: Valid MP3 with no tags
 - `test_corrupt.mp3`: Corrupted file (invalid headers)
@@ -1873,12 +1908,15 @@ Test files should live in `tests/fixtures/`:
 
 ### 5.2 Expected Behaviors (Idempotency)
 
+These behaviors are specified and hold in practice but are not covered by automated tests:
+
 - Running `musiclib_new_tracks.sh` twice on same file → exit 1 (already in DB), no DB change
 - Running `musiclib_rate.sh` with same rating → exit 0 (no-op update, DSV unchanged)
-- Running `musiclib_rebuild.sh --dry-run` → exit 1 (informational, not an error), no DB change
 - Running `musiclib_tagclean.sh` twice on same file → exit 0 (idempotent, tags already clean)
 
 ### 5.3 Integration Test Examples
+
+**Intended** — the following test scripts do not exist yet. They define the intended automated coverage:
 
 ```bash
 # Test lock contention
@@ -1893,6 +1931,48 @@ Test files should live in `tests/fixtures/`:
 # Test tag corruption recovery
 ./tests/test_tag_rebuild.sh
 ```
+
+### 5.4 Schema-Drift Regression Test
+
+**Purpose**: Catch any script that parses `musiclib.dsv` by hardcoded column index rather than by header name. A column inserted mid-schema will silently shift all subsequent column indices, causing corrupted reads or writes in any script that uses `$N` literals without resolving `N` from the header first.
+
+**Setup**: Insert a dummy column (`DummyCol`) after `Album` (column 4) in a copy of the test DSV:
+
+```bash
+# Inject DummyCol after column 4 in every row
+awk -F'^' 'BEGIN{OFS="^"}
+  NR==1 { $(NF+1)=$NF; for(i=NF;i>4;i--) $i=$(i-1); $5="DummyCol"; print }
+  NR>1  { $(NF+1)=$NF; for(i=NF;i>4;i--) $i=$(i-1); $5="DUMMY";    print }
+' tests/fixtures/test_db.dsv > tests/fixtures/test_db_driftcol.dsv
+```
+
+This shifts `AlbumArtist` from column 5 to column 6, `SongTitle` from 6 to 7, `SongPath` from 7 to 8, and so on. Any script that hardcodes `$5`, `$6`, `$7`, etc. will now read from the wrong column.
+
+**Test procedure**: Point `MUSICDB` at the drifted fixture and run each write-path script against it:
+
+```bash
+export MUSICDB="$(pwd)/tests/fixtures/test_db_driftcol.dsv"
+musiclib-cli rate 4 "/mnt/music/test/test_valid.mp3"
+musiclib-cli audacious   # via musiclib_audacious.sh
+musiclib-cli edit-field 1 Artist "NewName"
+musiclib-cli remove-record "/mnt/music/test/test_valid.mp3"
+```
+
+**Pass criterion**: Each script exits 0 and the DSV row for the test track contains the expected values in the correct named columns (verify by parsing the result with the header, not by column index).
+
+**Fail criterion**: Any script exits with corrupted output — e.g. `rate` writes the star rating into the wrong column, `remove-record` deletes the wrong row, or `edit-field` overwrites an unintended field. A script that fails this test is using hardcoded column indices and must be converted to header-driven parsing before any schema migration proceeds.
+
+**Known audit results (as of v1.6)**:
+
+| Script | DSV parsing method | Drift-safe? |
+|--------|--------------------|-------------|
+| `musiclib_smartplaylist_analyze.sh` | `get_column_index()` from `musiclib_utils.sh` | Yes |
+| `musiclib_edit_field.sh` | `get_column_index()` from `musiclib_utils.sh` | Yes |
+| `musiclib_utils.sh::find_or_create_album()` | `get_column_index()` — Album, IDAlbum | Yes |
+| `musiclib_utils.sh::delete_record_by_id_and_path()` | `get_column_index()` — SongPath | Yes |
+| `musiclib_smartplaylist.sh` | Hardcoded `$2` on intermediate `sp_pool.csv` (not DSV directly) | Indirect — pool schema is internal to analyze script |
+
+All DSV field lookups in `musiclib_utils.sh`, `musiclib_edit_field.sh`, and `musiclib_smartplaylist_analyze.sh` now use the shared `get_column_index()` helper. No hardcoded column position literals remain in these scripts.
 
 ---
 
@@ -1936,6 +2016,35 @@ awk -F'^' 'NR==1 {print $0 "^PlayCount"} NR>1 {print $0 "^0"}' musiclib.dsv > mu
 mv musiclib.dsv.new musiclib.dsv
 ```
 
+#### 6.2.1 Migration Contract — Header-Driven Parsing Requirement
+
+**Rule**: Every script that reads or writes `musiclib.dsv` fields by name **must resolve column indices dynamically from the DSV header row** before any awk, cut, or field-access operation. Hardcoded column position literals (`$4`, `$7`, `cut -f3`, etc.) are forbidden in any script that touches the DSV. Violation of this rule means the script will silently corrupt data or skip records after any schema migration that inserts a column before the position it assumes.
+
+**Rationale**: §6.2 rule 1 (append-only) prevents insertion mid-schema under normal evolution. But the append rule is a policy constraint, not a technical guarantee — a migration error, a manual edit, or a future policy relaxation can violate it. Header-driven parsing makes scripts immune to column-order changes by construction; hardcoded indices make them fragile by construction. The cost of resolving a column from the header is trivial; the cost of debugging a silent data corruption is not.
+
+**Required pattern** (shell scripts) — use the shared helper from `musiclib_utils.sh`:
+
+```bash
+# Resolve a column index by name — returns 1 and prints to stderr if not found
+colnum=$(get_column_index "$MUSICDB" "ColumnName") || { error_exit 2 "Column not found"; exit 2; }
+
+# Pass the resolved index to awk as a variable — never embed a literal $N
+awk -F'^' -v col="$colnum" 'NR > 1 { print $col }' "$MUSICDB"
+```
+
+For multiple columns, call `get_column_index()` once per column before the awk call and pass all as `-v` variables. See `musiclib_smartplaylist_analyze.sh` lines 226–230 and `musiclib_edit_field.sh` line 90 for reference implementations. For optional columns (e.g. Custom2), suppress stderr and default to 0: `col=$(get_column_index "$MUSICDB" "ColName" 2>/dev/null) || col=0`.
+
+**Pre-migration checklist**: Before any schema migration (even append-only), run the §5.4 schema-drift regression test against the new schema. If any script fails the drift test:
+
+1. Do not proceed with the migration.
+2. Convert the offending script to header-driven parsing.
+3. Re-run the drift test to confirm the fix.
+4. Then proceed with the migration.
+
+**Known violations**: None as of v1.6. All DSV-reading scripts and utility functions now use `get_column_index()`. The `musiclib_smartplaylist.sh` hardcoded `$2` on its internal `sp_pool.csv` intermediate file is not a DSV violation — that file's schema is owned entirely by `musiclib_smartplaylist_analyze.sh` and is not subject to the migration contract.
+
+**Shared helper**: `get_column_index <db_file> <col_name>` is defined in `musiclib_utils.sh` (DATABASE HELPERS section). It resolves a column name to its 1-based awk field index by reading the header row. Returns 1 and emits an error to stderr if the column is not found. All scripts that source `musiclib_utils.sh` have access to it automatically.
+
 ---
 
 ## 7. Backward Compatibility Guarantees
@@ -1961,11 +2070,11 @@ mv musiclib.dsv.new musiclib.dsv
 
 ---
 
-## 8. Future Evolution Path
+## 8. Implementation Notes
 
-### 8.1 Exit Code 3 — Deferred Operations (Implementation Status)
+### 8.1 Exit Code 3 — Deferred Operations
 
-**Status**: Fully implemented. Queuing and retry are wired for all defined operation types (`rate` and `add_track`).
+**Status**: Fully implemented as of v1.6. Queuing and retry are wired for all defined operation types (`rate` and `add_track`). This is the authoritative statement — §1.1 and §1.3 reference this section.
 
 **What is implemented**:
 - `musiclib_rate.sh`: on lock timeout after 3 retries, writes a `rate` record to `.pending_operations` and exits 3. After any successful DB write, it auto-triggers `musiclib_process_pending.sh` in the background.

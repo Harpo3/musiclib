@@ -436,14 +436,18 @@ musiclib/
 
 ## Testing
 
+> **Current state (v1.6)**: No automated test suite exists. There is no `tests/` directory, no `make test` target, and no C++ stubs for a Qt Test build. All testing is done manually by running scripts or the CLI/GUI directly. The subsections below describe what manual testing looks like now, and what an automated test layer is intended to cover when written. Items for the automated layer are tracked in `TASK_LIST.md`.
+
 ### Testing Philosophy
 
 MusicLib's hybrid architecture allows **layered testing**:
 
-1. **Shell scripts** — Test independently with bash test framework
+1. **Shell scripts** — Test independently with bash; runnable without building C++
 2. **C++ CLI** — Test process invocation, exit code forwarding
 3. **C++ GUI** — Test UI interactions, QProcess invocation
 4. **Integration** — Test full workflows (GUI → script → external tool → file tag)
+
+Only layer 1 (shell scripts, run directly) and layer 2 (CLI, invoked manually) are currently tested. Layers 3 and 4 have no automated coverage.
 
 ### CLI Dispatcher Testing
 
@@ -483,11 +487,7 @@ echo $?
 echo $?  # Should be 1 (user error)
 ```
 
-**Automated Testing**:
-```bash
-cd build
-make test
-```
+**Automated Testing**: Not yet implemented. `make test` is not a valid target. A bats-core shell test suite is planned — see `TASK_LIST.md`.
 
 ### GUI Testing
 
@@ -510,11 +510,7 @@ make test
 # 11. Error dialogs display script error JSON correctly
 ```
 
-**Qt Test Framework**:
-```bash
-cd build
-make test
-```
+**Automated Testing**: Not yet implemented. Qt Test stubs do not exist and `make test` is not a valid target.
 
 ### Shell Script Testing
 
@@ -536,11 +532,9 @@ echo $?
 # Test new-tracks import (dry run)
 bin/musiclib_new_tracks.sh "test_artist" --dry-run
 echo $?
-
-# Test lock contention
-cd tests
-./test_lock_contention.sh
 ```
+
+There is no `tests/` directory and no automated shell test runner. Writing a bats-core suite for `musiclib_utils.sh` core functions and a rate→verify→rebuild smoke test is tracked in `TASK_LIST.md`.
 
 ---
 

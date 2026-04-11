@@ -864,7 +864,7 @@ source musiclib_utils.sh
 
 test_epoch_to_sql_time() {
     local epoch=1675000000
-    local expected="45678.543210"
+    local expected="44955.574074"
     local actual=$(epoch_to_sql_time $epoch)
     assert_equals "$expected" "$actual"
 }
