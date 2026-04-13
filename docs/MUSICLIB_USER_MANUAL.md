@@ -126,100 +126,10 @@ pacman -S k3b
 
 All dependencies are automatically resolved.
 
-### Fedora KDE (dnf)
-
-```bash
-# Install dependencies
-sudo dnf install audacious kid3-common exiftool kdeconnect bc grep sed
-
-# For ReplayGain (optional, loudness normalizer)
-sudo dnf install rsgain
-
-# Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
-sudo dnf install kid3
-
-# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
-sudo dnf install k3b
-```
-
-### Ubuntu/Kubuntu/KDE Neon (apt)
-
-```bash
-# Install dependencies
-sudo apt install audacious kid3-common exiftool kdeconnect bc attr
-
-# For ReplayGain (if available in your repo)
-sudo apt install rsgain
-# If not available, you can skip this — Boost Album feature won't work
-
-# Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
-sudo apt install kid3
-
-# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
-sudo apt install k3b
-
-# Clone and build from source
-git clone https://github.com/yourusername/musiclib.git
-cd musiclib
-mkdir build && cd build
-cmake ..
-make
-sudo make install
-```
-
-> **Ubuntu 25.10 note:** Ubuntu 25.10 is migrating from GNU coreutils to [uutils coreutils](https://github.com/uutils/coreutils), a Rust rewrite. The `attr` package (`setfattr`/`getfattr`) is independent of coreutils and is unaffected by this migration directly, but the overall dependency chain for xattr support has not been fully validated against the uutils runtime. If Dolphin ratings are not displaying after installation on Ubuntu 25.10 or later, verify that `setfattr` is functional by running `setfattr --version` and, if necessary, reinstall the `attr` package manually: `sudo apt install --reinstall attr`.
-
-### openSUSE Plasma (zypper)
-
-```bash
-# Install dependencies
-sudo zypper install audacious kid3-common exiftool kdeconnect bc grep sed
-
-# For ReplayGain (optional, loudness normalizer)
-sudo zypper install rsgain
-
-# Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
-sudo zypper install kid3
-
-# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
-sudo zypper install k3b
-
-# Clone and build from source
-git clone https://github.com/Harpo3/musiclib.git
-cd musiclib
-mkdir build && cd build
-cmake ..
-make
-sudo make install
-```
-
-### Debian (apt)
-
-```bash
-# Install dependencies
-sudo apt install audacious kid3-common exiftool kdeconnect bc
-
-# Optional: ReplayGain (if available, loudness normalizer)
-sudo apt install rsgain
-
-# Optional: Install GUI tag editor (for integrated tag editing from MusicLib)
-sudo apt install kid3
-
-# Optional: Install K3b CD ripper (for CD Ripping panel and Rip CD toolbar action)
-sudo apt install k3b
-
-# Clone and build from source
-git clone https://github.com/yourusername/musiclib.git
-cd musiclib
-mkdir build && cd build
-cmake ..
-make
-sudo make install
-```
 
 ### Building from Source (All Distributions)
 
-If you prefer to build from GitHub instead of using pre-made packages:
+If you use a different distro and need to build from GitHub:
 
 ```bash
 # Clone the repository
