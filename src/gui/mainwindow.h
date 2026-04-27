@@ -6,7 +6,7 @@
 //   - QListWidget sidebar for panel navigation (Dolphin Places-style)
 //   - QStackedWidget for panel content
 //   - KToolBar with Now Playing, Album, Playlist, Audacious, Kid3 actions
-//   - Rich status bar with track details from conky output + audtool
+//   - Rich status bar with track details from MUSIC_DISPLAY_DIR text files
 //
 // Settings panel is a KConfigDialog opened on demand (not embedded in
 // the stacked widget).  Sidebar "Settings" entry triggers the dialog.
@@ -99,7 +99,7 @@ public:
     };
 
 public Q_SLOTS:
-    /// Refresh now-playing data from conky output files and audtool
+    /// Refresh now-playing data from MUSIC_DISPLAY_DIR text files
     void refreshNowPlaying();
 
     /// Rate the currently playing track (called from toolbar stars or global shortcut)
@@ -142,9 +142,6 @@ private Q_SLOTS:
     /// Now-playing poll timer fired
     void onNowPlayingTimer();
 
-    /// Handle audtool process finished (for async queries)
-    void onAudtoolFinished(int exitCode, QProcess::ExitStatus exitStatus);
-
     /// Settings dialog reported a database path change
     void onDatabasePathChanged();
 
@@ -173,9 +170,6 @@ private:
 
     /// Get the conky output directory path from config
     QString conkyOutputDir() const;
-
-    /// Query audtool for a value (synchronous, with short timeout)
-    QString queryAudtool(const QStringList &args) const;
 
     /// Populate the playlist dropdown from the Audacious playlists directory
     void populatePlaylistDropdown();
@@ -270,6 +264,7 @@ private:
         int     playlistLength   = 0;
         QString songPath;        // full path of current track
         bool    isPlaying        = false;
+        bool    isPaused         = false;
     };
     NowPlayingData m_nowPlaying;
 

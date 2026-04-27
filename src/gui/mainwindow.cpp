@@ -50,6 +50,7 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QDBusInterface>
+#include <QDBusConnectionInterface>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
@@ -1106,55 +1107,65 @@ void MainWindow::refreshNowPlaying()
     m_nowPlaying.lastPlayed = readConkyFile(QStringLiteral("lastplayed.txt"));
     m_nowPlaying.ratingGroup = readConkyFile(QStringLiteral("currgpnum.txt"));
 
-    // ── Query audtool for playback state and playlist info ──
-    QString playbackStatus = queryAudtool({QStringLiteral("--playback-status")});
-    m_nowPlaying.isPlaying = (playbackStatus == QStringLiteral("playing"));
+    // ── Derive playback state and current track path from display-dir files ──
+    // playbackstatus.txt is written by the listener on every MPRIS2 event
+    // (including pause/resume); songpath.txt is written by the handler on each
+    // real track change and cleared by the listener on blank (stop/quit) events.
+    m_nowPlaying.songPath = readConkyFile(QStringLiteral("songpath.txt"));
+    const QString rawStatus = readConkyFile(QStringLiteral("playbackstatus.txt"));
+    m_nowPlaying.isPlaying = (rawStatus == QStringLiteral("Playing"));
+    m_nowPlaying.isPaused  = (rawStatus == QStringLiteral("Paused"));
 
-    if (m_nowPlaying.isPlaying) {
-        m_nowPlaying.songPath = queryAudtool({QStringLiteral("--current-song-filename")});
+    // Playlist position/length/name are Audacious-specific (audpl format) and
+    // have no generic MPRIS2 equivalent.  They are populated only when Audacious
+    // is the active player, which is detected by bus presence.
+    m_nowPlaying.playlistPosition = 0;
+    m_nowPlaying.playlistLength   = 0;
+    m_nowPlaying.playlistName.clear();
 
-        QString posStr = queryAudtool({QStringLiteral("--playlist-position")});
-        QString lenStr = queryAudtool({QStringLiteral("--playlist-length")});
-        m_nowPlaying.playlistPosition = posStr.toInt();
-        m_nowPlaying.playlistLength   = lenStr.toInt();
+    const bool audaciusOnBus = QDBusConnection::sessionBus().interface()
+        && QDBusConnection::sessionBus().interface()->isServiceRegistered(
+               QStringLiteral("org.mpris.MediaPlayer2.audacious"));
 
-        // Ask audtool which playlist is currently active (1-based index),
-        // then resolve that to a name via the 'order' file.
-        // This is unambiguous even when the same song appears in multiple
-        // playlists (e.g. a big "Library" playlist and a curated one).
-        m_nowPlaying.playlistName.clear();
-        QString curPlStr = queryAudtool({QStringLiteral("--current-playlist")});
-        bool plOk = false;
-        int curPlIndex = curPlStr.toInt(&plOk); // 1-based
-        if (plOk && curPlIndex >= 1) {
-            QString orderPath = m_audaciousPlaylistsDir + QStringLiteral("/order");
-            QFile orderFile(orderPath);
-            if (orderFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                QStringList ids = QString::fromUtf8(orderFile.readAll())
-                                      .trimmed()
-                                      .split(QLatin1Char(' '), Qt::SkipEmptyParts);
-                orderFile.close();
-                if (curPlIndex - 1 < ids.size()) {
-                    const QString &id = ids.at(curPlIndex - 1);
-                    QString audplPath = m_audaciousPlaylistsDir
-                                        + QStringLiteral("/") + id
-                                        + QStringLiteral(".audpl");
-                    QFile audplFile(audplPath);
-                    if (audplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                        QString firstLine = QString::fromUtf8(
-                            audplFile.readLine()).trimmed();
-                        audplFile.close();
-                        if (firstLine.startsWith(QLatin1String("title=")))
-                            m_nowPlaying.playlistName = QUrl::fromPercentEncoding(
-                                firstLine.mid(6).toUtf8());
-                    }
-                }
-            }
+    if (audaciusOnBus && m_nowPlaying.isPlaying) {
+        // All three values come from audtool — always available when the bus is present.
+        // audtool --current-playlist-name returns the active playlist directly,
+        // avoiding the song-path scan which found the wrong playlist when a track
+        // appears in more than one playlist.
+        QProcess nameProc;
+        nameProc.start(QStringLiteral("audtool"),
+                       {QStringLiteral("--current-playlist-name")});
+        if (nameProc.waitForFinished(500)) {
+            QString name = QString::fromUtf8(
+                nameProc.readAllStandardOutput()).trimmed();
+            if (!name.isEmpty())
+                m_nowPlaying.playlistName = name;
+        }
+
+        QProcess posProc;
+        posProc.start(QStringLiteral("audtool"),
+                      {QStringLiteral("--playlist-position")});
+        if (posProc.waitForFinished(500)) {
+            bool ok = false;
+            int pos = posProc.readAllStandardOutput().trimmed().toInt(&ok);
+            if (ok && pos > 0)
+                m_nowPlaying.playlistPosition = pos;
+        }
+
+        QProcess lenProc;
+        lenProc.start(QStringLiteral("audtool"),
+                      {QStringLiteral("--playlist-length")});
+        if (lenProc.waitForFinished(500)) {
+            bool ok = false;
+            int len = lenProc.readAllStandardOutput().trimmed().toInt(&ok);
+            if (ok && len > 0)
+                m_nowPlaying.playlistLength = len;
         }
     }
 
     // ── Update toolbar: Now Playing label ──
-    if (m_nowPlaying.isPlaying && !m_nowPlaying.artist.isEmpty()) {
+    if ((m_nowPlaying.isPlaying || m_nowPlaying.isPaused)
+            && !m_nowPlaying.artist.isEmpty()) {
         m_nowPlayingLabel->setText(
             m_nowPlaying.artist
             + QStringLiteral(" \u2013 ")
@@ -1243,7 +1254,8 @@ void MainWindow::rateCurrentTrack(int stars)
 
 void MainWindow::showAlbumWindow()
 {
-    if (!m_nowPlaying.isPlaying || m_nowPlaying.songPath.isEmpty()) {
+    if ((!m_nowPlaying.isPlaying && !m_nowPlaying.isPaused)
+            || m_nowPlaying.songPath.isEmpty()) {
         statusBar()->showMessage(i18n("No track playing."), 3000);
         return;
     }
@@ -1323,17 +1335,8 @@ void MainWindow::onOpenKid3()
     QString executablePath = "/usr/bin/" + kid3GuiVersion;
     QString windowClass = (kid3GuiVersion == "kid3") ? QStringLiteral("kid3") : QStringLiteral("kid3");
     
-    // Get current track path from Audacious
-    QString currentTrackPath;
-    QProcess audtoolQuery;
-    audtoolQuery.start(QStringLiteral("audtool"),
-                       {QStringLiteral("--current-song-filename")});
-    if (audtoolQuery.waitForFinished(2000)) {
-        if (audtoolQuery.exitCode() == 0) {
-            currentTrackPath = QString::fromUtf8(
-                audtoolQuery.readAllStandardOutput()).trimmed();
-        }
-    }
+    // Use the cached now-playing path (written by the MPRIS2 handler to songpath.txt)
+    QString currentTrackPath = m_nowPlaying.songPath;
 
     // Check if Kid3 is already running
     if (isProcessRunning(processName)) {
@@ -1537,37 +1540,21 @@ QString MainWindow::conkyOutputDir() const
 }
 
 // ═════════════════════════════════════════════════════════════
-// Audtool query helper (synchronous, short timeout)
-// ═════════════════════════════════════════════════════════════
-
-QString MainWindow::queryAudtool(const QStringList &args) const
-{
-    QProcess proc;
-    proc.start(QStringLiteral("audtool"), args);
-
-    if (!proc.waitForFinished(1000)) {
-        proc.kill();
-        return QString();
-    }
-
-    if (proc.exitCode() != 0) {
-        return QString();
-    }
-
-    return QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-}
-
-// ═════════════════════════════════════════════════════════════
 // Status bar text builder
 // ═════════════════════════════════════════════════════════════
 
 QString MainWindow::buildStatusBarText() const
 {
-    if (!m_nowPlaying.isPlaying || m_nowPlaying.artist.isEmpty()) {
+    if (m_nowPlaying.artist.isEmpty()
+            || (!m_nowPlaying.isPlaying && !m_nowPlaying.isPaused)) {
         return i18n("Stopped");
     }
 
-    QString text = QStringLiteral("Playing: ")
+    const QString prefix = m_nowPlaying.isPaused
+        ? QStringLiteral("Paused: ")
+        : QStringLiteral("Playing: ");
+
+    QString text = prefix
         + m_nowPlaying.artist
         + QStringLiteral(" - ")
         + m_nowPlaying.album;
@@ -1599,12 +1586,3 @@ QString MainWindow::buildStatusBarText() const
     return text;
 }
 
-// ═════════════════════════════════════════════════════════════
-// Audtool async handler (reserved for future use)
-// ═════════════════════════════════════════════════════════════
-
-void MainWindow::onAudtoolFinished(int exitCode, QProcess::ExitStatus exitStatus)
-{
-    Q_UNUSED(exitCode);
-    Q_UNUSED(exitStatus);
-}

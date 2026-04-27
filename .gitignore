@@ -19,6 +19,7 @@ build/
 # ------ Claude artifacts ------------
 CLAUDE.md
 CLAUDE.MD
+.claude/
 
 # ----- Deliverables (non-essential project docs) -----
 deliverables/

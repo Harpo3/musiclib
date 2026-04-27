@@ -57,28 +57,7 @@ print_error() {
     echo "✗ ERROR: $1" >&2
 }
 
-# Detect Audacious and pre-check plugin-registry readiness
-AUDACIOUS_DETECTED=false
-AUDACIOUS_REGISTRY_READY=false
-SONG_CHANGE_SO="/usr/lib/audacious/General/song_change.so"
-PLUGIN_REGISTRY="$HOME/.config/audacious/plugin-registry"
-
 EXISTING_MUSIC_REPO=""
-if command -v audacious &>/dev/null; then
-    AUDACIOUS_DETECTED=true
-    if [ -f "$PLUGIN_REGISTRY" ] && grep -q "^general $SONG_CHANGE_SO" "$PLUGIN_REGISTRY"; then
-        AUDACIOUS_REGISTRY_READY=true
-    fi
-    # Pre-populate EXISTING_MUSIC_REPO from Audacious [search-tool] path if available
-    _aud_config="$HOME/.config/audacious/config"
-    if [ -f "$_aud_config" ]; then
-        _aud_path=$(awk '/^\[search-tool\]/{found=1; next} found && /^path=/{sub(/^path=/, ""); print; exit} found && /^\[/{exit}' "$_aud_config")
-        if [ -n "$_aud_path" ]; then
-            EXISTING_MUSIC_REPO="$_aud_path"
-            print_info "Library location found in Audacious settings: $_aud_path"
-        fi
-    fi
-fi
 
 # Detect optional tools
 RSGAIN_DETECTED=false
@@ -484,8 +463,8 @@ This wizard will:
   5. Generate minimal user configuration
   6. Auto-detect optional tools (rsgain, kid3 GUI) and write to config
   7. Scan library for file and directory conformance
-  8. Refresh playlists from Audacious (if installed)
-  9. Configure Audacious Song Change integration (if installed)
+  8. Install MPRIS2 dependencies and enable song-change listener
+  9. Refresh playlists from Audacious (if installed)
  10. Install Dolphin service menu for right-click track rating (if KIO servicemenus dir is available)
 
 The wizard writes ONLY user-specific values to ~/.config/musiclib/musiclib.conf
@@ -528,16 +507,6 @@ if ! prompt_yn "Continue with setup?" "y"; then
     exit 1
 fi
 
-# Early Audacious registry warning - before any wizard steps
-if [ "$AUDACIOUS_DETECTED" = true ] && [ "$AUDACIOUS_REGISTRY_READY" = false ]; then
-    echo ""
-    print_info "Note: Audacious is installed but the Song Change plugin entry"
-    print_info "was not found in ~/.config/audacious/plugin-registry."
-    print_info "To enable Audacious integration at the end of this wizard:"
-    print_info "  Open Audacious, then close it, then re-run setup."
-    print_info "Setup will continue - all other steps are unaffected."
-    echo ""
-fi
 
 #############################################
 # Step 1: Locate Music Repository
@@ -728,7 +697,6 @@ create_dir "$DATA_DIR/data/tag_backups"
 create_dir "$DATA_DIR/logs"
 create_dir "$DATA_DIR/playlists"
 create_dir "$DATA_DIR/playlists/mobile"
-create_dir "$DATA_DIR/logs/audacious"
 create_dir "$DATA_DIR/logs/mobile"
 
 #############################################
@@ -1075,80 +1043,58 @@ else
 fi
 
 #############################################
-# Audacious Integration
+# MusicLib Song-Change Listener
 #############################################
 
-if [ "$AUDACIOUS_DETECTED" = true ]; then
-    print_header "Audacious Integration"
+print_header "MusicLib Song-Change Listener"
 
-    print_success "Audacious is installed"
-    echo ""
-    print_info "MusicLib hooks into Audacious via the Song Change plugin"
-    print_info "to update Conky display data whenever the track changes, and "
-    print_info "to update the database and file tags with last-played date."
-    echo ""
-
-    # Determine hook script path: installed location first, dev/sibling fallback
-    HOOK_SCRIPT="/usr/lib/musiclib/bin/musiclib_audacious.sh"
-    if [ ! -f "$HOOK_SCRIPT" ]; then
-        HOOK_SCRIPT="$(dirname "$(readlink -f "$0")")/musiclib_audacious.sh"
+# Install a package if not already present (Arch/pacman only).
+# $1 = pacman package name; $2 = representative binary to probe (defaults to $1).
+# Prints a success or info line; does not abort on failure — setup
+# continues and the user is told to install manually if pacman fails.
+ensure_pkg() {
+    local pkg="$1"
+    local probe="${2:-$1}"
+    if command -v "$probe" &>/dev/null; then
+        print_success "$pkg already installed"
+        return 0
     fi
-
-    if [ ! -f "$HOOK_SCRIPT" ]; then
-        print_error "Hook script not found at either installed or development path"
-        print_info "Expected: /usr/lib/musiclib/bin/musiclib_audacious.sh"
-        print_info "Re-run setup after installing the musiclib package."
+    print_info "Installing $pkg..."
+    if sudo pacman -S --noconfirm --needed "$pkg" 2>/dev/null; then
+        print_success "$pkg installed"
     else
-        AUDACIOUS_CONFIG="$HOME/.config/audacious/config"
-        PLUGIN_REGISTRY="$HOME/.config/audacious/plugin-registry"
-        SONG_CHANGE_SO="/usr/lib/audacious/General/song_change.so"
-
-        # Audacious overwrites its config on exit, so it must be closed first
-        if pgrep -x audacious >/dev/null 2>&1; then
-            print_error "Audacious is currently running"
-            print_info "Close Audacious and re-run setup to configure integration."
-            print_info "Or configure manually - see: musiclib-cli audacious-setup"
-        elif [ "$AUDACIOUS_REGISTRY_READY" = false ]; then
-            print_info "Song Change plugin entry not found in plugin-registry"
-            print_info "Open and close Audacious once, then re-run setup."
-        else
-            # Flip enabled 0 -> enabled 1 within the song_change.so block only
-            awk -v so="general $SONG_CHANGE_SO" '
-                $0 == so        { in_block=1 }
-                in_block && /^enabled 0$/ { sub(/^enabled 0$/, "enabled 1"); in_block=0 }
-                { print }
-            ' "$PLUGIN_REGISTRY" > "${PLUGIN_REGISTRY}.tmp" \
-                && mv "${PLUGIN_REGISTRY}.tmp" "$PLUGIN_REGISTRY"
-            print_success "Song Change plugin enabled in plugin-registry"
-
-            # --- Step 2: Write cmd_line to audacious config ---
-            if [ ! -f "$AUDACIOUS_CONFIG" ]; then
-                # Config file does not exist - create it with the section
-                mkdir -p "$(dirname "$AUDACIOUS_CONFIG")"
-                printf '\n[song_change]\ncmd_line=%s\n' "$HOOK_SCRIPT" \
-                    > "$AUDACIOUS_CONFIG"
-                print_success "Created Audacious config with Song Change hook"
-            elif grep -q "^\[song_change\]" "$AUDACIOUS_CONFIG"; then
-                # Section exists - update or insert cmd_line
-                if grep -q "^cmd_line=" "$AUDACIOUS_CONFIG"; then
-                    sed -i "s|^cmd_line=.*|cmd_line=$HOOK_SCRIPT|" \
-                        "$AUDACIOUS_CONFIG"
-                    print_success "Updated Song Change cmd_line in Audacious config"
-                else
-                    sed -i "/^\[song_change\]/a cmd_line=$HOOK_SCRIPT" \
-                        "$AUDACIOUS_CONFIG"
-                    print_success "Added Song Change cmd_line to Audacious config"
-                fi
-            else
-                # Section absent - append it
-                printf '\n[song_change]\ncmd_line=%s\n' "$HOOK_SCRIPT" \
-                    >> "$AUDACIOUS_CONFIG"
-                print_success "Added [song_change] section to Audacious config"
-            fi
-        fi
+        print_error "pacman could not install $pkg — install it manually and re-run setup."
     fi
-    echo ""
+}
+
+print_info "MusicLib uses a D-Bus listener to detect song changes from any"
+print_info "MPRIS2-compliant music player (Strawberry, Audacious, Clementine,"
+print_info "Amarok, Elisa, mpd via mpd-mpris, and others)."
+echo ""
+print_info "Installing required packages (playerctl, qt6-tools)..."
+ensure_pkg playerctl
+ensure_pkg qt6-tools qdbus6
+echo ""
+
+print_info "Enabling playerctld (last-active player tracking)..."
+if systemctl --user enable --now playerctld.service 2>/dev/null; then
+    print_success "playerctld.service enabled and started"
+else
+    print_error "Could not enable playerctld.service — enable it manually:"
+    print_info "  systemctl --user enable --now playerctld.service"
 fi
+
+print_info "Enabling MusicLib listener..."
+if systemctl --user enable --now musiclib-mpris.service 2>/dev/null; then
+    print_success "musiclib-mpris.service enabled and started"
+else
+    print_error "Could not enable musiclib-mpris.service — enable it manually:"
+    print_info "  systemctl --user enable --now musiclib-mpris.service"
+fi
+
+echo ""
+print_info "Done. Play any track in an MPRIS2 player to verify."
+echo ""
 
 #############################################
 # Refresh Playlists from Audacious

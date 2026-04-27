@@ -87,17 +87,17 @@ QString MaintenancePanel::configValue(const QString &key)
 
 QString MaintenancePanel::browseStartDir() const
 {
-    // Prefer the album directory of the currently playing track in Audacious.
-    // audtool returns the full file path; we strip the filename to get the
-    // parent directory (album folder).
-    QProcess audtool;
-    audtool.start("audtool", QStringList() << "--current-song-filename");
-    if (audtool.waitForFinished(2000) && audtool.exitCode() == 0) {
-        QString songPath = QString::fromUtf8(audtool.readAllStandardOutput()).trimmed();
-        if (!songPath.isEmpty()) {
-            QFileInfo fi(songPath);
-            QString albumDir = fi.absolutePath();
-            if (QDir(albumDir).exists())
+    // Prefer the album directory of the currently playing track.
+    // The MPRIS2 handler writes this to artloc.txt on every track change —
+    // it is the album folder that contains both the music files and the art.
+    QString displayDir = configValue("MUSIC_DISPLAY_DIR");
+    if (!displayDir.isEmpty()) {
+        QString artlocPath = displayDir + QStringLiteral("/artloc.txt");
+        QFile artloc(artlocPath);
+        if (artloc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString albumDir = QString::fromUtf8(artloc.readAll()).trimmed();
+            artloc.close();
+            if (!albumDir.isEmpty() && QDir(albumDir).exists())
                 return albumDir;
         }
     }

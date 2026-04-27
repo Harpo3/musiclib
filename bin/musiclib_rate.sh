@@ -4,8 +4,8 @@
 # Usage: musiclib_rate.sh <star_rating> [filepath]
 #
 # When filepath is provided, rates that specific file (GUI mode).
-# When filepath is omitted, rates the currently playing track in Audacious
-# (keyboard shortcut mode).
+# When filepath is omitted, rates the currently playing track in the active
+# MPRIS2 player via playerctld (keyboard shortcut mode).
 #
 # Bind META+1 through META+5 for quick rating of current track.
 #
@@ -101,7 +101,7 @@ if [ $# -eq 0 ]; then
     echo ""
     echo "  filepath       (Optional) Absolute path to the audio file."
     echo "                 If omitted, rates the currently playing track"
-    echo "                 in Audacious."
+    echo "                 in the active MPRIS2 player."
     echo ""
     echo "Keyboard shortcuts (bind these for current-track rating):"
     echo "  META+0  = Needs rating (0 stars)"
@@ -137,21 +137,16 @@ if [ $# -ge 2 ]; then
         exit 2
     }
 else
-    # Keyboard shortcut mode: get filepath from Audacious
-    check_required_tools audtool kid3-cli || {
-        error_exit 2 "Required tools not available" "missing" "audtool or kid3-cli"
+    # Keyboard shortcut mode: get filepath from active MPRIS2 player
+    check_required_tools qdbus6 playerctl kid3-cli || {
+        error_exit 2 "Required tools not available" "missing" "qdbus6 or playerctl or kid3-cli"
         exit 2
     }
 
-    if ! pgrep -x audacious >/dev/null; then
-        error_exit 1 "Audacious is not running"
-        exit 1
-    fi
-
-    FILEPATH=$(audtool --current-song-filename 2>/dev/null || echo "")
+    FILEPATH=$(get_current_player_filepath)
 
     if [ -z "$FILEPATH" ]; then
-        error_exit 1 "No track is currently playing"
+        error_exit 1 "No track is currently playing in an allowed MPRIS2 player"
         exit 1
     fi
 fi
@@ -165,8 +160,8 @@ fi
 # Track Display Info (for notifications)
 #############################################
 # In GUI mode, derive track title and artist from the database
-# rather than audtool, because the currently playing track in
-# Audacious may differ from the file being rated.
+# rather than MPRIS2, because the currently playing track in
+# the active player may differ from the file being rated.
 
 get_track_display_info() {
     local display_title=""
@@ -182,16 +177,18 @@ get_track_display_info() {
         fi
     fi
 
-    # Fallback: try audtool, then basename
+    # Fallback: try MPRIS2 metadata, then basename
     if [ -z "$display_title" ]; then
-        display_title=$(audtool --current-song-tuple-data title 2>/dev/null) || true
+        detect_active_mpris_bus
+        display_title=$(mpris_metadata_field "xesam:title" 2>/dev/null) || true
     fi
     if [ -z "$display_title" ]; then
         display_title=$(basename "$FILEPATH")
     fi
 
     if [ -z "$display_artist" ]; then
-        display_artist=$(audtool --current-song-tuple-data artist 2>/dev/null) || true
+        detect_active_mpris_bus
+        display_artist=$(mpris_metadata_field "xesam:artist" 2>/dev/null) || true
     fi
 
     TRACK_DISPLAY_TITLE="$display_title"
@@ -394,7 +391,7 @@ fi
 UPDATE_CONKY=true
 
 if [ "$GUI_MODE" = true ]; then
-    current_playing=$(audtool --current-song-filename 2>/dev/null || echo "")
+    current_playing=$(get_current_player_filepath)
     if [ "$current_playing" != "$FILEPATH" ]; then
         UPDATE_CONKY=false
         echo "  Conky update skipped (rated track is not the current track)"

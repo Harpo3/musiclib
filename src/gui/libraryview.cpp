@@ -24,6 +24,9 @@
 #include <QUrl>
 #include <QApplication>
 #include <QClipboard>
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QStandardPaths>
 
 // ---------------------------------------------------------------------------
 // Custom proxy: adds "exclude unrated" filtering on top of the standard
@@ -380,56 +383,72 @@ void LibraryView::showContextMenu(const QPoint &pos)
     // Build the context menu
     QMenu menu(this);
 
-    QAction *openAct = menu.addAction(tr("Open with Audacious") + countLabel);
-    openAct->setToolTip(tr("Play the selected track(s) in Audacious"));
+    // "Open with Audacious" — gated on Audacious being installed (executable
+    // found on PATH).  Does not require Audacious to be running; clicking it
+    // launches Audacious with the selected track(s) if it isn't already open.
+    const bool audaciousInstalled =
+        !QStandardPaths::findExecutable(QStringLiteral("audacious")).isEmpty();
 
-    connect(openAct, &QAction::triggered, this, [this, tracks]() {
-        QStringList args;
-        for (const TrackRecord &t : tracks)
-            args << t.songPath;
-        if (!QProcess::startDetached("audacious", args))
-            emit statusMessage(tr("Failed to launch Audacious"));
-    });
+    if (audaciousInstalled) {
+        QAction *openAct = menu.addAction(tr("Open with Audacious") + countLabel);
+        openAct->setToolTip(tr("Play the selected track(s) in Audacious"));
 
-    QAction *queueAct = menu.addAction(tr("Add to Queue in Audacious") + countLabel);
-    queueAct->setToolTip(tr("Append the selected track(s) to the Audacious play queue"));
+        connect(openAct, &QAction::triggered, this, [this, tracks]() {
+            QStringList args;
+            for (const TrackRecord &t : tracks)
+                args << t.songPath;
+            if (!QProcess::startDetached("audacious", args))
+                emit statusMessage(tr("Failed to launch Audacious"));
+        });
+    }
 
-    connect(queueAct, &QAction::triggered, this, [this, tracks]() {
-        int queued = 0;
-        for (const TrackRecord &t : tracks) {
-            // Step 1: append the file to the active playlist
-            if (QProcess::execute("audtool", {"playlist-addurl", t.songPath}) != 0) {
-                emit statusMessage(tr("Failed to add \"%1\" to Audacious playlist").arg(t.songTitle));
-                continue;
+    // "Add to Queue in Audacious" — gated on Audacious being on the D-Bus,
+    // because audtool requires a live Audacious instance to accept queue commands.
+    const bool audaciousOnBus = QDBusConnection::sessionBus().interface()
+        && QDBusConnection::sessionBus().interface()->isServiceRegistered(
+               QStringLiteral("org.mpris.MediaPlayer2.audacious"));
+
+    if (audaciousOnBus) {
+        QAction *queueAct = menu.addAction(tr("Add to Queue in Audacious") + countLabel);
+        queueAct->setToolTip(tr("Append the selected track(s) to the Audacious play queue"));
+
+        connect(queueAct, &QAction::triggered, this, [this, tracks]() {
+            int queued = 0;
+            for (const TrackRecord &t : tracks) {
+                // Step 1: append the file to the active playlist
+                if (QProcess::execute("audtool", {"playlist-addurl", t.songPath}) != 0) {
+                    emit statusMessage(tr("Failed to add \"%1\" to Audacious playlist").arg(t.songTitle));
+                    continue;
+                }
+
+                // Step 2: the new entry landed at the end — find its 1-based position
+                QProcess lenProc;
+                lenProc.start("audtool", {"playlist-length"});
+                if (!lenProc.waitForFinished(3000)) {
+                    emit statusMessage(tr("audtool timed out querying playlist length"));
+                    continue;
+                }
+                bool ok = false;
+                int pos = lenProc.readAllStandardOutput().trimmed().toInt(&ok);
+                if (!ok || pos <= 0) {
+                    emit statusMessage(tr("Failed to determine playlist position for \"%1\"").arg(t.songTitle));
+                    continue;
+                }
+
+                // Step 3: add that position to the play queue
+                if (QProcess::execute("audtool", {"--playqueue-add", QString::number(pos)}) != 0) {
+                    emit statusMessage(tr("Failed to queue \"%1\" in Audacious").arg(t.songTitle));
+                    continue;
+                }
+                ++queued;
             }
 
-            // Step 2: the new entry landed at the end — find its 1-based position
-            QProcess lenProc;
-            lenProc.start("audtool", {"playlist-length"});
-            if (!lenProc.waitForFinished(3000)) {
-                emit statusMessage(tr("audtool timed out querying playlist length"));
-                continue;
-            }
-            bool ok = false;
-            int pos = lenProc.readAllStandardOutput().trimmed().toInt(&ok);
-            if (!ok || pos <= 0) {
-                emit statusMessage(tr("Failed to determine playlist position for \"%1\"").arg(t.songTitle));
-                continue;
-            }
-
-            // Step 3: add that position to the play queue
-            if (QProcess::execute("audtool", {"--playqueue-add", QString::number(pos)}) != 0) {
-                emit statusMessage(tr("Failed to queue \"%1\" in Audacious").arg(t.songTitle));
-                continue;
-            }
-            ++queued;
-        }
-
-        if (queued == 1)
-            emit statusMessage(tr("Queued: %1").arg(tracks.first().songTitle));
-        else if (queued > 1)
-            emit statusMessage(tr("Queued %1 tracks").arg(queued));
-    });
+            if (queued == 1)
+                emit statusMessage(tr("Queued: %1").arg(tracks.first().songTitle));
+            else if (queued > 1)
+                emit statusMessage(tr("Queued %1 tracks").arg(queued));
+        });
+    }
 
     QAction *kid3Act = menu.addAction(tr("Open with kid3"));
     kid3Act->setToolTip(tr("Edit tags for this track in kid3"));

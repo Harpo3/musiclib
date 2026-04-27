@@ -1,10 +1,6 @@
-    id3v2.3.0 - ID3.org <!-- var search\_hint = "Search"; //-->              
+##    id3v2.3.0 - ID3.org    
 
-<!-- google\_ad\_client = "pub-1408728402565238"; google\_ad\_width = 728; google\_ad\_height = 90; google\_ad\_format = "728x90\_as"; google\_ad\_type = "text"; google\_ad\_channel = ""; google\_color\_border = "ffffff"; google\_color\_bg = "FFFFFF"; google\_color\_link = "DD6600"; google\_color\_text = "000000"; google\_color\_url = "DD6600"; //-->
 
-welcome: [please sign in](https://id3.org/id3v2.3.0?action=login)
-
-  [![ID3.org Logo](id3v2.3.0%20-%20ID3.org_files/id3v2.gif)  The Audience is informed](https://id3.org/Home)
 
 Quick Links
 ===========
@@ -21,50 +17,6 @@ Quick Links
 *   [FindPage](https://id3.org/FindPage)
 *   [HelpContents](https://id3.org/HelpContents)
 
-Search Wiki
-===========
-
-  
-
- 
-
-// Initialize search form // var f = document.getElementById('searchform'); // f.getElementsByTagName('label')\[0\].style.display = 'none'; var e = document.getElementById('searchinput'); e.value = ""; searchChange(e); searchBlur(e);
-
-Page Tools
-==========
-
-*   Page Locked
-*   [Comments](#)
-*   [page history](https://id3.org/id3v2.3.0?action=info)
-*   [upload & manage files](https://id3.org/id3v2.3.0?action=AttachFile)
-*   \[ more options \]
-    
-    *   [Raw Text](https://id3.org/id3v2.3.0?action=raw)
-    *   [Print View](https://id3.org/id3v2.3.0?action=print)
-    *   [Render as Docbook](https://id3.org/id3v2.3.0?action=RenderAsDocbook)
-    *   [Delete Cache](https://id3.org/id3v2.3.0?action=refresh)
-    *   [Check Spelling](https://id3.org/id3v2.3.0?action=SpellCheck)
-    *   [Like Pages](https://id3.org/id3v2.3.0?action=LikePages)
-    *   [Local Site Map](https://id3.org/id3v2.3.0?action=LocalSiteMap)
-    *   Rename Page
-    *   Delete Page
-    *   Subscribe User
-    *   Remove Spam
-    *   revert to this revision
-    *   Package Pages
-    *   [Sync Pages](https://id3.org/id3v2.3.0?action=SyncPages)
-    
-    *   [Load](https://id3.org/id3v2.3.0?action=Load)
-    *   [Save](https://id3.org/id3v2.3.0?action=Save)
-    *   [SlideShow](https://id3.org/id3v2.3.0?action=SlideShow)
-    
-
-location: [id3v2.3.0](https://id3.org/id3v2.3.0)
-
-Informal Standard  
-Document: id3v2.3  
-M. Nilsson  
-3rd February 1999
 
 1\. ID3 tag version 2.3.0
 =========================
@@ -1400,8 +1352,3 @@ Email: johan at id3.org
 id3v2.3.0 (last edited 2020-04-19 03:05:33 by [DanONeill](https://id3.org/DanONeill "DanONeill @ 76.172.70.225[76.172.70.225]"))
 
 [Copyright](https://id3.org/Copyright) © 1998-2024 by their respective owners
-
-*   [MoinMoin Powered](http://moinmo.in/ "This site uses the MoinMoin Wiki software.")
-*   [Python Powered](http://moinmo.in/Python "MoinMoin is written in Python.")
-*   [GPL licensed](http://moinmo.in/GPL "MoinMoin is GPL licensed.")
-*   [Valid HTML 4.01](http://validator.w3.org/check?uri=referer "Click here to validate this page.")

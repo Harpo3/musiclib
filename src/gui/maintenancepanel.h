@@ -29,7 +29,7 @@ class ScriptRunner;
 /// at the bottom of the panel.  Path inputs use KIO-backed file dialogs.
 ///
 /// Browse dialogs default to the album directory of the currently playing
-/// Audacious track (via audtool), falling back to MUSIC_REPO from config.
+/// track (via MUSIC_DISPLAY_DIR/artloc.txt), falling back to MUSIC_REPO from config.
 ///
 /// The Boost Album slider auto-reads the current integrated LUFS of the
 /// first MP3 in the selected directory via ffmpeg's ebur128 filter.
@@ -77,8 +77,8 @@ private:
     static QString configValue(const QString &key);
 
     /// Resolve the starting directory for file dialogs.
-    /// Prefers the album directory of the currently playing Audacious track
-    /// (via audtool --current-song-filename, filename stripped).
+    /// Prefers the album directory of the currently playing track
+    /// (read from artloc.txt — the album folder containing the track and its art).
     /// Falls back to MUSIC_REPO from config, then $HOME.
     QString browseStartDir() const;
 

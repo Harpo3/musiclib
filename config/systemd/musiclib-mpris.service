@@ -1,0 +1,17 @@
+[Unit]
+Description=MusicLib MPRIS2 song-change listener
+Documentation=https://github.com/Harpo3/musiclib
+After=playerctld.service
+Wants=playerctld.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/musiclib/bin/musiclib_mpris_listen.sh
+Restart=on-failure
+RestartSec=2s
+# Capture stdout and stderr in journald under the unit name.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

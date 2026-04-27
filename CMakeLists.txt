@@ -146,6 +146,12 @@ if(GZIP)
 endif()
 
 # CMake package configuration
+# NOTE: This block is dead weight for an application — find_package(MusicLib) will never be
+# called by any consumer. It exists as a structural placeholder for Phase 4, when libmusiclib.so
+# is introduced as a real shared library. At that point this block must be fully rewritten:
+# INSTALL_DESTINATION, exported targets, and the .cmake.in template content will all need to
+# reflect the actual library targets. Do not treat the current block as a head start — it is
+# structured for the wrong thing. See task_note_04242026_2.md scope boundary flags.
 include(CMakePackageConfigHelpers)
 
 configure_package_config_file(
@@ -166,11 +172,6 @@ install(FILES
     DESTINATION lib/cmake/MusicLib
 )
 
-install(EXPORT MusicLibTargets
-    FILE MusicLibTargets.cmake
-    NAMESPACE MusicLib::
-    DESTINATION lib/cmake/MusicLib
-)
 
 # Uninstall target
 configure_file(
