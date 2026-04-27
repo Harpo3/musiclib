@@ -117,6 +117,15 @@ install(FILES ${CMAKE_SOURCE_DIR}/config/servicemenus/musiclib-rate.desktop
                 WORLD_READ
 )
 
+# Star rating images (/usr/share/musiclib/images/stars/)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/config/images/stars/
+    DESTINATION share/musiclib/images/stars
+    FILES_MATCHING PATTERN "*.png"
+    PERMISSIONS OWNER_READ OWNER_WRITE
+                GROUP_READ
+                WORLD_READ
+)
+
 # Desktop entry installation
 install(FILES ${CMAKE_SOURCE_DIR}/desktop/org.musiclib.musiclib.desktop
     DESTINATION share/applications
