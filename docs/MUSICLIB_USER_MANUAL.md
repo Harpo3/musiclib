@@ -43,13 +43,13 @@ Rather than juggling multiple applications, MusicLib brings everything together 
 - **Sync to mobile** (Android or iOS)
 - **Deep KDE integration** (system tray, shortcuts, file manager)
 
-It sits between you and the Audacious audio player, and handles all the behind-the-scenes work: organizing metadata, rating songs, tracking what you listen to, and syncing playlists to your **Android or iOS device** via KDE Connect. It adds significant features not available to the outstanding Audacious media player, yet integrates seamlessly with it and with the Kid3 tag editor.
+It sits between you and your audio player, and handles all the behind-the-scenes work: organizing metadata, rating songs, tracking what you listen to, and syncing playlists to your **Android or iOS device** via KDE Connect. MusicLib works with any MPRIS2-capable player — **Audacious** (recommended), Strawberry, Clementine, Amarok, Elisa, and others — and integrates seamlessly with the Kid3 tag editor.
 
 ### What MusicLib Does
 
 - **Centralizes Your Music**: Maintains a single database of all your songs, albums, and metadata—and expands each file's tag data to store rating and last-played information
 - **Rates and Organizes**: Star-rate songs and see your ratings everywhere, including Dolphin file manager
-- **Tracks Playback**: Records last-played history across devices—desktop (Audacious) and remote (mobile phone)
+- **Tracks Playback**: Records last-played history across devices—desktop (any MPRIS2-capable player) and remote (mobile phone)
 - **Creates Smart Playlists**: Most smart playlist schemes are pretty crude. This one creates **real variety**
 - **Syncs to Mobile**: Pushes playlists/files to Android or iOS devices via KDE Connect, and captures the last-played data from the old playlist when the new one is replaced. Logs actual played timestamps for tracks played from the desktop, and logs synthesized dates for playlists played on mobile
 - **Rips CDs**: Manages K3b's rip configuration (format, bitrate, error correction) and deploys it before each session, so K3b is always ready with the settings you want
@@ -88,7 +88,7 @@ MusicLib is Linux-based, but **distro-agnostic**. The shell scripts and GUI work
 Before installing MusicLib, ensure you have:
 
 1. **KDE Plasma 6** or later (run `plasmashell --version` to check)
-2. **Audacious** music player (audtool and song change plug-in features)
+2. **An MPRIS2-capable audio player** — Audacious (recommended), Strawberry, Clementine, Amarok, or Elisa; plus `playerctl` and `playerctld` for MPRIS2 event handling
 3. **kid3-common/kid3-core** (command-line tag editor)
 4. **exiftool** (metadata processor)
 5. **KDE Connect** (for mobile sync)
@@ -198,9 +198,9 @@ Alternatively, you can make a copy of /usr/lib/musiclib/config/musiclib.conf, pl
 
 This interactive script guides you through initial MusicLib configuration. Here's what it does:
 
-### Step 1: Detect Audacious Installation
+### Step 1: Detect Music Player and MPRIS2 Support
 
-The setup script checks for an existing Audacious installation on your system. This ensures MusicLib can properly integrate with this audio player and locate its configuration files.
+The setup script checks for `playerctl` and `playerctld` on your system, which provide MPRIS2 player control used by MusicLib to track song changes. Any MPRIS2-capable player (Audacious, Strawberry, Clementine, etc.) is supported — no per-player plugin configuration is required.
 
 ### Step 2: Locate Music Repository Directories
 
@@ -239,9 +239,9 @@ MusicLib creates the standard Linux XDG directory structure for you:
 
 No manual folder creation needed—the script handles it all.
 
-### Step 6: Configure Audacious Integration
+### Step 6: Enable MPRIS2 Event Service
 
-If Audacious is detected, the Song Change plugin and script is configured automatically, and Audacious playlists are imported. 
+The wizard enables the `playerctld.service` systemd user unit (so the most-recently-active player is always queryable) and the `musiclib-mpris.service` unit (which monitors MPRIS2 `PropertiesChanged` signals and triggers `musiclib_player_event.sh` on each track change). It also copies the star-rating PNG assets into `~/.local/share/musiclib/data/conky_output/stars/` so the Conky display works immediately without a manual rate operation. Audacious playlists are imported if Audacious is present.
 
 ### Step 7: Build Initial Database
 
@@ -428,7 +428,7 @@ Mobile sync is a two-phase operation:
 
 MusicLib tracks your play history in two ways:
 
-**Desktop (Audacious)**: The Audacious Song Change hook monitors playback and updates `LastTimePlayed` when you've listened to at least 50% of a track (with the threshold capped at a minimum of 30 seconds and a maximum of 4 minutes). This is logged with the exact timestamp.
+**Desktop**: The `musiclib-mpris.service` systemd user unit monitors MPRIS2 `PropertiesChanged` signals from any active player and triggers `musiclib_player_event.sh` on each track change. `LastTimePlayed` is updated when you've listened to at least 50% of a track (threshold capped at a minimum of 30 seconds, maximum of 4 minutes). This is logged with the exact timestamp and works with any MPRIS2-capable player.
 
 **Mobile**: Since mobile devices can't report precise playback data, MusicLib uses the logging approach described in Phase A above to synthesize timestamps based on how long the playlist was on your device.
 
@@ -926,7 +926,7 @@ musiclib-cli setup [--force]
 
 **What it does**:
 
-- Detects Audacious installation and configures its integration
+- Detects `playerctl`/`playerctld` availability and enables MPRIS2 event service
 - Scans for music directories
 - Creates XDG directory structure
 - Detects optional dependencies (RSGain, Kid3 GUI, k3b)
@@ -1786,14 +1786,10 @@ A: No. It works alongside Audacious. You play music in Audacious; MusicLib manag
 **Q: Can I use MusicLib with Spotify?**  
 A: Not yet. MusicLib is for local files only.
 
-**Q: Why do I have to use Audacious?**  
-A: MusicLib uses Audacious for two reasons:
+**Q: Do I have to use Audacious?**  
+A: No — MusicLib works with any MPRIS2-capable player (Audacious, Strawberry, Clementine, Amarok, Elisa, and others). Audacious remains the recommended player for its sound quality and tight playlist integration, but song-change tracking, Conky display, and last-played logging all work via the MPRIS2 standard, not Audacious-specific tools.
 
-**1. Rich Data Access via audtool**: `audtool` provides programmatic access that no other Linux player offers, allowing MusicLib to track with precision, detect changes immediately, and automate complex operations.
-
-**2. Superior Sound Quality**: Audacious offers direct ALSA output (bypasses PulseAudio resampling), floating-point processing, and minimal DSP for bit-perfect audio.
-
-**How MusicLib Complements Audacious**: While Audacious excels at playback, MusicLib fills critical gaps in library management, ratings & organization, last-played tracking, and deep KDE integration.
+**How MusicLib Complements Your Player**: While your audio player handles playback, MusicLib fills critical gaps in library management, ratings & organization, last-played tracking, and deep KDE integration.
 
 **Q: What if I don't have an Android phone?**  
 A: All core features (organizing, rating, syncing within Linux) still work. If you have an iPhone, MusicLib supports iOS too via KDE Connect.
@@ -1843,17 +1839,18 @@ A: The database stores absolute paths. If you move files, run `musiclib-cli buil
 2. Check file permissions: Files must be writable
 3. Verify database isn't corrupted: `musiclib-cli build --dry-run`
 
-**Audacious integration not working**
+**MPRIS2 player event service not working**
 
-1. Verify Audacious is running: `pgrep audacious`
-2. Check Song Change plugin is enabled: Services → Plugins in Audacious
-3. Verify hook script path: `/usr/lib/musiclib/bin/musiclib_audacious.sh`
+1. Verify `musiclib-mpris.service` is active: `systemctl --user status musiclib-mpris.service`
+2. Verify `playerctld` is running: `systemctl --user status playerctld.service`
+3. Check that your player is MPRIS2-capable: `playerctl status`
 4. Test manually: `musiclib-cli audacious`
+5. Check service logs: `journalctl --user -u musiclib-mpris.service -n 50`
 
 **Conky not updating**
 
 1. Check Conky output directory exists: `ls ~/.local/share/musiclib/data/conky_output/`
-2. Verify Audacious hook is configured (see Services → Plugins → SongChange → Settings in Audacious)
+2. Verify `musiclib-mpris.service` is active: `systemctl --user status musiclib-mpris.service`
 3. Play a track and check if files are created
 4. Check permissions on output directory
 
