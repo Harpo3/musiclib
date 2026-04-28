@@ -494,9 +494,9 @@ restart_conky_if_needed
 
 # Fork the scrobble polling loop.
 #
-# The subshell redirects its own stdout/stderr to LOGFILE BEFORE any other
-# command, so even an immediate crash (set -u on a missing var, syntax error)
-# is captured. set +e stops set -e from inheriting into the polling loop —
+# log_message() in musiclib_utils.sh uses tee -a $LOGFILE, so all logging
+# inside the subshell goes to the log without an exec redirect (which would
+# cause double-writes). set +e stops set -e from inheriting into the polling loop —
 # monitor_playback uses non-zero `return` codes as normal flow control (track
 # changed, status not Playing, etc.), and a parent set -e would treat those
 # as fatal. The < /dev/null disconnects the subshell's stdin so the parent
@@ -504,20 +504,10 @@ restart_conky_if_needed
 # job table so SIGHUP doesn't propagate when the systemd unit is restarted.
 #
 # Tail with:  tail -f ~/.local/share/musiclib/data/scrobble.log
-# DIAG: narrow fork instrumentation — writes to a file outside LOGFILE
-# so we can see subshell entry/exit independently of LOGFILE redirection.
-echo "PARENT: about to fork at $(date +%H:%M:%S.%N) LOGFILE=$LOGFILE" >> /tmp/fork_diag.log
 (
-    echo "SUB:1 entered at $(date +%H:%M:%S.%N) bashpid=$BASHPID" >> /tmp/fork_diag.log
-    exec >> "$LOGFILE" 2>&1
-    echo "SUB:2 exec'd at $(date +%H:%M:%S.%N)" >> /tmp/fork_diag.log
     set +e
-    echo "SUB:3 about to call monitor_playback" >> /tmp/fork_diag.log
     monitor_playback
-    rc=$?
-    echo "SUB:4 monitor_playback returned $rc at $(date +%H:%M:%S.%N)" >> /tmp/fork_diag.log
 ) < /dev/null &
-echo "PARENT: forked child=$! at $(date +%H:%M:%S.%N)" >> /tmp/fork_diag.log
 disown
 
 # Exit immediately so the calling player isn't blocked
