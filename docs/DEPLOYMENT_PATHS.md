@@ -14,7 +14,7 @@ When a new file or subfolder is added to `config/`, update this table and `CMake
 | `config/tag_schema.conf` | `lib/musiclib/config` | `/usr/lib/musiclib/config/` | ✓ Installed |
 | `config/k3brc` | `lib/musiclib/config` | `/usr/lib/musiclib/config/` | ✓ Installed |
 | `config/servicemenus/musiclib-rate.desktop` | `share/kio/servicemenus` | `/usr/share/kio/servicemenus/` | ✓ Installed |
-| `config/systemd/musiclib-mpris.service` | `lib/systemd/user` | `/usr/lib/systemd/user/` | ✗ Missing rule — see task_note_04272026_2.md |
+| `config/systemd/musiclib-mpris.service` | `lib/systemd/user` | `/usr/lib/systemd/user/` | ✓ Installed |
 | `config/images/stars/*.png` | `share/musiclib/images/stars` | `/usr/share/musiclib/images/stars/` | ✓ Installed |
 
 ---

@@ -12,9 +12,21 @@ Compared with traditional ReplayGain tags and MP3Gain/APE‑based workflows, RSG
 
 **musiclib_audacious.sh**
 
-A song-change handler for the Audacious music player that ties each currently playing track into the personal `musiclib` database and Conky-based display system. When a new track starts, it verifies Audacious is running, gets the file path, extracts album art into a display directory, and writes key metadata (artist, album, year, title, comment) plus a numeric rating (from the Grouping tag) into text files that Conky can render. It also computes and shows the last played date for the track from `musiclib.dsv`, and selects the appropriate star-rating PNG (or fires a passive `kdialog` prompt if unrated) so the desktop UI stays in sync with the current song state.
+Retained as the legacy Audacious-specific song-change handler. Superseded by `musiclib_player_event.sh` for all MPRIS2-capable players. See `musiclib_player_event.sh` below.
 
-In the background, the script monitors playback to a configurable “scrobble” threshold (effectively 50% of the track, bounded between 30 seconds and 4 minutes [1]) and, once reached, records a precise SQL-style timestamp for the listen. That timestamp is written back into the `musiclib` database and into the track’s tag (with an automatic tag-rebuild and logging path if `kid3-cli` fails), appended to a local `audacioushist.log` history file, and used to refresh the “last played” display. The script also includes a watchdog to restart Conky if needed, and a custom section that dynamically pads or trims the on-screen track detail text to fit around a weather widget layout.
+**musiclib_player_event.sh**
+
+MPRIS2 song-change handler that replaces `musiclib_audacious.sh` as the canonical track-change backend. Invoked by `musiclib_mpris_listen.sh` via the `musiclib-mpris.service` systemd user unit on every track change from any supported MPRIS2 player (Strawberry, Audacious, Clementine, Amarok, Elisa, mpd via mpd-mpris). The set of allowed players is configured via `supported_mpris_players` in `musiclib.conf`.
+
+On each track change the script uses `playerctl` and `qdbus6` to identify the active player bus and resolve the current track filepath from the MPRIS2 `xesam:url` metadata field. It then extracts album art (preferring an existing `folder.jpg` in the album directory, falling back to embedded cover extraction via `exiftool`), runs `exiftool` to produce a full tag dump (`taginfofull.txt`), and parses individual fields from that dump into Conky-readable text files: `artist.txt`, `album.txt`, `year.txt`, `title.txt`, `currbitrate.txt` (numeric kbps only, no unit suffix), and `currgpnum.txt` (rating from the Grouping tag). It also writes `songpath.txt` (current track path for GUI consumers), `artloc.txt` (album directory for the maintenance panel), and `lastplayed.txt` (last-played date from `musiclib.dsv`).
+
+In the background it forks a scrobble polling loop that checks every 3 seconds whether the same track is still playing. Once 50% of the track length has elapsed (bounded: minimum 30 s, maximum 4 min), it writes a SQL-serial `LastTimePlayed` timestamp to `musiclib.dsv` under a file lock and into the track's `Songs-DB_Custom1` tag via `kid3-cli`, with automatic tag-rebuild-and-retry on failure. A Conky watchdog restarts Conky if no instance is running. The scrobble subshell is disowned immediately so the calling player is never blocked.
+
+Setup: `musiclib_init_config.sh` enables the `musiclib-mpris.service` systemd user unit, which runs `musiclib_mpris_listen.sh` as a persistent D-Bus monitor. No per-player hook configuration is required.
+
+**musiclib_mpris_listen.sh**
+
+Persistent D-Bus monitor that drives the MPRIS2 event pipeline. Runs as a systemd user service (`musiclib-mpris.service`). Listens for `PropertiesChanged` signals on `org.freedesktop.DBus.Properties` and calls `musiclib_player_event.sh` on each track change. Also writes `playbackstatus.txt` to the Conky output directory on play/pause/stop transitions so the GUI and Conky can reflect playback state without polling.
 
 **musiclib_rate.sh**
 
@@ -156,7 +168,7 @@ Interactive first-run setup wizard that guides new users through initial MusicLi
 
 Auto-detects three optional tools and writes the appropriate flags to `musiclib.conf`: `rsgain` sets `RSGAIN_INSTALLED=true` (enables the Boost Album feature in the GUI); `kid3`/`kid3-qt` sets `KID3_GUI_INSTALLED` (enables the tag editor toolbar button); and `k3b` sets `K3B_INSTALLED=true` (enables the CD ripping panel and toolbar action). When K3b is detected, the wizard also scans `MUSIC_REPO` to determine the predominant audio format (mp3/ogg/flac), writes `K3B_ENCODER_FORMAT` if it differs from the default, and generates `~/.config/musiclib/k3brc` — musiclib's managed copy of the K3b configuration. If `~/.config/k3brc` already exists, the user is prompted whether to use it as the baseline or start from the system template; either way, all musiclib-managed keys (rip directory, encoder, format, bitrate/quality, paranoia mode, retry count) are patched from current `musiclib.conf` values.
 
-After configuration is generated, the wizard runs a library conformance check, optionally builds the initial database, and if Audacious is installed, configures the Song Change plugin to call `musiclib_audacious.sh` on each track change. As the final setup step, the wizard installs the Dolphin service menu (`musiclib-rate.desktop`) from `/usr/lib/musiclib/config/servicemenus/` to `~/.local/share/kio/servicemenus/`, enabling right-click track rating in Dolphin for any audio file. The dispatcher auto-triggers this wizard when any command is run without a valid configuration file.
+After configuration is generated, the wizard runs a library conformance check, optionally builds the initial database, enables the `musiclib-mpris.service` systemd user unit (which runs `musiclib_mpris_listen.sh` as a persistent D-Bus monitor for MPRIS2 track-change events), and populates `~/.local/share/musiclib/data/conky_output/stars/` with the star rating PNGs from `/usr/share/musiclib/images/stars/`. As the final setup step, the wizard installs the Dolphin service menu (`musiclib-rate.desktop`) from `/usr/lib/musiclib/config/servicemenus/` to `~/.local/share/kio/servicemenus/`, enabling right-click track rating in Dolphin for any audio file. The dispatcher auto-triggers this wizard when any command is run without a valid configuration file.
 
 **musiclib_audacious_setup.sh**
 

@@ -1163,108 +1163,109 @@ musiclib-cli new-tracks --dry-run
 
 ---
 
-### 2.9 `musiclib-cli audacious` → `musiclib_audacious.sh`
+### 2.9 `musiclib-cli audacious` → `musiclib_audacious.sh` (legacy) / `musiclib_player_event.sh` (current)
 
-**Purpose**: Audacious Song Change hook for Conky display and scrobble tracking.
+**Note**: `musiclib_audacious.sh` is the legacy Audacious-only song-change handler. It has been superseded by `musiclib_player_event.sh`, which is the canonical handler for all MPRIS2-capable players. The `musiclib-cli audacious` subcommand retains its name for backward compatibility but now delegates to the MPRIS2 pipeline via `musiclib_player_event.sh`.
+
+---
+
+**Purpose**: MPRIS2 song-change handler for Conky display and scrobble tracking. Supports any MPRIS2-compliant player whose bus-name suffix appears in `supported_mpris_players` (musiclib.conf). Default list: Strawberry, Audacious, Clementine, Amarok, Elisa, mpd (via mpd-mpris bridge).
 
 **Invocation**:
 ```bash
-musiclib_audacious.sh
+musiclib_player_event.sh
 ```
-
-**Called By**: Audacious Song Change plugin (automatic on track change)
-
-**Workflow**:
-1. Query current track from Audacious via `audtool --current-song-filename`
-2. Look up track in `musiclib.dsv`
-3. Extract album art to Conky display directory
-4. Write track metadata to Conky text files (artist, album, title, rating, last played)
-5. Select appropriate star-rating PNG for display
-6. Monitor playback to scrobble threshold (50% of track, bounded 30s–4min)
-7. Once threshold met, update `LastTimePlayed` in DSV and file tag
-8. Append to `audacioushist.log`
-9. Optionally send KNotification
-
-**Side Effects**:
-- **Conky display files**: `detail.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, album art copies – all written to `$MUSIC_DISPLAY_DIR/`
-- **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` via `.tmp` + `mv` (crash-safe; see §1.3.4); serialized via `flock` lock (see §1.3.1)
-- **File tags**: Updates `Songs-DB_Custom1` tag with last-played timestamp
-- **Logs**: Appends to `audacioushist.log` and `musiclib.log`
-
-**Atomicity Note**: The `flock` lock (§1.3.1) serializes concurrent writers — it prevents two processes from writing the DSV simultaneously. It does **not** guarantee crash atomicity. Crash safety for the DSV update is provided by the `.tmp` + `mv` pattern (§1.3.4). These are separate guarantees and should not be conflated.
+**Called By**: `musiclib_mpris_listen.sh`, invoked by the `musiclib-mpris.service` systemd user unit on each `PropertiesChanged` D-Bus signal (automatic on track change, no per-player configuration required).
 
 **Exit Codes**:
 
 | Code | Meaning | When | Example |
 |------|---------|------|---------|
-| **0** | Success | Display updated, scrobble queued | Normal playback, track changed |
-| **1** | Not an error | Audacious not running or no track playing | User stopped playback, script exits gracefully |
-| **2** | System error | Tool unavailable, DB lock timeout, I/O failure | `exiftool` missing, tag write failed |
+| **0** | Success or no-op | Display updated and scrobble forked, OR no MPRIS2 player active, OR non-local URL (stream) | Normal playback, player stopped |
+| **2** | System error | `exiftool` failed, tag write failed, DB lock error | Tool missing, I/O failure |
 
-**Important**: Exit code 1 is **not an error** in this context. It indicates graceful handling of "no track playing" state.
+**Important**: A missing or inactive MPRIS2 player returns exit 0 (no-op), not an error.
+
+**Workflow**:
+
+1. Detect active MPRIS2 player bus via `playerctl` / `qdbus6` (`detect_active_mpris_bus` in `musiclib_utils.sh`)
+2. Resolve current track filepath from `xesam:url` MPRIS2 metadata field
+3. Write `songpath.txt` (current track path for GUI consumers)
+4. Extract album art to Conky display directory (`folder.jpg`, `artloc.txt`, `currartsize.txt`)
+5. Run `exiftool -a` to produce `taginfofull.txt`; parse into individual Conky files: `artist.txt`, `album.txt`, `year.txt`, `title.txt`, `currbitrate.txt` (numeric kbps, no unit suffix), `currgpnum.txt` (Grouping tag rating)
+6. Read `musiclib.dsv` for last-played date → `lastplayed.txt`
+7. Select appropriate star-rating PNG → `starrating.png`
+8. Fork scrobble polling loop (disowned subshell); monitor to 50% threshold (min 30 s, max 4 min)
+9. Once threshold met, update `LastTimePlayed` in DSV and `Songs-DB_Custom1` file tag
+
+**Configuration Dependencies** (from `musiclib.conf`):
+```bash
+MUSIC_DISPLAY_DIR="${MUSICLIB_DATA_DIR}/data/conky_output"
+STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
+SCROBBLE_THRESHOLD_PCT=50
+supported_mpris_players="strawberry audacious clementine amarok elisa mpd"
+```
+
+**Side Effects**:
+
+- **Conky display files**: `songpath.txt`, `artist.txt`, `album.txt`, `year.txt`, `title.txt`, `currbitrate.txt`, `currgpnum.txt`, `lastplayed.txt`, `starrating.png`, `artloc.txt`, `currartsize.txt`, `folder.jpg`, `taginfofull.txt` — all written to `$MUSIC_DISPLAY_DIR/`
+- **Database**: Updates `LastTimePlayed` column in `musiclib.dsv` via `.tmp` + `mv` (crash-safe; see §1.3.4); serialized via `flock` lock (see §1.3.1)
+- **File tags**: Updates `Songs-DB_Custom1` tag with last-played timestamp via `kid3-cli` (with tag-rebuild-and-retry on failure)
+- **Logs**: Appends scrobble events and debug output to `scrobble.log`
+
+**Behavioral Notes**:
+
+1. **Idempotent**: Can be called multiple times for same track without side effects
+2. **Non-blocking**: Disowns scrobble subshell immediately; returns to caller in <200 ms
+3. **Lock-aware**: Gracefully handles database lock contention (exit 0 for timeout, not crash)
+4. **Silent operation**: Errors go to stderr (JSON) and `scrobble.log`, not user notification
+5. **FILEPATH snapshot-on-entry**: `FILEPATH` is captured once at script entry. The scrobble loop re-verifies `xesam:url` on every 3-second tick — any track change, player stop, or bus disappearance aborts the loop without writing a scrobble.
+
+**Atomicity Note**: The `flock` lock (§1.3.1) serializes concurrent writers. Crash safety for the DSV update is provided by the `.tmp` + `mv` pattern (§1.3.4). These are separate guarantees.
 
 **Error JSON Examples**:
-
-Database lock timeout:
-```json
-{
-  "error": "Database lock timeout - another process may be using the database",
-  "script": "musiclib_audacious.sh",
-  "code": 2,
-  "context": {
-    "timeout": "5 seconds",
-    "database": "/home/user/.local/share/musiclib/data/musiclib.dsv"
-  },
-  "timestamp": "2026-02-14T18:45:23Z"
-}
-```
 
 Tool unavailable:
 ```json
 {
   "error": "Required tool not available",
-  "script": "musiclib_audacious.sh",
+  "script": "musiclib_player_event.sh",
   "code": 2,
   "context": {
-    "missing": "audtool",
-    "package": "audacious-plugins"
+    "missing": "exiftool"
   },
   "timestamp": "2026-02-14T18:45:23Z"
 }
 ```
 
-**Configuration Dependencies** (from `musiclib.conf`):
-```bash
-AUDACIOUS_INSTALLED=true
-AUDACIOUS_PATH="/usr/bin/audacious"
-MUSIC_DISPLAY_DIR="${MUSICLIB_DATA_DIR}/data/conky_output"
-SCROBBLE_THRESHOLD_PCT=50
-STAR_DIR="$MUSIC_DISPLAY_DIR/stars"
+Database lock timeout:
+```json
+{
+  "error": "Database lock timeout - another process may be using the database",
+  "script": "musiclib_player_event.sh",
+  "code": 2,
+  "context": {
+    "database": "/home/user/.local/share/musiclib/data/musiclib.dsv",
+    "timeout": "10 seconds"
+  },
+  "timestamp": "2026-02-14T18:45:23Z"
+}
 ```
 
-**Setup**: Configured during `musiclib-cli setup`, which detects Audacious, provides Song Change plugin instructions, and optionally verifies the integration. See section 2.10.
-
-**Behavioral Notes**:
-1. **Idempotent**: Can be called multiple times for same track without side effects
-2. **Non-blocking**: Returns quickly to avoid delaying Audacious playback
-3. **Lock-aware**: Gracefully handles database lock contention (exit 2, not crash)
-4. **Silent operation**: Errors go to stderr (JSON) and log, not user notification
-5. **FILEPATH snapshot-on-entry**: `FILEPATH` is captured once at script entry via `audtool --current-song-filename`. It does not change during the scrobble wait loop.
-6. **Scrobble-loop track-change defense**: Every 3-second tick in the scrobble loop re-verifies `audtool --current-song-filename` against the captured `FILEPATH`. Any mismatch (track changed, playback stopped, Audacious quit) exits the loop without a scrobble write. The scrobble threshold will not fire if track or playback state changes during the wait.
+**Setup**: `musiclib_init_config.sh` enables `musiclib-mpris.service` via `systemctl --user enable --now`. The service runs `musiclib_mpris_listen.sh` as a persistent D-Bus monitor. No per-player hook configuration is required. See section 2.10.
 
 **Troubleshooting**:
 
-If the hook is not firing: check that the Song Change plugin is enabled in Audacious (Settings → Plugins), verify the command path is correct, confirm the hook script is executable (`chmod +x`), and ensure `audtool` is installed.
+If the handler is not firing: check `systemctl --user status musiclib-mpris.service`, confirm `playerctl` and `qdbus6` are installed, and verify the player bus name appears in `supported_mpris_players` in `musiclib.conf`.
 
-If Conky files are not updating: check the output directory exists and has correct permissions, and check for database lock timeouts in `musiclib.log`.
+If Conky files are not updating: check the output directory exists and has correct permissions, and check `scrobble.log` for errors.
 
-**Performance**: Typical execution 50–200ms. CPU negligible, memory <5MB, disk I/O ~50KB per song change.
+**Performance**: Typical execution 50–200 ms to fork the scrobble subshell. CPU negligible, memory <5 MB, disk I/O ~50 KB per song change.
 
 ---
-
 ### 2.10 `musiclib-cli setup` → `musiclib_init_config.sh`
 
-**Purpose**: Interactive first-run configuration wizard. Detects system capabilities, creates directory structure, generates configuration, provides Audacious Song Change plugin setup instructions, and optionally verifies the integration.
+**Purpose**: Interactive first-run configuration wizard. Detects system capabilities, creates directory structure, generates configuration, enables the `musiclib-mpris.service` systemd user unit for MPRIS2 event handling, and optionally verifies the integration.
 
 **Invocation**:
 ```bash
