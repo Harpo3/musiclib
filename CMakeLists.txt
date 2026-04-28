@@ -109,6 +109,14 @@ install(FILES ${CMAKE_SOURCE_DIR}/config/k3brc
                 WORLD_READ
 )
 
+# systemd user service unit (/usr/lib/systemd/user/)
+install(FILES ${CMAKE_SOURCE_DIR}/config/systemd/musiclib-mpris.service
+    DESTINATION lib/systemd/user
+    PERMISSIONS OWNER_READ OWNER_WRITE
+                GROUP_READ
+                WORLD_READ
+)
+
 # KDE service menu installation (KF6: /usr/share/kio/servicemenus/)
 install(FILES ${CMAKE_SOURCE_DIR}/config/servicemenus/musiclib-rate.desktop
     DESTINATION share/kio/servicemenus

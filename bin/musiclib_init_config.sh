@@ -693,6 +693,10 @@ create_dir "$CONFIG_DIR"
 create_dir "$DATA_DIR/data"
 create_dir "$DATA_DIR/data/conky_output"
 create_dir "$DATA_DIR/data/conky_output/stars"
+# Populate star rating PNGs from system install path (idempotent — -n skips existing files)
+if [ -d "/usr/share/musiclib/images/stars" ]; then
+    cp -n /usr/share/musiclib/images/stars/*.png "$DATA_DIR/data/conky_output/stars/" 2>/dev/null || true
+fi
 create_dir "$DATA_DIR/data/tag_backups"
 create_dir "$DATA_DIR/logs"
 create_dir "$DATA_DIR/playlists"

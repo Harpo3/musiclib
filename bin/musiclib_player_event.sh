@@ -194,6 +194,12 @@ extract_metadata() {
         echo "" > "$MUSIC_DISPLAY_DIR/detail.txt"
     fi
 
+    # Bitrate — parsed from the exiftool dump; strips trailing " kbps" so conky
+    # can append its own label.  Falls back to empty string (not an error).
+    awk -F': *' '/^Audio Bitrate[[:space:]]*:/ {sub(/^[^:]+: */,""); sub(/ kbps.*$/,""); print; exit}' \
+        "$MUSIC_DISPLAY_DIR/taginfofull.txt" > "$MUSIC_DISPLAY_DIR/currbitrate.txt" 2>/dev/null \
+        || echo "" > "$MUSIC_DISPLAY_DIR/currbitrate.txt"
+
     # Extract rating from Grouping tag
     awk '/Grouping/&&length($NF)==1{print $NF;found=1;exit}END{if(!found)print 0}' "$MUSIC_DISPLAY_DIR/taginfofull.txt" >"$MUSIC_DISPLAY_DIR/currgpnum.txt" 2>/dev/null || echo 0>"$MUSIC_DISPLAY_DIR/currgpnum.txt"
 
