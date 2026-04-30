@@ -64,7 +64,7 @@ fi
 # 2. Collect open items — only from ### Open Items sections
 #    Skip [wont-fix] and [x] lines
 # ---------------------------------------------------------------------------
-declare -a mf_lines next_lines someday_lines
+declare -a mf_lines=() next_lines=() someday_lines=()
 
 while IFS= read -r filepath; do
     filename="$(basename "$filepath")"
