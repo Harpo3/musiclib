@@ -58,6 +58,8 @@ STAR_DIR="${STAR_DIR:-$MUSIC_DISPLAY_DIR/stars}"
 LOGFILE="${LOGFILE:-$(get_data_dir)/data/scrobble.log}"
 mkdir -p "$(dirname "$LOGFILE")" 2>/dev/null || true
 export LOGFILE
+export KID3_CMD
+export SCROBBLE_THRESHOLD_PCT
 
 #############################################
 # Detect active player and resolve current track filepath

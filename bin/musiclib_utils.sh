@@ -67,7 +67,7 @@ get_data_dir() {
 
 # Load configuration
 load_config() {
-    local system_config="/usr/lib/musiclib/config/musiclib.conf"
+    local system_config="${MUSICLIB_SYSTEM_CONFIG_DIR:-/usr/lib/musiclib/config}/musiclib.conf"
     local user_config
 
     # Determine user config location
