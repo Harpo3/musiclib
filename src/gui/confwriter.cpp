@@ -79,8 +79,10 @@ bool ConfWriter::loadFromDefaultLocation()
     // etc.) that the user config intentionally leaves out.  Values here
     // contain unresolved shell variables like $MUSICLIB_XDG_DATA; the
     // fallback logic in setupConfWriter() converts them to absolute paths.
-    const QString systemConfig =
-        QStringLiteral("/usr/lib/musiclib/config/musiclib.conf");
+    QString sysConfigDir = QString::fromLocal8Bit(qgetenv("MUSICLIB_SYSTEM_CONFIG_DIR"));
+    const QString systemConfig = sysConfigDir.isEmpty()
+        ? QStringLiteral("/usr/lib/musiclib/config/musiclib.conf")
+        : sysConfigDir + QStringLiteral("/musiclib.conf");
     if (QFile::exists(systemConfig)) {
         QFile sysFile(systemConfig);
         if (sysFile.open(QIODevice::ReadOnly | QIODevice::Text)) {

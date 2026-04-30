@@ -816,8 +816,10 @@ void SmartPlaylistPanel::saveGenerationParamsToConfig()
 
 QString SmartPlaylistPanel::scriptPath(const QString &scriptName) const
 {
-    // 1. Check configured bin directory
-    QString binDir = m_conf->value(QStringLiteral("MUSICLIB_BIN_DIR"));
+    // 1. Check env var override (dev/debug), then configured bin directory
+    QString binDir = QString::fromLocal8Bit(qgetenv("MUSICLIB_BIN_DIR"));
+    if (binDir.isEmpty())
+        binDir = m_conf->value(QStringLiteral("MUSICLIB_BIN_DIR"));
     if (!binDir.isEmpty() && !binDir.contains(QLatin1Char('$'))) {
         QString path = binDir + QLatin1Char('/') + scriptName;
         if (QFile::exists(path))
