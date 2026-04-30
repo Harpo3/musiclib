@@ -12,6 +12,13 @@
 #
 # Pool building is delegated to musiclib_smartplaylist_analyze.sh -m file.
 #
+# --load-player dispatch:
+#   If the active MPRIS2 player is Audacious, the playlist is loaded via direct
+#   D-Bus calls to org.atheme.audacious (qdbus6).  For all other players the
+#   generated M3U is opened with xdg-open and the player is responsible for
+#   handling it.  The MPRIS2 Playlists interface is not used — it is rarely
+#   implemented and Audacious's implementation does not support playlist creation.
+#
 # Exit codes:
 #   0 - Success
 #   1 - User/validation error (bad arguments, insufficient tracks)
@@ -88,8 +95,8 @@ playlist_name="Smart Playlist"
 # Output file path (set after option parsing)
 playlist_output=""
 
-# Load into Audacious after generation?
-load_audacious=false
+# Load into player after generation?
+load_player=false
 
 # Additional flags to pass through to analyze script
 analyze_extra_flags=""
@@ -123,11 +130,13 @@ Options:
                    Default: from RatingGroup1–5 in musiclib.conf
   -v <ranges>      Comma-separated POPM high bounds for groups 1–5.
                    Default: from RatingGroup1–5 in musiclib.conf
-  --load-audacious Load the generated playlist into Audacious after writing.
+  --load-player    Load the generated playlist into the active music player.
+                   Audacious: loaded via D-Bus (org.atheme.audacious).
+                   Other players: M3U opened with xdg-open.
 
 Examples:
-  # Generate a default 50-track playlist and load it into Audacious
-  musiclib_smartplaylist.sh --load-audacious
+  # Generate a default 50-track playlist and load it into the active player
+  musiclib_smartplaylist.sh --load-player
 
   # 100-track playlist with tighter thresholds for a large library
   musiclib_smartplaylist.sh -p 100 -g 180,90,45,30,14 -n MyPlaylist
@@ -138,13 +147,13 @@ EOF
 }
 
 ###############################################################################
-# Option parsing (handle --load-audacious as a long option before getopts)
+# Option parsing (handle --load-player as a long option before getopts)
 ###############################################################################
 
 _args=()
 for _arg in "$@"; do
-    if [[ "$_arg" == "--load-audacious" ]]; then
-        load_audacious=true
+    if [[ "$_arg" == "--load-player" ]]; then
+        load_player=true
     else
         _args+=("$_arg")
     fi
@@ -235,14 +244,14 @@ if ! validate_database "$MUSICDB"; then
     error_exit 2 "Database not found or invalid" "path" "$MUSICDB"; exit 2
 fi
 
-# If Audacious load is requested, verify it is running before doing any work
-if [[ "$load_audacious" == "true" ]]; then
-    if ! pgrep -x audacious >/dev/null; then
-        error_exit 1 "Audacious is not running — cannot load playlist" "flag" "--load-audacious"
-        exit 1
+# If player load is requested, verify qdbus6 and playerctl are available
+if [[ "$load_player" == "true" ]]; then
+    if ! command -v qdbus6 >/dev/null 2>&1; then
+        error_exit 2 "qdbus6 not found — required for player integration" "tool" "qdbus6"
+        exit 2
     fi
-    if ! command -v audtool >/dev/null 2>&1; then
-        error_exit 2 "audtool not found — required for Audacious integration" "tool" "audtool"
+    if ! command -v playerctl >/dev/null 2>&1; then
+        error_exit 2 "playerctl not found — required for player detection" "tool" "playerctl"
         exit 2
     fi
 fi
@@ -541,45 +550,89 @@ printf 'Output: %s\n' "$playlist_output"
 log_message "smartplaylist: generated $final_size tracks -> $playlist_output"
 
 ###############################################################################
-# Optionally load into Audacious
+# Optionally load into the active player
 ###############################################################################
 
-if [[ "$load_audacious" == "true" ]]; then
-    printf 'Loading playlist into Audacious...\n'
+if [[ "$load_player" == "true" ]]; then
+    # Detect the active MPRIS2 player (sets MPRIS_BUS; uses playerctld allowlist).
+    detect_active_mpris_bus
 
-    # Check for an existing playlist with the same name; if found, clear it.
-    # Otherwise create a new one.
-    num_playlists=$(audtool --number-of-playlists 2>/dev/null || echo 0)
-    found_idx=""
-    for (( idx=1; idx<=num_playlists; idx++ )); do
-        pl_title=$(audtool --playlist-title "$idx" 2>/dev/null || true)
-        if [[ "$pl_title" == "$playlist_name" ]]; then
-            found_idx="$idx"
-            break
+    # Determine player identity for dispatch.
+    # playerctl --player=playerctld returns the proxied player's name.
+    _active_player_name=$(playerctl --player=playerctld metadata \
+        --format '{{ playerName }}' 2>/dev/null || echo "")
+
+    if [[ "$_active_player_name" == "audacious"* ]]; then
+        # ── Audacious path: direct D-Bus via org.atheme.audacious ──────────────
+        printf 'Loading playlist into Audacious via D-Bus...\n'
+
+        _aud_bus="org.atheme.audacious"
+        _aud_obj="/org/atheme/audacious"
+        _aud_iface="org.atheme.audacious"
+
+        # Count existing playlists.
+        _num_playlists=$(qdbus6 "$_aud_bus" "$_aud_obj" \
+            "${_aud_iface}.NumberOfPlaylists" 2>/dev/null || echo 0)
+
+        # Search for an existing playlist with the same name.
+        _found_idx=""
+        for (( _idx=0; _idx<_num_playlists; _idx++ )); do
+            _pl_title=$(qdbus6 "$_aud_bus" "$_aud_obj" \
+                "${_aud_iface}.GetPlaylistTitle" "$_idx" 2>/dev/null || true)
+            if [[ "$_pl_title" == "$playlist_name" ]]; then
+                _found_idx="$_idx"
+                break
+            fi
+        done
+
+        if [[ -n "$_found_idx" ]]; then
+            # Switch to it and clear it.
+            qdbus6 "$_aud_bus" "$_aud_obj" \
+                "${_aud_iface}.SetCurrentPlaylist" "$_found_idx" 2>/dev/null || true
+            qdbus6 "$_aud_bus" "$_aud_obj" \
+                "${_aud_iface}.PlaylistClear" 2>/dev/null || true
+            printf 'Cleared existing playlist "%s" (index %d).\n' \
+                "$playlist_name" "$_found_idx"
+        else
+            # Create a new empty playlist and name it.
+            qdbus6 "$_aud_bus" "$_aud_obj" \
+                "${_aud_iface}.NewPlaylist" 2>/dev/null || {
+                error_exit 2 "D-Bus NewPlaylist call failed" "bus" "$_aud_bus"; exit 2
+            }
+            qdbus6 "$_aud_bus" "$_aud_obj" \
+                "${_aud_iface}.SetCurrentPlaylistName" "$playlist_name" 2>/dev/null || true
         fi
-    done
 
-    if [[ -n "$found_idx" ]]; then
-        # Select the existing playlist and clear it
-        audtool --set-current-playlist "$found_idx" 2>/dev/null || true
-        audtool --playlist-clear 2>/dev/null || true
-        printf 'Cleared existing playlist "%s" (index %d).\n' "$playlist_name" "$found_idx"
-    else
-        # Create a new empty playlist and name it
-        audtool --new-playlist 2>/dev/null || {
-            error_exit 2 "audtool --new-playlist failed" "playlist" "$playlist_name"; exit 2
+        # Add each track to the (now current) playlist via PlaylistAddUrl.
+        while IFS= read -r _trackpath; do
+            [[ -z "$_trackpath" ]] && continue
+            qdbus6 "$_aud_bus" "$_aud_obj" \
+                "${_aud_iface}.PlaylistAddUrl" "$_trackpath" 2>/dev/null || true
+        done < "$playlist_output"
+
+        printf 'Loaded "%s" (%d tracks) into Audacious.\n' "$playlist_name" "$final_size"
+        log_message "smartplaylist: loaded '$playlist_name' into Audacious via D-Bus"
+
+    elif [[ -n "$_active_player_name" ]]; then
+        # ── Generic path: open M3U with xdg-open ──────────────────────────────
+        printf 'Loading playlist via xdg-open (player: %s)...\n' "$_active_player_name"
+        if ! command -v xdg-open >/dev/null 2>&1; then
+            error_exit 2 "xdg-open not found — cannot open playlist for non-Audacious player" \
+                "tool" "xdg-open"
+            exit 2
+        fi
+        xdg-open "$playlist_output" 2>/dev/null || {
+            error_exit 2 "xdg-open failed to open playlist" "path" "$playlist_output"; exit 2
         }
-        audtool --set-current-playlist-name "$playlist_name" 2>/dev/null || true
+        printf 'Opened "%s" with xdg-open.\n' "$playlist_output"
+        log_message "smartplaylist: opened '$playlist_output' via xdg-open (player: $_active_player_name)"
+
+    else
+        # No active MPRIS2 player detected.
+        error_exit 1 "No active MPRIS2 player detected — cannot load playlist" \
+            "flag" "--load-player"
+        exit 1
     fi
-
-    # Add each track to the (now current) playlist
-    while IFS= read -r trackpath; do
-        [[ -z "$trackpath" ]] && continue
-        audtool --playlist-addurl "$trackpath" 2>/dev/null || true
-    done < "$playlist_output"
-
-    printf 'Loaded "%s" (%d tracks) into Audacious.\n' "$playlist_name" "$final_size"
-    log_message "smartplaylist: loaded '$playlist_name' into Audacious"
 fi
 
 ###############################################################################

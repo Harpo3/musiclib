@@ -1616,7 +1616,7 @@ musiclib_smartplaylist_analyze.sh -g 720,360,180,90,45
 
 ### 2.14 `musiclib-cli smart-playlist generate` → `musiclib_smartplaylist.sh`
 
-**Purpose**: Generate a variety-optimized M3U playlist from the musiclib database. Delegates pool building to `musiclib_smartplaylist_analyze.sh -m file`, then runs the variance-proportional selection loop with a rolling artist-exclusion window. Optionally loads the result into Audacious. Available as a `musiclib-cli` subcommand and called directly by `SmartPlaylistPanel`.
+**Purpose**: Generate a variety-optimized M3U playlist from the musiclib database. Delegates pool building to `musiclib_smartplaylist_analyze.sh -m file`, then runs the variance-proportional selection loop with a rolling artist-exclusion window. Optionally loads the result into the active music player. Available as a `musiclib-cli` subcommand and called directly by `SmartPlaylistPanel`.
 
 **CLI Invocation**:
 ```bash
@@ -1640,13 +1640,13 @@ musiclib_smartplaylist.sh [options]
 | `-s` | `<n>` | from `SP_SAMPLE_SIZE` | Sample size — tracks considered per selection round |
 | `-u` | `L1,…,L5` | from `RatingGroup1-5` | POPM low bounds for each group |
 | `-v` | `H1,…,H5` | from `RatingGroup1-5` | POPM high bounds for each group |
-| `--load-audacious` | (flag) | false | Load the playlist into Audacious after writing |
+| `--load-player` | (flag) | false | Load the playlist into the active music player after writing. Audacious: via D-Bus (`org.atheme.audacious`). Other players: via `xdg-open`. |
 
 **Processing steps**:
 1. Call `musiclib_smartplaylist_analyze.sh -m file` (with the same `-g`/`-u`/`-v`/`-s` flags) to produce the variance-annotated pool at `~/.local/share/musiclib/data/sp_pool.csv`.
 2. Run the main playlist-building loop: variance-proportional batch sampling with a rolling effective-artist exclusion window of size `-e`.
 3. Write output `.m3u` to `${PLAYLISTS_DIR}/<name>.m3u` (or the path specified by `-o`).
-4. If `--load-audacious`: verify Audacious is running (`pgrep -x audacious`). Search for an existing playlist with the same name; if found, select and clear it; if not found, create a new one. Load each track via `audtool --playlist-addurl`.
+4. If `--load-player`: detect the active MPRIS2 player via `playerctl`/`playerctld`. If Audacious is active, use `qdbus6 org.atheme.audacious` to locate or create a named playlist, clear it, and add each track. For all other players, open the M3U with `xdg-open`. If no allowed MPRIS2 player is active, exits with code 1.
 5. Emit JSON success object to stdout.
 
 **Progress output** (stdout, during step 2):
@@ -1676,27 +1676,28 @@ where `n` is the number of tracks selected so far and `total` is the target play
 - `~/.local/share/musiclib/data/sp_pool.csv` — intermediate pool (written by analyze script, overwritten on each run)
 
 **Exit Codes**:
-- 0: Success — playlist written (and loaded into Audacious if `--load-audacious` was set)
-- 1: User/validation error — bad flag values, playlist size larger than eligible pool
-- 2: System error — config load failure, analyze script failed, Audacious not running when `--load-audacious` requested, I/O error writing `.m3u`
+- 0: Success — playlist written (and loaded into active player if `--load-player` was set)
+- 1: User/validation error — bad flag values, playlist size larger than eligible pool, no active MPRIS2 player when `--load-player` requested
+- 2: System error — config load failure, analyze script failed, `qdbus6`/`playerctl`/`xdg-open` missing when `--load-player` requested, I/O error writing `.m3u`
 
 **Examples**:
 ```bash
 # Via musiclib-cli (recommended)
-musiclib-cli smart-playlist generate --load-audacious              # Default playlist, load into Audacious
+musiclib-cli smart-playlist generate --load-player                 # Default playlist, load into active player
 musiclib-cli smart-playlist generate -p 100 -n "Evening Mix" -g 180,90,45,30,14
 musiclib-cli smart-playlist generate -o ~/Music/playlist.m3u
 
 # Direct script invocation (advanced / GUI use)
-musiclib_smartplaylist.sh --load-audacious
+musiclib_smartplaylist.sh --load-player
 musiclib_smartplaylist.sh -p 100 -g 180,90,45,30,14 -n "Evening Mix"
 ```
 
 **Dependencies**:
 - `musiclib_smartplaylist_analyze.sh` (pool building)
 - `musiclib_utils.sh` (provides `load_config`, `error_exit`, `log_message`, `get_data_dir`)
-- `audtool` (required only for `--load-audacious`)
-- `pgrep` (required only for `--load-audacious`)
+- `qdbus6` (required only for `--load-player`, Audacious path)
+- `playerctl` (required only for `--load-player`, player detection)
+- `xdg-open` (required only for `--load-player`, non-Audacious path)
 - `awk`, `shuf` (coreutils)
 
 ---
@@ -1798,7 +1799,7 @@ connect(watcher, &QFileSystemWatcher::fileChanged, this, [=]() {
 |---------|--------|-------|
 | Threshold spinbox change (500 ms debounce) | `musiclib_smartplaylist_analyze.sh` | `-m counts -g G1,G2,G3,G4,G5` |
 | **Preview** button | `musiclib_smartplaylist_analyze.sh` | `-m preview -g G1,G2,G3,G4,G5 -s S` |
-| **Generate** button | `musiclib_smartplaylist.sh` | `-p P -e E -g G1,G2,G3,G4,G5 -s S -n "Name" [--load-audacious]` |
+| **Generate** button | `musiclib_smartplaylist.sh` | `-p P -e E -g G1,G2,G3,G4,G5 -s S -n "Name" [--load-player]` |
 
 Where `G1–G5` are the current age threshold spinbox values, `S` is the sample size, `P` is the playlist size, and `E` is the artist exclusion count.
 

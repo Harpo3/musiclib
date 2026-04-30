@@ -54,7 +54,7 @@ void showGlobalHelp() {
     cout << "  musiclib-cli process-pending                                     # Retry deferred operations" << Qt::endl;
     cout << "  musiclib-cli smart-playlist analyze                              # Preview pool composition" << Qt::endl;
     cout << "  musiclib-cli smart-playlist analyze -m counts                    # Fast per-group counts" << Qt::endl;
-    cout << "  musiclib-cli smart-playlist generate --load-audacious            # Generate and load into Audacious" << Qt::endl;
+    cout << "  musiclib-cli smart-playlist generate --load-player               # Generate and load into active player" << Qt::endl;
     cout << "  musiclib-cli smart-playlist generate -p 100 -n \"Evening Mix\"   # 100-track custom playlist" << Qt::endl;
 }
 

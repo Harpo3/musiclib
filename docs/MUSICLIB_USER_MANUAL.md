@@ -1559,7 +1559,7 @@ Generates a variety-optimized M3U playlist. Delegates pool building to the analy
 - `-g G1,G2,G3,G4,G5` — Age thresholds in days per rating group.
 - `-u L1,L2,L3,L4,L5` — POPM low bounds per rating group.
 - `-v H1,H2,H3,H4,H5` — POPM high bounds per rating group.
-- `--load-audacious` — Load the generated playlist into Audacious after writing. Audacious must be running.
+- `--load-player` — Load the generated playlist into the active music player after writing. If Audacious is active, the playlist is loaded directly via D-Bus. For all other players the M3U is opened with `xdg-open`. Requires an active MPRIS2 player.
 
 **Examples**:
 
@@ -1567,8 +1567,8 @@ Generates a variety-optimized M3U playlist. Delegates pool building to the analy
 # Generate a default playlist using all config settings
 musiclib-cli smart-playlist generate
 
-# Generate and load directly into Audacious
-musiclib-cli smart-playlist generate --load-audacious
+# Generate and load directly into the active player
+musiclib-cli smart-playlist generate --load-player
 
 # 100-track playlist with a custom name and tighter age thresholds
 musiclib-cli smart-playlist generate -p 100 -n "Evening Mix" -g 180,90,45,30,14

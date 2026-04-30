@@ -379,7 +379,7 @@ void SmartPlaylistPanel::checkAudaciousRunning()
     }
 
     if (!running) {
-        // Dim and uncheck — generating with --load-audacious would fail anyway.
+        // Dim and uncheck — generating with --load-player would fail anyway.
         m_loadAudaciousCheck->setChecked(false);
         m_loadAudaciousCheck->setEnabled(false);
         m_loadAudaciousCheck->setToolTip(
@@ -589,7 +589,7 @@ void SmartPlaylistPanel::runGenerate()
         QStringLiteral("-n"), playlistName,
     };
     if (m_loadAudaciousCheck->isChecked())
-        args << QStringLiteral("--load-audacious");
+        args << QStringLiteral("--load-player");
 
     m_generateProcess->start(
         scriptPath(QStringLiteral("musiclib_smartplaylist.sh")), args);

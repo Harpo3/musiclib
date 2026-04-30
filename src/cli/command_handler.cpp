@@ -334,7 +334,7 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "  -g G1,G2,G3,G4,G5  Age thresholds in days per rating group (1★–5★)." << Qt::endl;
         cout << "  -u L1,L2,L3,L4,L5  POPM low bounds per rating group." << Qt::endl;
         cout << "  -v H1,H2,H3,H4,H5  POPM high bounds per rating group." << Qt::endl;
-        cout << "  --load-audacious    Load the generated playlist into Audacious after writing." << Qt::endl;
+        cout << "  --load-player       Load the generated playlist into the active music player." << Qt::endl;
         cout << Qt::endl;
         cout << "Configuration:" << Qt::endl;
         cout << "  All threshold and size defaults are read from musiclib.conf (SP_AGE_GROUP*," << Qt::endl;
@@ -345,7 +345,7 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "  musiclib-cli smart-playlist analyze -m counts               # Fast count check" << Qt::endl;
         cout << "  musiclib-cli smart-playlist analyze -g 720,360,180,90,45   # Preview custom thresholds" << Qt::endl;
         cout << "  musiclib-cli smart-playlist generate                        # Generate 50-track default playlist" << Qt::endl;
-        cout << "  musiclib-cli smart-playlist generate --load-audacious       # Generate and load into Audacious" << Qt::endl;
+        cout << "  musiclib-cli smart-playlist generate --load-player           # Generate and load into active player" << Qt::endl;
         cout << "  musiclib-cli smart-playlist generate -p 100 -n \"Evening Mix\" -g 180,90,45,30,14" << Qt::endl;
         cout << "  musiclib-cli smart-playlist generate -o ~/Music/playlist.m3u" << Qt::endl;
     }
@@ -544,7 +544,7 @@ int CommandHandler::handleSmartPlaylist(const QStringList& args) {
     else if (subcommand == "generate") {
         // Pass remaining arguments directly to musiclib_smartplaylist.sh.
         // The script handles its own option parsing (-e, -g, -h, -n, -o, -p, -s, -u, -v,
-        // and the long option --load-audacious).
+        // and the long option --load-player).
         QStringList scriptArgs = args.mid(1);
         return CLIUtils::executeScript("musiclib_smartplaylist.sh", scriptArgs);
     }
