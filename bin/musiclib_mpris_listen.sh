@@ -65,6 +65,7 @@ player_allowed() {
 # ---------------------------------------------------------------------------
 
 LAST_ID=""
+LAST_STATUS=""
 change_key=""
 
 # Resolve MUSIC_DISPLAY_DIR from config for playback-status publishing.
@@ -138,10 +139,22 @@ playerctl metadata \
     # redundant for them but the compound key still deduplicates correctly.
     change_key="${trackid}:${url}"
     if [[ "$change_key" == "$LAST_ID" ]]; then
+        # Same track — only fire handler if status just became Playing.
+        if [[ "$status" == "Playing" && "$LAST_STATUS" != "Playing" ]]; then
+            echo "INFO: playback resumed — player=$playername status=$status url=$url"
+            LAST_STATUS="$status"
+            if [ ! -x "$HANDLER" ]; then
+                echo "WARNING: handler not found or not executable: $HANDLER — skipping fire" >&2
+                continue
+            fi
+            "$HANDLER" &
+        fi
+        LAST_STATUS="$status"
         continue
     fi
 
     LAST_ID="$change_key"
+    LAST_STATUS="$status"
 
     echo "INFO: track change detected — player=$playername status=$status trackid=$trackid url=$url"
 
