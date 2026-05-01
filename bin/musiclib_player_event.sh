@@ -361,22 +361,37 @@ update_lastplayed_display() {
 monitor_playback() {
     local _track_basename
     _track_basename=$(basename "$FILEPATH")
-    log_message "SCROBBLE_DEBUG: monitor_playback started for $_track_basename"
+    #log_message "SCROBBLE_DEBUG: monitor_playback started for $_track_basename"
+
+    # State file carries checks_passed across pause/resume for the same track.
+    # Keyed by an md5 of FILEPATH so different tracks never collide.
+    local _fp_hash
+    _fp_hash=$(printf '%s' "$FILEPATH" | md5sum | cut -d' ' -f1)
+    local _scrobble_state_file
+    _scrobble_state_file="$(get_data_dir)/data/scrobble_state_${_fp_hash}.tmp"
+    local _prior_checks=0
+    if [ -f "$_scrobble_state_file" ]; then
+        _prior_checks=$(cat "$_scrobble_state_file" 2>/dev/null || echo 0)
+        # Sanitise: must be a non-negative integer
+        [[ "$_prior_checks" =~ ^[0-9]+$ ]] || _prior_checks=0
+        #log_message "SCROBBLE_DEBUG: resuming — prior checks_passed=$_prior_checks"
+        rm -f "$_scrobble_state_file"
+    fi
 
     # Track length comes from MPRIS mpris:length (microseconds), convert to seconds.
     local length_us
     length_us=$(mpris_metadata_field "mpris:length" 2>/dev/null || echo "")
     # Strip any non-digit characters that qdbus may include
     length_us=$(echo "$length_us" | tr -cd '0-9')
-    log_message "SCROBBLE_DEBUG: length_us=|$length_us|"
+    #log_message "SCROBBLE_DEBUG: length_us=|$length_us|"
     # Guard: if length_us is empty or zero, nothing to scrobble
     if [ -z "$length_us" ] || [ "$length_us" -eq 0 ]; then
-        log_message "SCROBBLE_DEBUG: bail — no track length"
+        #log_message "SCROBBLE_DEBUG: bail — no track length"
         return 1
     fi
     local track_length=$(( length_us / 1000000 ))
     if [ "$track_length" -eq 0 ]; then
-        log_message "SCROBBLE_DEBUG: bail — track_length is 0s"
+        #log_message "SCROBBLE_DEBUG: bail — track_length is 0s"
         return 1
     fi
 
@@ -389,8 +404,12 @@ monitor_playback() {
     local checks_needed=$(( scrobble_point / check_interval ))
     # Ensure at least one polling cycle even for very short scrobble points
     [ "$checks_needed" -lt 1 ] && checks_needed=1
+    # Subtract checks already completed before the last pause so we don't
+    # re-wait for intervals that have already elapsed on this track.
+    checks_needed=$(( checks_needed - _prior_checks ))
+    [ "$checks_needed" -lt 1 ] && checks_needed=1
     local checks_passed=0
-    log_message "SCROBBLE_DEBUG: track=${track_length}s scrobble_point=${scrobble_point}s checks_needed=$checks_needed"
+    #log_message "SCROBBLE_DEBUG: track=${track_length}s scrobble_point=${scrobble_point}s checks_needed=$checks_needed"
 
     while [ $checks_passed -lt $checks_needed ]; do
         sleep $check_interval
@@ -398,7 +417,7 @@ monitor_playback() {
         # Check if still playing (re-detect player in case it changed)
         detect_active_mpris_bus
         if [ -z "$MPRIS_BUS" ]; then
-            log_message "SCROBBLE_DEBUG: bail at check $checks_passed — no MPRIS bus"
+            #log_message "SCROBBLE_DEBUG: bail at check $checks_passed — no MPRIS bus"
             return 1
         fi
 
@@ -408,7 +427,13 @@ monitor_playback() {
         local status
         status=$(mpris_playback_status | tr -d '[:space:]')
         if [ "$status" != "Playing" ]; then
-            log_message "SCROBBLE_DEBUG: bail at check $checks_passed — status=|$status|"
+            #log_message "SCROBBLE_DEBUG: bail at check $checks_passed — status=|$status|"
+            # Persist progress so a resume can skip already-elapsed checks.
+            # Total elapsed = prior checks (already subtracted from checks_needed)
+            # plus checks completed in this run.
+            local _total_passed=$(( _prior_checks + checks_passed ))
+            printf '%s\n' "$_total_passed" > "$_scrobble_state_file"
+            #log_message "SCROBBLE_DEBUG: saved total_checks_passed=$_total_passed to state file"
             return 1
         fi
 
@@ -419,14 +444,16 @@ monitor_playback() {
         current_url=$(mpris_metadata_field "xesam:url" 2>/dev/null | grep -m1 '^file://' || echo "")
         current=$(file_uri_to_path "$current_url")
         if [ "$current" != "$FILEPATH" ]; then
-            log_message "SCROBBLE_DEBUG: bail at check $checks_passed — track changed to $(basename "$current")"
+            #log_message "SCROBBLE_DEBUG: bail at check $checks_passed — track changed to $(basename "$current")"
             return 1
         fi
 
         checks_passed=$((checks_passed + 1))
     done
 
-    log_message "SCROBBLE_DEBUG: scrobble point reached for $_track_basename — writing DB"
+    # Scrobble point reached — discard any leftover pause-state for this track.
+    rm -f "$_scrobble_state_file"
+    #log_message "SCROBBLE_DEBUG: scrobble point reached for $_track_basename — writing DB"
 
     # Reached scrobble point - update everything
     local current_time=$(date +%s)
@@ -435,7 +462,7 @@ monitor_playback() {
     update_play_time "$sql_time"
     local update_result=$?
     update_lastplayed_display "$sql_time"
-    log_message "SCROBBLE_DEBUG: update_play_time result=$update_result for $_track_basename"
+    #log_message "SCROBBLE_DEBUG: update_play_time result=$update_result for $_track_basename"
 
     # After successful database update, process any pending operations
     if [ $update_result -eq 0 ] && [ -f "$SCRIPT_DIR/musiclib_process_pending.sh" ]; then
