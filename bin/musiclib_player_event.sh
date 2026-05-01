@@ -204,31 +204,6 @@ extract_metadata() {
 
     # Extract rating from Grouping tag
     awk '/Grouping/&&length($NF)==1{print $NF;found=1;exit}END{if(!found)print 0}' "$MUSIC_DISPLAY_DIR/taginfofull.txt" >"$MUSIC_DISPLAY_DIR/currgpnum.txt" 2>/dev/null || echo 0>"$MUSIC_DISPLAY_DIR/currgpnum.txt"
-
-    # Check for existence of custom weather file, otherwise ignore remainder of function
-    detail_file="$MUSIC_DISPLAY_DIR/detail.txt"
-    [ ! -s "$detail_file" ] && return 0
-    [ -f "$MUSIC_DISPLAY_DIR/weathercount.txt" ] || return 0
-
-    # Weather integration logic (custom user feature)
-    lines_weather=$(cat "$MUSIC_DISPLAY_DIR/weathercount.txt" 2>/dev/null || echo 0)
-    chars_target=$((700 - 63 * (lines_weather - 6)))
-    (( chars_target < 63 )) && chars_target=63
-    current_chars=$(wc -c < "$detail_file")
-
-    if (( current_chars == chars_target )); then
-        return 0
-    fi
-
-    if (( lines_weather == 6 && current_chars < chars_target )); then
-        spaces_needed=$((chars_target - current_chars))
-        printf "%s%${spaces_needed}s" "$(cat "$detail_file")" "" > "${detail_file}.tmp" && mv "${detail_file}.tmp" "$detail_file"
-        return 0
-    fi
-
-    if (( current_chars > chars_target )); then
-        head -c "$chars_target" "$detail_file" > "${detail_file}.tmp" && mv "${detail_file}.tmp" "$detail_file"
-    fi
 }
 
 #############################################
