@@ -373,7 +373,8 @@ musiclib/
 │   ├── musiclib_utils_tag_functions.sh  # Tag repair/normalize functions
 │   ├── musiclib_rate.sh        # Rating operation
 │   ├── musiclib_mobile.sh      # KDE Connect sync
-│   ├── musiclib_audacious.sh   # Song-change hook (automatic)
+│   ├── musiclib_mpris_listen.sh   # MPRIS2 D-Bus monitor (systemd service)
+│   ├── musiclib_player_event.sh   # Song-change handler (MPRIS2)
 │   ├── musiclib_build.sh       # DB build/rebuild
 │   ├── musiclib_tagclean.sh    # Tag cleaning
 │   ├── musiclib_tagrebuild.sh  # Tag repair from DB
@@ -381,8 +382,6 @@ musiclib/
 │   ├── musiclib_remove_record.sh  # Remove a DB record (with optional file delete)
 │   ├── musiclib_edit_field.sh  # Edit a single metadata field in the DB
 │   ├── musiclib_init_config.sh       # Setup wizard
-│   ├── musiclib_audacious_setup.sh   # Helper: Audacious plugin instructions
-│   ├── musiclib_audacious_test.sh    # Helper: Audacious integration verification
 │   ├── musiclib_process_pending.sh   # Deferred operation retry (exit code 3 handler)
 │   ├── musiclib_status.sh      # Read-only status/diagnostics
 │   ├── musiclib_lock_inspector.sh    # Lock contention diagnostics

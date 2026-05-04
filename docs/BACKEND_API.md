@@ -1163,11 +1163,7 @@ musiclib-cli new-tracks --dry-run
 
 ---
 
-### 2.9 `musiclib-cli audacious` → `musiclib_audacious.sh` (legacy) / `musiclib_player_event.sh` (current)
-
-**Note**: `musiclib_audacious.sh` is the legacy Audacious-only song-change handler. It has been superseded by `musiclib_player_event.sh`, which is the canonical handler for all MPRIS2-capable players. The `musiclib-cli audacious` subcommand retains its name for backward compatibility but now delegates to the MPRIS2 pipeline via `musiclib_player_event.sh`.
-
----
+### 2.9 `musiclib-cli audacious` → `musiclib_player_event.sh`
 
 **Purpose**: MPRIS2 song-change handler for Conky display and scrobble tracking. Supports any MPRIS2-compliant player whose bus-name suffix appears in `supported_mpris_players` (musiclib.conf). Default list: Strawberry, Audacious, Clementine, Amarok, Elisa, mpd (via mpd-mpris bridge).
 
@@ -1955,7 +1951,7 @@ This shifts `AlbumArtist` from column 5 to column 6, `SongTitle` from 6 to 7, `S
 ```bash
 export MUSICDB="$(pwd)/tests/fixtures/test_db_driftcol.dsv"
 musiclib-cli rate 4 "/mnt/music/test/test_valid.mp3"
-musiclib-cli audacious   # via musiclib_audacious.sh
+musiclib-cli audacious   # via musiclib_player_event.sh
 musiclib-cli edit-field 1 Artist "NewName"
 musiclib-cli remove-record "/mnt/music/test/test_valid.mp3"
 ```
@@ -2110,7 +2106,8 @@ For multiple columns, call `get_column_index()` once per column before the awk c
 /usr/lib/musiclib/bin/musiclib_boost.sh
 /usr/lib/musiclib/bin/audpl_scanner.sh
 /usr/lib/musiclib/bin/musiclib_new_tracks.sh
-/usr/lib/musiclib/bin/musiclib_audacious.sh
+/usr/lib/musiclib/bin/musiclib_player_event.sh
+/usr/lib/musiclib/bin/musiclib_mpris_listen.sh
 /usr/lib/musiclib/bin/musiclib_remove_record.sh
 /usr/lib/musiclib/bin/musiclib_edit_field.sh
 /usr/lib/musiclib/bin/musiclib_utils.sh

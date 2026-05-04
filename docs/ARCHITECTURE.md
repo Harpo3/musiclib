@@ -47,7 +47,8 @@ MusicLib is a hybrid architecture combining a battle-tested shell script backend
 │  Operation Scripts (invoked by clients):                     │
 │   • musiclib_rate.sh           (rating → DSV + tags + Conky) │
 │   • musiclib_mobile.sh         (KDE Connect playlist sync)   │
-│   • musiclib_audacious.sh      (song-change hook → Conky)    │
+│   • musiclib_mpris_listen.sh   (MPRIS2 D-Bus monitor)        │
+│   • musiclib_player_event.sh  (song-change handler → Conky) │
 │   • musiclib_new_tracks.sh     (import pipeline)             │
 │   • musiclib_rebuild.sh        (full DB rebuild from scan)   │
 │   • musiclib_tagrebuild.sh     (repair tags from DB)         │
@@ -153,41 +154,41 @@ Logs error to ~/.local/share/musiclib/logs/musiclib.log
 
 ---
 
-### 2.3 Audacious Song-Change Hook
+### 2.3 MPRIS2 Song-Change Hook
 
-**Setup**: User configures Audacious hook in preferences:
-```
-Preferences → Plugins → Song Change → Command:
-/usr/lib/musiclib/bin/musiclib_audacious.sh
-```
+**Setup**: `musiclib_init_config.sh` enables the `musiclib-mpris.service` systemd user unit automatically. No per-player configuration is required.
 
 **Flow**:
 ```
-Audacious plays new track
+MPRIS2 player (Strawberry, Audacious, Clementine, etc.) plays new track
     ↓
-Invokes musiclib_audacious.sh
+D-Bus emits PropertiesChanged signal
     ↓
-Script queries audtool --current-song-filename
+musiclib_mpris_listen.sh (running as musiclib-mpris.service) receives signal
+    ↓
+Invokes musiclib_player_event.sh
+    ↓
+playerctl + qdbus6 resolve active player bus and xesam:url
     ↓
 Looks up track in musiclib.dsv by SongPath
     ↓
-with_db_lock():
-    • Updates LastTimePlayed in DSV (Excel serial time)
-    • Updates Songs-DB_Custom1 tag in file (via kid3-cli)
+Extracts album art (folder.jpg preferred; embedded via exiftool fallback)
     ↓
-Extracts album art from file (exiftool)
+exiftool produces full tag dump (taginfofull.txt)
     ↓
 Generates Conky assets:
     • artist.txt, title.txt, album.txt, year.txt
-    • lastplayed.txt (formatted timestamp)
-    • starrating.png (composite image from rating)
-    • folder.jpg (album art copy)
+    • currbitrate.txt (numeric kbps, no unit suffix)
+    • currgpnum.txt (rating from Grouping tag)
+    • lastplayed.txt, songpath.txt, artloc.txt
     ↓
-Logs to logs/audacious/audacioushist.log
+Forks scrobble polling loop (disowned — player never blocked):
+    • Checks every 3 s whether same track is still playing
+    • Scrobbles once 50% of track length elapsed (min 30 s, max 4 min)
+    • On pause: saves completed check count to state file
+    • On resume: subtracts saved checks, waits only remaining time
     ↓
 Returns exit code 0
-    ↓
-Audacious continues playback
 ```
 
 **Conky Integration**:
@@ -201,7 +202,7 @@ Shows starrating.png (5-star image)
 Shows folder.jpg (album art)
 ```
 
-**Track-change defense**: `FILEPATH` is captured once at script entry via `audtool --current-song-filename`. The scrobble loop re-queries the current filename on every 3-second tick; if the result differs from the captured `FILEPATH` (track changed or playback stopped), the loop exits immediately without writing a scrobble. This ensures the scrobble threshold is never attributed to the wrong track.
+**Track-change defense**: `FILEPATH` is captured once at script entry from the MPRIS2 metadata. The scrobble loop re-checks the active track on every 3-second tick; if the track has changed or playback stopped, the loop exits immediately without scrobbling.
 
 ---
 
@@ -272,7 +273,8 @@ musiclib_utils.sh                    # Shared utilities (config, DB, locking)
 musiclib_utils_tag_functions.sh      # Tag repair/normalization
 musiclib_rate.sh                     # Rating operations
 musiclib_mobile.sh                   # Mobile sync (upload/status subcommands)
-musiclib_audacious.sh                # Song-change hook
+musiclib_player_event.sh             # Song-change handler (MPRIS2)
+musiclib_mpris_listen.sh             # MPRIS2 D-Bus monitor (systemd service)
 musiclib_new_tracks.sh               # Import pipeline
 musiclib_rebuild.sh                  # Full DB rebuild from filesystem
 musiclib_tagrebuild.sh               # Repair corrupted tags from DB

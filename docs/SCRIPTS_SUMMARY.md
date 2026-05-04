@@ -10,13 +10,9 @@ RSGain is preferred because it implements modern ReplayGain 2.0 loudness normali
 
 Compared with traditional ReplayGain tags and MP3Gain/APE‑based workflows, RSGain writes standardized ReplayGain 2.0 metadata for many formats (MP3, FLAC, AIFF, APE, etc.), aligning with current ecosystem expectations and newer tools like the MusicBrainz Picard ReplayGain 2.0 plugin. APE tags and classic ReplayGain fields (e.g., MP3GAIN_* in APEv2 or legacy REPLAYGAIN_* in ID3) tend to be less portable, more error‑prone across players, and tied to outdated assumptions (e.g., fixed 89 dB reference level, inconsistent clipping handling), whereas RSGain’s R128‑based approach and tag conventions are designed to be cross‑platform, future‑proof, and safer for large libraries that need consistent volume normalization without destructive gain changes.
 
-**musiclib_audacious.sh**
-
-Retained as the legacy Audacious-specific song-change handler. Superseded by `musiclib_player_event.sh` for all MPRIS2-capable players. See `musiclib_player_event.sh` below.
-
 **musiclib_player_event.sh**
 
-MPRIS2 song-change handler that replaces `musiclib_audacious.sh` as the canonical track-change backend. Invoked by `musiclib_mpris_listen.sh` via the `musiclib-mpris.service` systemd user unit on every track change from any supported MPRIS2 player (Strawberry, Audacious, Clementine, Amarok, Elisa, mpd via mpd-mpris). The set of allowed players is configured via `supported_mpris_players` in `musiclib.conf`.
+Canonical MPRIS2 song-change handler. Invoked by `musiclib_mpris_listen.sh` via the `musiclib-mpris.service` systemd user unit on every track change from any supported MPRIS2 player (Strawberry, Audacious, Clementine, Amarok, Elisa, mpd via mpd-mpris). The set of allowed players is configured via `supported_mpris_players` in `musiclib.conf`.
 
 On each track change the script uses `playerctl` and `qdbus6` to identify the active player bus and resolve the current track filepath from the MPRIS2 `xesam:url` metadata field. It then extracts album art (preferring an existing `folder.jpg` in the album directory, falling back to embedded cover extraction via `exiftool`), runs `exiftool` to produce a full tag dump (`taginfofull.txt`), and parses individual fields from that dump into Conky-readable text files: `artist.txt`, `album.txt`, `year.txt`, `title.txt`, `currbitrate.txt` (numeric kbps only, no unit suffix), and `currgpnum.txt` (rating from the Grouping tag). It also writes `songpath.txt` (current track path for GUI consumers), `artloc.txt` (album directory for the maintenance panel), and `lastplayed.txt` (last-played date from `musiclib.dsv`).
 
@@ -160,7 +156,7 @@ Utility script responsible for regenerating the Conky-facing display files that 
 
 Given a target track (either by explicit path or “current track” resolution via `audtool`), the script looks up its row in the database, extracts key fields (artist, album, title, year, rating, group description, last played timestamp), and writes them into the expected Conky text files in the configured output directory. It also selects and copies the appropriate star-rating image based on the normalized rating field, and can optionally re-extract album art from the file if the existing cached image is missing or stale. Hooks are included for future integration with weather or system-status overlays so that the Conky layout remains visually consistent even as content changes.
 
-This script is intended to be lightweight and idempotent, making it safe to call frequently (e.g., from `musiclib_rate.sh` after a rating change, or from a periodic systemd timer) without perturbing playback or the underlying database beyond simple reads. In combination with `musiclib_audacious.sh`, it helps keep the Conky UI responsive and accurate, even in edge cases where Audacious itself has not emitted a fresh song-change event.
+This script is intended to be lightweight and idempotent, making it safe to call frequently (e.g., from `musiclib_rate.sh` after a rating change, or from a periodic systemd timer) without perturbing playback or the underlying database beyond simple reads. It helps keep the Conky UI responsive and accurate, even in edge cases where no fresh MPRIS2 track-change event has been emitted.
 
 **musiclib_init_config.sh**
 
@@ -169,14 +165,6 @@ Interactive first-run setup wizard that guides new users through initial MusicLi
 Auto-detects three optional tools and writes the appropriate flags to `musiclib.conf`: `rsgain` sets `RSGAIN_INSTALLED=true` (enables the Boost Album feature in the GUI); `kid3`/`kid3-qt` sets `KID3_GUI_INSTALLED` (enables the tag editor toolbar button); and `k3b` sets `K3B_INSTALLED=true` (enables the CD ripping panel and toolbar action). When K3b is detected, the wizard also scans `MUSIC_REPO` to determine the predominant audio format (mp3/ogg/flac), writes `K3B_ENCODER_FORMAT` if it differs from the default, and generates `~/.config/musiclib/k3brc` — musiclib's managed copy of the K3b configuration. If `~/.config/k3brc` already exists, the user is prompted whether to use it as the baseline or start from the system template; either way, all musiclib-managed keys (rip directory, encoder, format, bitrate/quality, paranoia mode, retry count) are patched from current `musiclib.conf` values.
 
 After configuration is generated, the wizard runs a library conformance check, optionally builds the initial database, enables the `musiclib-mpris.service` systemd user unit (which runs `musiclib_mpris_listen.sh` as a persistent D-Bus monitor for MPRIS2 track-change events), and populates `~/.local/share/musiclib/data/conky_output/stars/` with the star rating PNGs from `/usr/share/musiclib/images/stars/`. As the final setup step, the wizard installs the Dolphin service menu (`musiclib-rate.desktop`) from `/usr/lib/musiclib/config/servicemenus/` to `~/.local/share/kio/servicemenus/`, enabling right-click track rating in Dolphin for any audio file. The dispatcher auto-triggers this wizard when any command is run without a valid configuration file.
-
-**musiclib_audacious_setup.sh**
-
-Helper script for Audacious Song Change plugin configuration, called by `musiclib_init_config.sh` during the setup wizard when Audacious is detected. It checks whether Audacious is installed, verifies `audtool` availability, and prints the manual steps needed to enable the Song Change plugin and set the hook command path. Since the Audacious plugin configuration cannot be modified programmatically, this script's role is instructional rather than automated. It is not exposed as a standalone CLI command — users interact with it through `musiclib-cli setup`.
-
-**musiclib_audacious_test.sh**
-
-Diagnostic and verification script for Audacious integration, called by `musiclib_init_config.sh` during the setup wizard's optional verification step. It runs a sequence of checks: confirms Audacious is running via `pgrep`, verifies `audtool` is on the PATH, checks whether a track is currently playing, locates and confirms the hook script is present and executable, triggers the hook manually, and validates that Conky output files (`detail.txt`, `starrating.png`) are updated afterward. Each check reports pass/fail status with guidance on how to resolve failures. It is not exposed as a standalone CLI command — users interact with it through `musiclib-cli setup`.
 
 
 ## Standalone Utilities
