@@ -202,6 +202,25 @@ extract_metadata() {
         "$MUSIC_DISPLAY_DIR/taginfofull.txt" > "$MUSIC_DISPLAY_DIR/currbitrate.txt" 2>/dev/null \
         || echo "" > "$MUSIC_DISPLAY_DIR/currbitrate.txt"
 
+    # Playlist position and length — Audacious-specific via org.atheme.audacious D-Bus.
+    # Other MPRIS2 players have no equivalent; write empty on bus absence.
+    # Direct calls avoid a grep pipe that triggers SIGPIPE under set -o pipefail.
+    local _pos _len
+    _pos=$(qdbus6 org.atheme.audacious /org/atheme/audacious \
+        org.atheme.audacious.Position 2>/dev/null || true)
+    _len=$(qdbus6 org.atheme.audacious /org/atheme/audacious \
+        org.atheme.audacious.Length 2>/dev/null || true)
+    if [[ "$_pos" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$(( _pos + 1 ))" > "$MUSIC_DISPLAY_DIR/playlistposition.txt"
+    else
+        echo "" > "$MUSIC_DISPLAY_DIR/playlistposition.txt"
+    fi
+    if [[ "$_len" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$_len" > "$MUSIC_DISPLAY_DIR/playlistlength.txt"
+    else
+        echo "" > "$MUSIC_DISPLAY_DIR/playlistlength.txt"
+    fi
+
     # Extract rating from Grouping tag
     awk '/Grouping/&&length($NF)==1{print $NF;found=1;exit}END{if(!found)print 0}' "$MUSIC_DISPLAY_DIR/taginfofull.txt" >"$MUSIC_DISPLAY_DIR/currgpnum.txt" 2>/dev/null || echo 0>"$MUSIC_DISPLAY_DIR/currgpnum.txt"
 }
