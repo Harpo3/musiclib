@@ -63,7 +63,7 @@ public:
     struct TrackInfo {
         QString artist;
         QString title;
-        QString filePath;   ///< Absolute path reported by audtool
+        QString filePath;   ///< Absolute path of the currently playing track
         int     rating = 0; ///< 0 = unrated, 1-5 stars
         bool    isPlaying = false;
     };

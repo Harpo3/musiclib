@@ -26,6 +26,8 @@
 #include <QClipboard>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <QDBusInterface>
+#include <QDBusReply>
 #include <QStandardPaths>
 
 // ---------------------------------------------------------------------------
@@ -402,8 +404,7 @@ void LibraryView::showContextMenu(const QPoint &pos)
         });
     }
 
-    // "Add to Queue in Audacious" — gated on Audacious being on the D-Bus,
-    // because audtool requires a live Audacious instance to accept queue commands.
+    // "Add to Queue in Audacious" — gated on Audacious being on the D-Bus.
     const bool audaciousOnBus = QDBusConnection::sessionBus().interface()
         && QDBusConnection::sessionBus().interface()->isServiceRegistered(
                QStringLiteral("org.mpris.MediaPlayer2.audacious"));
@@ -414,29 +415,30 @@ void LibraryView::showContextMenu(const QPoint &pos)
 
         connect(queueAct, &QAction::triggered, this, [this, tracks]() {
             int queued = 0;
+            QDBusInterface aud(QStringLiteral("org.atheme.audacious"),
+                               QStringLiteral("/org/atheme/audacious"),
+                               QStringLiteral("org.atheme.audacious"),
+                               QDBusConnection::sessionBus());
             for (const TrackRecord &t : tracks) {
                 // Step 1: append the file to the active playlist
-                if (QProcess::execute("audtool", {"playlist-addurl", t.songPath}) != 0) {
+                QDBusMessage addReply = aud.call(QStringLiteral("AddUrl"),
+                                                QUrl::fromLocalFile(t.songPath).toString());
+                if (addReply.type() == QDBusMessage::ErrorMessage) {
                     emit statusMessage(tr("Failed to add \"%1\" to Audacious playlist").arg(t.songTitle));
                     continue;
                 }
 
-                // Step 2: the new entry landed at the end — find its 1-based position
-                QProcess lenProc;
-                lenProc.start("audtool", {"playlist-length"});
-                if (!lenProc.waitForFinished(3000)) {
-                    emit statusMessage(tr("audtool timed out querying playlist length"));
-                    continue;
-                }
-                bool ok = false;
-                int pos = lenProc.readAllStandardOutput().trimmed().toInt(&ok);
-                if (!ok || pos <= 0) {
+                // Step 2: the new entry landed at the end — find its 0-based position
+                QDBusReply<int> lenReply = aud.call(QStringLiteral("Length"));
+                if (!lenReply.isValid() || lenReply.value() <= 0) {
                     emit statusMessage(tr("Failed to determine playlist position for \"%1\"").arg(t.songTitle));
                     continue;
                 }
+                int pos = lenReply.value() - 1; // 0-based index of the newly added entry
 
                 // Step 3: add that position to the play queue
-                if (QProcess::execute("audtool", {"--playqueue-add", QString::number(pos)}) != 0) {
+                QDBusMessage queueReply = aud.call(QStringLiteral("PlayqueueAdd"), pos);
+                if (queueReply.type() == QDBusMessage::ErrorMessage) {
                     emit statusMessage(tr("Failed to queue \"%1\" in Audacious").arg(t.songTitle));
                     continue;
                 }

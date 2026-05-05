@@ -1000,18 +1000,13 @@ void MainWindow::onPlaylistSelected(int index)
         return;
     }
 
-    // Switch the active playlist in Audacious via audtool
-    QProcess switchCmd;
-    switchCmd.start(QStringLiteral("audtool"),
-                    {QStringLiteral("--set-current-playlist"),
-                     QString::number(playlistIndex)});
-    switchCmd.waitForFinished(2000);
-
-    // Bring Audacious to the foreground so the user can see the change
-    QProcess showCmd;
-    showCmd.start(QStringLiteral("audtool"),
-                  {QStringLiteral("--mainwin-show"), QStringLiteral("on")});
-    showCmd.waitForFinished(2000);
+    // Switch the active playlist and bring Audacious to the foreground
+    QDBusInterface aud(QStringLiteral("org.atheme.audacious"),
+                       QStringLiteral("/org/atheme/audacious"),
+                       QStringLiteral("org.atheme.audacious"),
+                       QDBusConnection::sessionBus());
+    aud.call(QStringLiteral("SetActivePlaylist"), playlistIndex - 1);
+    aud.call(QStringLiteral("ShowMainWin"), true);
 
     QThread::msleep(100);
     raiseWindowByClass(QStringLiteral("audacious"));
@@ -1029,8 +1024,7 @@ void MainWindow::populatePlaylistDropdown()
 
     // Read the 'order' file to get playlist IDs in display order.
     // Each ID in the order file corresponds to a <ID>.audpl file.
-    // The 1-based position in this list is what audtool's
-    // --set-current-playlist command expects.
+    // The 1-based position in this list; D-Bus SetActivePlaylist expects 0-based.
     QString orderPath = m_audaciousPlaylistsDir + QStringLiteral("/order");
     QFile orderFile(orderPath);
     if (!orderFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -1065,7 +1059,7 @@ void MainWindow::populatePlaylistDropdown()
             title = id; // fallback to numeric ID
         }
 
-        // Store 1-based index so audtool --set-current-playlist <N> works
+        // Store 1-based index; subtract 1 when passing to D-Bus SetActivePlaylist
         m_playlistDropdown->addItem(title, QVariant(i + 1));
     }
 }
@@ -1290,10 +1284,11 @@ void MainWindow::onRaiseAudacious()
         return;
     }
 
-    QProcess showCmd;
-    showCmd.start(QStringLiteral("audtool"),
-                  {QStringLiteral("--mainwin-show"), QStringLiteral("on")});
-    showCmd.waitForFinished(2000);
+    QDBusInterface aud(QStringLiteral("org.atheme.audacious"),
+                       QStringLiteral("/org/atheme/audacious"),
+                       QStringLiteral("org.atheme.audacious"),
+                       QDBusConnection::sessionBus());
+    aud.call(QStringLiteral("ShowMainWin"), true);
 
     QThread::msleep(100);
 
