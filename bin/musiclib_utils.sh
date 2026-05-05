@@ -6,6 +6,14 @@
 set -u
 set -o pipefail
 
+# Re-export split modules so scripts that source this file get all functions.
+# Scripts should eventually source musiclib_db.sh and musiclib_player_utils.sh
+# directly as needed — this re-exporter is a transitional compatibility shim.
+_MUSICLIB_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_MUSICLIB_UTILS_DIR}/musiclib_db.sh" || return 1
+source "${_MUSICLIB_UTILS_DIR}/musiclib_player_utils.sh" || return 1
+unset _MUSICLIB_UTILS_DIR
+
 #############################################
 # BACKEND API VERSION
 #############################################
@@ -34,7 +42,7 @@ get_xdg_data_dir() {
 get_config_dir() {
     local xdg_config="$(get_xdg_config_dir)"
     local legacy_config="$HOME/musiclib/config"
-    
+
     if [ -d "$xdg_config" ]; then
         echo "$xdg_config"
     elif [ -d "$legacy_config" ]; then
@@ -50,7 +58,7 @@ get_config_dir() {
 get_data_dir() {
     local xdg_data="$(get_xdg_data_dir)"
     local legacy_data="$HOME/musiclib/data"
-    
+
     if [ -d "$xdg_data" ]; then
         echo "$xdg_data"
     elif [ -d "$legacy_data" ]; then
@@ -139,103 +147,13 @@ check_required_tools() {
 }
 
 #############################################
-# DATABASE HELPERS
+# TIME CONVERSION
 #############################################
-
-# Resolve a column name to its 1-based awk field index from the DSV header.
-# Usage: get_column_index <db_file> <col_name>
-# Prints the column number (integer ≥ 1) on success.
-# Prints an error message to stderr and returns 1 if the column is not found.
-# Example: colnum=$(get_column_index "$MUSICDB" "SongPath")
-get_column_index() {
-    local db_file="$1"
-    local col_name="$2"
-    local colnum
-    colnum=$(head -1 "$db_file" | tr '^' '\n' | grep -n "^${col_name}$" | cut -d: -f1)
-    if [ -z "$colnum" ]; then
-        echo "Error: Column '${col_name}' not found in database header of ${db_file}" >&2
-        return 1
-    fi
-    echo "$colnum"
-}
-
-# Get next available ID from database
-get_next_id() {
-    local db_file="$1"
-
-    if [ ! -f "$db_file" ]; then
-        echo "Error: Database not found: $db_file" >&2
-        return 1
-    fi
-
-    local last_id=$(tail -n 1 "$db_file" | cut -d'^' -f1)
-
-    if [ -z "$last_id" ] || [ "$last_id" = "ID" ]; then
-        echo "1"
-    else
-        echo $((last_id + 1))
-    fi
-}
-
-# Find existing album ID or create new one
-find_or_create_album() {
-    local db_file="$1"
-    local album_name="$2"
-
-    if [ -z "$album_name" ]; then
-        echo ""
-        return 0
-    fi
-
-    # Resolve column indices from header (safe against schema changes).
-    local albumcol idalbumcol
-    albumcol=$(get_column_index "$db_file" "Album")    || return 1
-    idalbumcol=$(get_column_index "$db_file" "IDAlbum") || return 1
-
-    # Search for existing album (exact match on Album column).
-    local idalbum
-    idalbum=$(awk -F'^' -v album="$album_name" -v acol="$albumcol" -v icol="$idalbumcol" \
-        '$acol == album { print $icol; exit }' "$db_file")
-
-    if [ -n "$idalbum" ]; then
-        echo "$idalbum"
-        return 0
-    fi
-
-    # Create new IDAlbum (max existing + 1).
-    local max_idalbum
-    max_idalbum=$(tail -n +2 "$db_file" | cut -d'^' -f"${idalbumcol}" | grep -E '^[0-9]+$' | sort -n | tail -n1)
-
-    if [ -z "$max_idalbum" ]; then
-        echo "1"
-    else
-        echo $((max_idalbum + 1))
-    fi
-}
 
 # Convert epoch seconds to SQL serial time format
 epoch_to_sql_time() {
     local epoch="$1"
     printf "%.6f" "$(echo "$epoch/86400 + 25569" | bc -l)"
-}
-
-# Check if database file exists and is valid
-validate_database() {
-    local db_file="$1"
-
-    if [ ! -f "$db_file" ]; then
-        echo "Error: Database not found: $db_file" >&2
-        return 1
-    fi
-
-    # Check if header exists
-    local header=$(head -n 1 "$db_file")
-    if [[ ! "$header" =~ ^ID\^ ]]; then
-        echo "Error: Invalid database format (missing header)" >&2
-        return 1
-    fi
-
-    return 0
 }
 
 #############################################
@@ -390,214 +308,7 @@ has_embedded_art() {
 }
 
 #############################################
-# DATABASE UPDATE OPERATIONS
-#############################################
-
-# Update last played time in database and file tag
-update_lastplayed() {
-    local db_file="$1"
-    local filepath="$2"
-    local sql_time="$3"
-
-    # Get LastTimePlayed column number
-    local lpcolnum=$(head -1 "$db_file" | tr '^' '\n' | cat -n | grep "LastTimePlayed" | sed -r 's/^([^.]+).*$/\1/; s/^[^0-9]*([0-9]+).*$/\1/')
-
-    if [ -z "$lpcolnum" ]; then
-        echo "Error: Could not find LastTimePlayed column in database" >&2
-        return 1
-    fi
-
-    # Find track in database
-    local grepped_string=$(grep -nF "$filepath" "$db_file" 2>/dev/null)
-
-    if [ -z "$grepped_string" ]; then
-        echo "Error: Track not found in database: $filepath" >&2
-        return 1
-    fi
-
-    # Extract row number and old value
-    local myrow=$(echo "$grepped_string" | cut -f1 -d:)
-    local row_data=$(echo "$grepped_string" | cut -f2- -d:)
-    local old_value=$(echo "$row_data" | cut -f"$lpcolnum" -d"^" | xargs)
-
-    # Update database - applies change only to the target column
-    if ! awk -F'^' -v OFS='^' -v row="$myrow" -v col="$lpcolnum" -v newval="$sql_time" \
-        'NR == row { $col = newval } { print }' \
-        "$db_file" > "$db_file.tmp" 2>/dev/null; then
-        echo "Error: Failed to update database" >&2
-        rm -f "$db_file.tmp"
-        return 1
-    fi
-
-    mv "$db_file.tmp" "$db_file"
-
-# Update tag using kid3-cli with repair on failure
-    if ! $KID3_CMD -c "set Songs-DB_Custom1 $sql_time" "$filepath" 2>/dev/null; then
-        log_message "Tag write failed for Songs-DB_Custom1, attempting repair..."
-        # rebuild_tag is called from musiclib_utils_tag_functions.sh
-        if rebuild_tag "$filepath"; then
-            log_message "Tag rebuild successful, retrying write..."
-
-            # Retry the tag write after rebuild
-            if ! $KID3_CMD -c "set Songs-DB_Custom1 $sql_time" "$filepath" 2>/dev/null; then
-                log_message "ERROR: Tag write still failed after rebuild for $filepath"
-                return 1
-            fi
-
-            log_message "Tag write successful after rebuild"
-        else
-            log_message "ERROR: Tag rebuild failed for $filepath"
-            return 1
-        fi
-    fi
-
-   return 0
-}
-
-# Remove a track record (or records) from the database by file path
-# Usage: delete_record_by_path "$MUSICDB" "/path/to/file.mp3"
-# Behavior:
-#   - If exactly one matching row is found, it is removed and 0 is returned.
-#   - If no rows match, shows a kdialog notice and returns 1.
-#   - If multiple rows match, shows a kdialog yes/no confirmation asking whether
-#     to proceed.  Yes deletes all matching rows; No exits safely with return 1.
-#   - Caller is responsible for acquiring the database lock (with_db_lock).
-
-delete_record_by_path() {
-    local db_file="$1"
-    local filepath="$2"
-
-    if [ ! -f "$db_file" ]; then
-        echo "Error: Database not found: $db_file" >&2
-        return 1
-    fi
-
-    # Find all matching rows (line numbers) for this path
-    local matches
-    matches=$(grep -nF "$filepath" "$db_file" 2>/dev/null || true)
-
-    if [ -z "$matches" ]; then
-        echo "Error: Track not found in database: $filepath" >&2
-        if command -v kdialog >/dev/null 2>&1; then
-            kdialog --title 'Delete Failed' --passivepopup \
-                "Track not found in database. It may have already been removed.\n$filepath" 5 &
-        fi
-        return 1
-    fi
-
-    # Count matches
-    local match_count
-    match_count=$(printf '%s\n' "$matches" | wc -l)
-
-    if [ "$match_count" -ne 1 ]; then
-        echo "Warning: Found $match_count matching records for path: $filepath" >&2
-        printf '%s\n' "$matches" >&2
-
-        # Prompt the user whether to delete all matching rows.
-        # kdialog --yesno returns 0 for Yes, 1 for No/Cancel.
-        if command -v kdialog >/dev/null 2>&1; then
-            if ! kdialog --title 'Multiple Records Found' --yesno \
-                "Found $match_count matching records for:\n$filepath\n\nAre you sure you want to delete all of them?"; then
-                echo "Deletion cancelled by user." >&2
-                return 1
-            fi
-        else
-            # No GUI available — refuse to delete ambiguous matches
-            echo "Error: Found $match_count matching records and no GUI available to confirm. Resolve manually." >&2
-            return 1
-        fi
-
-        # User confirmed — delete every matching row.
-        # Build a space-separated list of row numbers and let awk skip them all.
-        local row_numbers
-        row_numbers=$(printf '%s\n' "$matches" | cut -d: -f1 | tr '\n' ' ')
-
-        if ! awk 'BEGIN { n=split(rows, arr); for(i=1;i<=n;i++) skip[arr[i]]=1 }
-                  !(NR in skip) { print }' \
-             rows="$row_numbers" "$db_file" > "${db_file}.tmp" 2>/dev/null; then
-            echo "Error: Failed to write temporary database while deleting records" >&2
-            rm -f "${db_file}.tmp"
-            return 1
-        fi
-
-        mv "${db_file}.tmp" "$db_file"
-        log_message "Deleted $match_count DB records for $filepath (rows: $row_numbers)"
-        return 0
-    fi
-
-    # Exactly one match — extract its row number and remove it
-    local target_row
-    target_row=$(printf '%s\n' "$matches" | cut -d: -f1)
-
-    # Rewrite DB without the target row (header and all other rows preserved)
-    if ! awk -v row="$target_row" 'NR != row { print }' "$db_file" > "${db_file}.tmp" 2>/dev/null; then
-        echo "Error: Failed to write temporary database while deleting record" >&2
-        rm -f "${db_file}.tmp"
-        return 1
-    fi
-
-    mv "${db_file}.tmp" "$db_file"
-    log_message "Deleted DB record for $filepath (row $target_row)"
-    return 0
-}
-
-# Remove exactly one track record from the database by ID and file path.
-# Usage: delete_record_by_id_and_path "$MUSICDB" "<record_id>" "/path/to/file.mp3"
-# Behavior:
-#   - Matches on BOTH field 1 (ID) AND field 7 (SongPath) simultaneously.
-#   - If exactly one such row is found, it is removed and 0 is returned.
-#   - If no row matches, shows a kdialog notice and returns 1.
-#   - This function is safe to call when duplicates exist: only the row with
-#     the specified ID is removed, leaving all other rows intact.
-#   - Caller is responsible for acquiring the database lock (with_db_lock).
-
-delete_record_by_id_and_path() {
-    local db_file="$1"
-    local record_id="$2"
-    local filepath="$3"
-
-    if [ ! -f "$db_file" ]; then
-        echo "Error: Database not found: $db_file" >&2
-        return 1
-    fi
-
-    # Resolve SongPath column index from header (safe against schema changes).
-    local pathcol
-    pathcol=$(get_column_index "$db_file" "SongPath") || return 1
-
-    # Use awk to find rows where field 1 (ID) and SongPath column both match.
-    # FS=^ matches the DSV caret delimiter.  NR==1 (header) is never a match.
-    local match_count
-    match_count=$(awk -F'^' -v id="$record_id" -v path="$filepath" -v pcol="$pathcol" \
-        'NR > 1 && $1 == id && $pcol == path { count++ } END { print count+0 }' \
-        "$db_file" 2>/dev/null)
-
-    if [ "$match_count" -eq 0 ]; then
-        echo "Error: No record found with ID=$record_id and path=$filepath" >&2
-        if command -v kdialog >/dev/null 2>&1; then
-            kdialog --title 'Delete Failed' --passivepopup \
-                "Track not found in database (ID $record_id may have already been removed)." 5 &
-        fi
-        return 1
-    fi
-
-    # Rewrite the DB, keeping every row that does NOT match both ID and path.
-    # The header row (NR==1) is always kept.
-    if ! awk -F'^' -v id="$record_id" -v path="$filepath" -v pcol="$pathcol" \
-        'NR == 1 || !($1 == id && $pcol == path) { print }' \
-        "$db_file" > "${db_file}.tmp" 2>/dev/null; then
-        echo "Error: Failed to write temporary database while deleting record" >&2
-        rm -f "${db_file}.tmp"
-        return 1
-    fi
-
-    mv "${db_file}.tmp" "$db_file"
-    log_message "Deleted DB record ID=$record_id for $(basename "$filepath")"
-    return 0
-}
-
-#############################################
-# LOGGING AND BACKUP
+# LOGGING
 #############################################
 
 # Log message to log file and stdout.
@@ -610,80 +321,6 @@ log_message() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     echo "[$timestamp] $message" | tee -a "${LOGFILE:-/dev/null}" 2>/dev/null || echo "[$timestamp] $message"
-}
-
-# Create backup of database
-backup_database() {
-    local db_file="$1"
-    local backup_dir=$(dirname "$db_file")
-    local timestamp=$(date '+%Y%m%d_%H%M%S')
-    local backup_file="${backup_dir}/musiclib.dsv.backup.${timestamp}"
-
-    if [ -f "$db_file" ]; then
-        cp "$db_file" "$backup_file"
-        echo "Backup created: $backup_file"
-
-        # Keep only last 5 backups
-        ls -t "${backup_dir}"/musiclib.dsv.backup.* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
-
-        return 0
-    fi
-
-    return 1
-}
-
-# Create backup of any file with timestamp
-# Usage: backup_file <filepath> <backup_dir>
-# Returns: Outputs backup filename on success, empty on failure
-backup_file() {
-    local filepath="$1"
-    local backup_dir="$2"
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-    local basename=$(basename "$filepath")
-    local backup_file="$backup_dir/${basename}.backup.${timestamp}"
-
-    if [ ! -f "$filepath" ]; then
-        echo "Error: File not found: $filepath" >&2
-        return 1
-    fi
-
-    if [ ! -d "$backup_dir" ]; then
-        mkdir -p "$backup_dir" || return 1
-    fi
-
-    cp "$filepath" "$backup_file" || return 1
-
-    # Verify backup
-    if ! cmp -s "$filepath" "$backup_file"; then
-        echo "Error: Backup verification failed for $filepath" >&2
-        rm -f "$backup_file"
-        return 1
-    fi
-
-    echo "$backup_file"
-    return 0
-}
-
-# Verify that a backup file matches the original
-verify_backup() {
-    local original="$1"
-    local backup="$2"
-
-    if [ ! -f "$original" ] || [ ! -f "$backup" ]; then
-        return 1
-    fi
-
-    cmp -s "$original" "$backup"
-    return $?
-}
-
-# Remove backup file
-remove_backup() {
-    local backup_file="$1"
-
-    if [ -f "$backup_file" ]; then
-        rm -f "$backup_file"
-    fi
 }
 
 # Cleanup old files matching pattern in directory
@@ -702,117 +339,8 @@ cleanup_old_files() {
 }
 
 #############################################
-# MPRIS2 PLAYER HELPERS
+# ERROR HANDLING
 #############################################
-
-# Detect the last-active MPRIS2 player via playerctld and validate it against
-# the supported_mpris_players allowlist in musiclib.conf.
-#
-# Sets global MPRIS_BUS to the full bus name
-# (e.g. org.mpris.MediaPlayer2.strawberry), or empty string if no allowed
-# player is active or playerctld is not running.
-#
-# Uses playerctld (last-active tracking) rather than enumerating all bus names
-# so behaviour matches the listener, which also relies on playerctld.
-#
-# Usage: detect_active_mpris_bus
-# After call: test -n "$MPRIS_BUS" to check success.
-detect_active_mpris_bus() {
-    MPRIS_BUS=""
-
-    if ! command -v playerctl >/dev/null 2>&1; then
-        return 0
-    fi
-
-    # Get the name of the last-active player from playerctld's ordering.
-    # playerctl without --player= returns the first player in playerctld's
-    # priority list (i.e. the most recently active one).
-    local active_player
-    active_player=$(playerctl metadata --format '{{ playerName }}' 2>/dev/null || echo "")
-
-    [ -z "$active_player" ] && return 0
-
-    # Allowlist check (prefix match, same logic as the listener).
-    local allowed=false
-    local players="${supported_mpris_players:-strawberry audacious clementine amarok elisa mpd}"
-    local entry
-    for entry in $players; do
-        if [[ "$active_player" == "${entry}"* ]]; then
-            allowed=true
-            break
-        fi
-    done
-
-    $allowed || return 0
-
-    # Use the playerctld proxy bus for all subsequent qdbus6 calls.
-    # org.mpris.MediaPlayer2.playerctld transparently proxies the active player,
-    # so metadata reads always reflect whichever player playerctld is tracking —
-    # no need to construct org.mpris.MediaPlayer2.<playername> individually.
-    MPRIS_BUS="org.mpris.MediaPlayer2.playerctld"
-}
-
-# Read a single Metadata field from the active MPRIS2 player.
-# Requires detect_active_mpris_bus to have been called first (MPRIS_BUS set).
-#
-# Usage: mpris_metadata_field <key>
-# Example keys: xesam:url  xesam:title  xesam:artist  mpris:length  mpris:trackid
-# Prints the field value to stdout; prints nothing if not found.
-mpris_metadata_field() {
-    local key="$1"
-    [ -z "${MPRIS_BUS:-}" ] && return 1
-    qdbus6 "$MPRIS_BUS" /org/mpris/MediaPlayer2 \
-        org.freedesktop.DBus.Properties.Get \
-        org.mpris.MediaPlayer2.Player Metadata 2>/dev/null \
-        | awk -F': ' -v k="$key" '$1==k {$1=""; sub(/^ /,""); print; exit}'
-}
-
-# Read PlaybackStatus from the active MPRIS2 player.
-# Requires MPRIS_BUS to be set.
-# Prints one of: Playing  Paused  Stopped  (or empty on error).
-# qdbus6 always appends a trailing newline; strip all whitespace so callers
-# can compare the result directly with [ "$status" = "Playing" ].
-mpris_playback_status() {
-    [ -z "${MPRIS_BUS:-}" ] && return 1
-    qdbus6 "$MPRIS_BUS" /org/mpris/MediaPlayer2 \
-        org.freedesktop.DBus.Properties.Get \
-        org.mpris.MediaPlayer2.Player PlaybackStatus 2>/dev/null \
-        | tr -d '[:space:]'
-}
-
-# Decode a file:// URI to a plain filesystem path.
-# Non-file:// URIs (streams, Spotify, etc.) produce an empty string.
-# Usage: file_uri_to_path <uri>
-file_uri_to_path() {
-    local uri="$1"
-    [ -z "$uri" ] && { echo ""; return 0; }
-    # Only handle file:// URIs; everything else is not a local file.
-    [[ "$uri" == file://* ]] || { echo ""; return 0; }
-    local path="${uri#file://}"
-    # Percent-decode
-    printf '%b\n' "${path//%/\\x}"
-}
-
-# Convenience wrapper: detect active player, read xesam:url, decode to path.
-# Prints the filesystem path of the currently-playing track, or empty string
-# if no allowed MPRIS2 player is active or track is non-local.
-# Sets (and exports) MPRIS_BUS as a side-effect.
-# Usage: FILEPATH=$(get_current_player_filepath)
-get_current_player_filepath() {
-    detect_active_mpris_bus
-    [ -z "${MPRIS_BUS:-}" ] && { echo ""; return 0; }
-    local url
-    url=$(mpris_metadata_field "xesam:url" || echo "")
-    file_uri_to_path "$url"
-}
-
-#############################################
-# ERROR HANDLING AND LOCKING
-#############################################
-
-# Global variables for database locking
-DB_LOCK_FD=""
-DB_LOCK_FILE=""
 
 # Standardized error reporting with JSON output
 # Usage: error_exit exit_code error_message [context_key context_value ...]
@@ -822,13 +350,13 @@ error_exit() {
     local exit_code="$1"
     local error_msg="$2"
     shift 2
-    
+
     # Detect script name
     local script_name="unknown"
     if [ -n "$0" ]; then
         script_name=$(basename "$0")
     fi
-    
+
     # Build context object from key-value pairs
     local context="{"
     local first=true
@@ -842,79 +370,14 @@ error_exit() {
         shift 2
     done
     context="${context}}"
-    
+
     # Build JSON error object
     local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     local json_error="{\"error\":\"${error_msg//\"/\\\"}\",\"script\":\"${script_name}\",\"code\":${exit_code},\"context\":${context},\"timestamp\":\"${timestamp}\"}"
-    
+
     # Output to stderr
     echo "$json_error" >&2
-    
+
     # Return the exit code (don't exit!)
     return "$exit_code"
-}
-
-# Acquire exclusive lock on database
-# Usage: acquire_db_lock timeout_seconds
-# Returns: 0 on success, 1 on timeout, 2 on error
-# Sets global: DB_LOCK_FD (file descriptor)
-acquire_db_lock() {
-    local timeout="${1:-5}"
-    
-    # Determine lock file path
-    if [ -z "$MUSICDB" ]; then
-        error_exit 2 "MUSICDB not set - cannot acquire lock"
-        return 2
-    fi
-    
-    DB_LOCK_FILE="${MUSICDB}.lock"
-    
-    # Open lock file and get file descriptor
-    # Use exec to assign to a variable FD
-    exec {DB_LOCK_FD}>"$DB_LOCK_FILE" 2>/dev/null || {
-        error_exit 2 "Cannot create lock file" "lockfile" "$DB_LOCK_FILE"
-        return 2
-    }
-    
-    # Try to acquire exclusive lock with timeout
-    if flock -x -w "$timeout" "$DB_LOCK_FD" 2>/dev/null; then
-        # Lock acquired successfully
-        return 0
-    else
-        # Timeout - lock not available
-        exec {DB_LOCK_FD}>&-  # Close file descriptor
-        DB_LOCK_FD=""
-        return 1
-    fi
-}
-
-# Release database lock
-# Usage: release_db_lock
-# Returns: Always 0
-release_db_lock() {
-    if [ -n "$DB_LOCK_FD" ]; then
-        # Release lock and close file descriptor
-        flock -u "$DB_LOCK_FD" 2>/dev/null || true
-        exec {DB_LOCK_FD}>&- 2>/dev/null || true
-        DB_LOCK_FD=""
-    fi
-    return 0
-}
-
-# Execute command with database lock (automatic cleanup)
-# Usage: with_db_lock timeout_seconds command [args...]
-# Returns: Exit code of command
-# Example: with_db_lock 5 update_database "$filepath"
-with_db_lock() {
-    local timeout="$1"
-    shift
-    (
-        # Subshell isolates trap — caller's traps are unaffected
-        trap 'release_db_lock 2>/dev/null' EXIT
-        if ! acquire_db_lock "$timeout"; then
-        exit $? # Propagates 1 (timeout) or 2 (error)
-        fi
-        "$@"
-        # Exit code of callback propagates naturally
-    )
 }
