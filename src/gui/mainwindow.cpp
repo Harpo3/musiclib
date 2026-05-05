@@ -50,6 +50,7 @@
 #include <QMessageBox>
 #include <QThread>
 #include <QDBusInterface>
+#include <QDBusReply>
 #include <QDBusConnectionInterface>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -1128,39 +1129,22 @@ void MainWindow::refreshNowPlaying()
                QStringLiteral("org.mpris.MediaPlayer2.audacious"));
 
     if (audaciusOnBus && m_nowPlaying.isPlaying) {
-        // All three values come from audtool — always available when the bus is present.
-        // audtool --current-playlist-name returns the active playlist directly,
-        // avoiding the song-path scan which found the wrong playlist when a track
-        // appears in more than one playlist.
-        QProcess nameProc;
-        nameProc.start(QStringLiteral("audtool"),
-                       {QStringLiteral("--current-playlist-name")});
-        if (nameProc.waitForFinished(500)) {
-            QString name = QString::fromUtf8(
-                nameProc.readAllStandardOutput()).trimmed();
-            if (!name.isEmpty())
-                m_nowPlaying.playlistName = name;
-        }
+        QDBusInterface aud(QStringLiteral("org.atheme.audacious"),
+                           QStringLiteral("/org/atheme/audacious"),
+                           QStringLiteral("org.atheme.audacious"),
+                           QDBusConnection::sessionBus());
 
-        QProcess posProc;
-        posProc.start(QStringLiteral("audtool"),
-                      {QStringLiteral("--playlist-position")});
-        if (posProc.waitForFinished(500)) {
-            bool ok = false;
-            int pos = posProc.readAllStandardOutput().trimmed().toInt(&ok);
-            if (ok && pos > 0)
-                m_nowPlaying.playlistPosition = pos;
-        }
+        QDBusReply<QString> nameReply = aud.call(QStringLiteral("GetActivePlaylistName"));
+        if (nameReply.isValid() && !nameReply.value().isEmpty())
+            m_nowPlaying.playlistName = nameReply.value();
 
-        QProcess lenProc;
-        lenProc.start(QStringLiteral("audtool"),
-                      {QStringLiteral("--playlist-length")});
-        if (lenProc.waitForFinished(500)) {
-            bool ok = false;
-            int len = lenProc.readAllStandardOutput().trimmed().toInt(&ok);
-            if (ok && len > 0)
-                m_nowPlaying.playlistLength = len;
-        }
+        QDBusReply<uint> posReply = aud.call(QStringLiteral("Position"));
+        if (posReply.isValid())
+            m_nowPlaying.playlistPosition = static_cast<int>(posReply.value()) + 1;
+
+        QDBusReply<int> lenReply = aud.call(QStringLiteral("Length"));
+        if (lenReply.isValid() && lenReply.value() > 0)
+            m_nowPlaying.playlistLength = lenReply.value();
     }
 
     // ── Update toolbar: Now Playing label ──
