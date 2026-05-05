@@ -1120,18 +1120,18 @@ if [ -d "$AUDACIOUS_PLAYLISTS_SRC" ]; then
     else
         print_info "Copying Audacious playlists → $DATA_DIR/playlists"
         echo ""
-        if "$MOBILE_SCRIPT" refresh-audacious-only 2>/dev/null; then
+        if "$MOBILE_SCRIPT" refresh-player-playlists 2>/dev/null; then
             echo ""
             print_success "Playlist directory populated from Audacious"
         else
             echo ""
             print_info "Playlist refresh could not complete (kdeconnect-cli may not be installed)"
-            print_info "Run manually: musiclib-cli mobile refresh-audacious-only"
+            print_info "Run manually: musiclib-cli mobile refresh-player-playlists"
         fi
     fi
 else
     print_info "No Audacious playlists found at: $AUDACIOUS_PLAYLISTS_SRC"
-    print_info "Open Audacious, create playlists, then run: musiclib-cli mobile refresh-audacious-only"
+    print_info "Open Audacious, create playlists, then run: musiclib-cli mobile refresh-player-playlists"
 fi
 
 #############################################

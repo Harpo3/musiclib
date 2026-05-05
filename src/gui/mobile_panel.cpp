@@ -142,7 +142,7 @@ QGroupBox* MobilePanel::createPlaylistSection()
     m_refreshAudaciousBtn = new QPushButton(tr("Refresh from Audacious"));
     m_refreshAudaciousBtn->setToolTip(
         tr("Import all playlists from Audacious into MusicLib playlists directory.\n"
-           "Invokes: musiclib_mobile.sh refresh-audacious-only"));
+           "Invokes: musiclib_mobile.sh refresh-player-playlists"));
     connect(m_refreshAudaciousBtn, &QPushButton::clicked,
             this, &MobilePanel::refreshFromAudacious);
 
@@ -615,7 +615,7 @@ void MobilePanel::onPlaylistSelected(int index)
 }
 
 // ---------------------------------------------------------------------------
-// Refresh from Audacious — musiclib_mobile.sh refresh-audacious-only
+// Refresh from Audacious — musiclib_mobile.sh refresh-player-playlists
 // ---------------------------------------------------------------------------
 
 void MobilePanel::refreshFromAudacious()
@@ -650,7 +650,7 @@ void MobilePanel::refreshFromAudacious()
 
     startScriptProcess(m_operationProcess,
                        QStringLiteral("musiclib_mobile.sh"),
-                       {QStringLiteral("refresh-audacious-only"),
+                       {QStringLiteral("refresh-player-playlists"),
                         QStringLiteral("--non-interactive")});
 }
 

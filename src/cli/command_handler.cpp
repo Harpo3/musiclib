@@ -28,7 +28,7 @@ void CommandHandler::registerCommands() {
     commands_["mobile"] = {
         "mobile",
         "Mobile sync and Audacious playlist management",
-        "upload|refresh-audacious-only|update-lastplayed|status|logs|cleanup [args...]",
+        "upload|refresh-player-playlists|update-lastplayed|status|logs|cleanup [args...]",
         "musiclib_mobile.sh",
         handleMobile
     };
@@ -174,7 +174,7 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "Subcommands:" << Qt::endl;
         cout << "  upload <playlist> [device-id]  Upload playlist to mobile device" << Qt::endl;
         cout << "                                 Checks if Audacious version is newer and offers to refresh" << Qt::endl;
-        cout << "  refresh-audacious-only         Refresh all playlists from Audacious to Musiclib" << Qt::endl;
+        cout << "  refresh-player-playlists       Refresh all playlists from active player to Musiclib" << Qt::endl;
         cout << "                                 No mobile upload is performed" << Qt::endl;
         cout << "  update-lastplayed <playlist>   Update last-played times for a playlist" << Qt::endl;
         cout << "  status                         Show current mobile playlist status" << Qt::endl;
@@ -183,13 +183,13 @@ void CommandHandler::showHelp(const QString& cmd) {
         cout << "  cleanup                        Remove orphaned metadata files" << Qt::endl;
         cout << Qt::endl;
         cout << "Configuration:" << Qt::endl;
-        cout << "  AUDACIOUS_PLAYLISTS_DIR - Audacious playlists location" << Qt::endl;
+        cout << "  AUDACIOUS_PLAYLISTS_DIR - Player playlists location" << Qt::endl;
         cout << "                            (default: ~/.config/audacious/playlists)" << Qt::endl;
         cout << Qt::endl;
         cout << "Examples:" << Qt::endl;
         cout << "  musiclib-cli mobile upload workout.audpl" << Qt::endl;
         cout << "  musiclib-cli mobile upload \"/path/to/playlist.audpl\" abc123" << Qt::endl;
-        cout << "  musiclib-cli mobile refresh-audacious-only" << Qt::endl;
+        cout << "  musiclib-cli mobile refresh-player-playlists" << Qt::endl;
         cout << "  musiclib-cli mobile status" << Qt::endl;
         cout << "  musiclib-cli mobile logs errors" << Qt::endl;
         cout << "  musiclib-cli mobile cleanup" << Qt::endl;
@@ -432,14 +432,14 @@ int CommandHandler::handleRate(const QStringList& args) {
 int CommandHandler::handleMobile(const QStringList& args) {
     if (args.isEmpty()) {
         cerr << "Error: 'mobile' requires a subcommand" << Qt::endl;
-        cerr << "Valid subcommands: upload, refresh-audacious-only, update-lastplayed, status, logs, cleanup" << Qt::endl;
+        cerr << "Valid subcommands: upload, refresh-player-playlists, update-lastplayed, status, logs, cleanup" << Qt::endl;
         showHelp("mobile");
         return 1;
     }
     
     // Validate known subcommands for better error messages
     QString subcommand = args[0];
-    QStringList validSubcommands = {"upload", "refresh-audacious-only", "update-lastplayed", "status", "logs", "cleanup", "check-update", "retry"};
+    QStringList validSubcommands = {"upload", "refresh-player-playlists", "update-lastplayed", "status", "logs", "cleanup", "check-update", "retry"};
     
     if (!validSubcommands.contains(subcommand)) {
         cerr << "Error: Unknown mobile subcommand '" << subcommand << "'" << Qt::endl;

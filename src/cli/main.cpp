@@ -45,7 +45,7 @@ void showGlobalHelp() {
     cout << "  musiclib-cli rate 4 \"/mnt/music/artist/album/song.mp3\"         # Rate specific file" << Qt::endl;
     cout << "  musiclib-cli build --dry-run                                     # Preview database rebuild" << Qt::endl;
     cout << "  musiclib-cli mobile upload workout.audpl                         # Upload playlist to mobile" << Qt::endl;
-    cout << "  musiclib-cli mobile refresh-audacious-only                       # Sync all Audacious playlists" << Qt::endl;
+    cout << "  musiclib-cli mobile refresh-player-playlists                     # Sync all player playlists" << Qt::endl;
     cout << "  musiclib-cli mobile status                                       # Show mobile sync status" << Qt::endl;
     cout << "  musiclib-cli new-tracks \"Pink Floyd\"                           # Import new downloads for artist" << Qt::endl;
     cout << "  musiclib-cli tagclean process /mnt/music/artist/album -r         # Clean tags recursively" << Qt::endl;

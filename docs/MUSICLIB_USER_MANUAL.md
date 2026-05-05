@@ -1201,14 +1201,14 @@ musiclib-cli mobile update-lastplayed workout
 musiclib-cli mobile update-lastplayed workout --end-time "02/15/2026 18:00:00"
 ```
 
-##### `musiclib-cli mobile refresh-audacious-only`
+##### `musiclib-cli mobile refresh-player-playlists`
 
 **Purpose**: Copy playlists from Audacious to MusicLib directory.
 
 **Usage**:
 
 ```bash
-musiclib-cli mobile refresh-audacious-only
+musiclib-cli mobile refresh-player-playlists
 ```
 
 ##### `musiclib-cli mobile logs`

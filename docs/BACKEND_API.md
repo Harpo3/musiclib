@@ -711,13 +711,13 @@ musiclib_mobile.sh update-lastplayed workout --end-time "02/15/2026 21:00:00"
 
 ---
 
-#### 2.2.5 `musiclib-cli mobile refresh-audacious-only` → `musiclib_mobile.sh refresh-audacious-only`
+#### 2.2.5 `musiclib-cli mobile refresh-player-playlists` → `musiclib_mobile.sh refresh-player-playlists`
 
-**Purpose**: Scan the Audacious playlists directory and copy all playlists to the MusicLib playlists directory. No mobile upload or accounting is performed.
+**Purpose**: Scan the player playlists directory and copy all playlists to the MusicLib playlists directory. No mobile upload or accounting is performed.
 
 **Invocation**:
 ```bash
-musiclib_mobile.sh refresh-audacious-only
+musiclib_mobile.sh refresh-player-playlists
 ```
 
 **Behavior**:
@@ -736,7 +736,7 @@ musiclib_mobile.sh refresh-audacious-only
 
 **Example**:
 ```bash
-musiclib_mobile.sh refresh-audacious-only
+musiclib_mobile.sh refresh-player-playlists
 ```
 
 **Equivalent GUI**: Mobile panel → Refresh Playlists button (without upload)
@@ -814,7 +814,7 @@ musiclib_mobile.sh check-update <playlist_name>
 ```
 
 **Parameters**:
-- `<playlist_name>`: Playlist basename (without extension). Matched against Audacious playlists using the same title-extraction and sanitization logic as `refresh-audacious-only` (URL-decode, sanitize to safe filename, case-insensitive comparison).
+- `<playlist_name>`: Playlist basename (without extension). Matched against Audacious playlists using the same title-extraction and sanitization logic as `refresh-player-playlists` (URL-decode, sanitize to safe filename, case-insensitive comparison).
 
 **Output** (stdout, machine-readable):
 ```
@@ -1273,12 +1273,12 @@ musiclib_init_config.sh [--force]
 
 **Workflow**:
 1. Check for existing configuration (skip if present, unless `--force`)
-2. Detect Audacious installation and `audtool` availability
-3. Scan filesystem for music directories (common locations: `/mnt/music`, `~/Music`)
-4. Prompt for music repository path
-5. Prompt for download directory (default: `~/Downloads`)
-6. Create XDG directory structure (`~/.config/musiclib/`, `~/.local/share/musiclib/`)
-7. **Detect optional dependencies**:
+2. Scan filesystem for music directories (common locations: `/mnt/music`, `~/Music`)
+3. Prompt for music repository path
+4. Prompt for download directory (default: `~/Downloads`)
+5. KDE Connect configuration: pause for device pairing, scan paired devices via `kdeconnect-cli -a`, optionally capture a device ID for mobile sync
+6. Create XDG directory structure (`~/.config/musiclib/`, `~/.local/share/musiclib/`); copy star rating PNGs from `/usr/share/musiclib/images/stars/` into `~/.local/share/musiclib/data/conky_output/stars/` (idempotent — `cp -n` skips existing files)
+7. **Detect optional dependencies** (detected at startup; flags written to `musiclib.conf` here):
    a. Check for RSGain installation (`rsgain` command availability) → sets `RSGAIN_INSTALLED`
    b. Detect Kid3 GUI variants (`kid3` for KDE version, `kid3-qt` for standalone Qt version) → sets `KID3_GUI_INSTALLED`
    c. Check for K3b installation (`k3b` command availability) → sets `K3B_INSTALLED`
@@ -1286,17 +1286,22 @@ musiclib_init_config.sh [--force]
    e. Set all detected flags in `musiclib.conf`
 8. Generate `musiclib.conf` with detected values
 8a. If K3b detected: generate `~/.config/musiclib/k3brc` via `generate_k3brc` — prompts user whether to use existing `~/.config/k3brc` as baseline or system template, then patches all musiclib-managed keys via `patch_k3brc`
-9. If Audacious detected:
-   a. Display step-by-step Song Change plugin setup instructions
-   b. Optionally verify integration (check Audacious running, test hook, validate Conky output)
-10. Offer to build initial database via `musiclib_build.sh`
-11. Display next-steps summary
+9. Run library conformance check (scan `MUSIC_REPO` for naming-convention violations)
+10. Offer to build initial database:
+    a. If confirmed: prompt whether to restore last-played history from `Songs-DB_Custom1` ID3 tags (sets `--restore-lastplayed` — slower, for migrations of existing MusicLib libraries); invoke `musiclib-cli build "$MUSIC_REPO" [$BUILD_FLAGS]`
+11. Enable MPRIS2 listener: install `playerctl` and `qt6-tools` if missing (Arch/pacman); enable `playerctld.service` (last-active player tracking) and `musiclib-mpris.service` (D-Bus track-change monitor) via `systemctl --user enable --now`
+12. Import Audacious playlists if `~/.config/audacious/playlists` exists (via `musiclib_mobile.sh refresh-player-playlists`)
+13. Install Dolphin service menu: copy `musiclib-rate.desktop` from `/usr/share/kio/servicemenus/` to `~/.local/share/kio/servicemenus/`
+14. Display completion summary
 
 **Side Effects**:
 - Creates `~/.config/musiclib/musiclib.conf`
 - Creates `~/.local/share/musiclib/` directory tree (data, logs, playlists)
+- Copies star rating PNGs from `/usr/share/musiclib/images/stars/` into `~/.local/share/musiclib/data/conky_output/stars/` (idempotent — `cp -n` skips existing)
+- Enables `playerctld.service` and `musiclib-mpris.service` systemd user units
+- Installs `musiclib-rate.desktop` to `~/.local/share/kio/servicemenus/` (enables Dolphin right-click rating)
 - If K3b detected: creates `~/.config/musiclib/k3brc` (musiclib's managed K3b config); backs up any pre-existing copy to `~/.config/musiclib/backups/k3brc_bak_MMDDYYYY_N`
-- Optionally invokes `musiclib_build.sh` for initial database creation
+- Optionally invokes `musiclib-cli build` for initial database creation (with optional `--restore-lastplayed` flag)
 
 **Exit Codes**:
 - 0: Configuration created successfully
@@ -1319,16 +1324,13 @@ musiclib-cli setup --force
 **Configuration File Generated**:
 ```bash
 # Core paths
-MUSICDB="${MUSICLIB_DATA_DIR}/data/musiclib.dsv"
 MUSIC_REPO="/mnt/music"
-DOWNLOAD_DIR="$HOME/Downloads"
+NEW_DOWNLOAD_DIR="$HOME/Downloads"
 
-# External dependencies (detected)
-EXIFTOOL_CMD="exiftool"
-KID3_CMD="kid3-cli"
-KDECONNECT_CMD="kdeconnect-cli"
+# Mobile sync (written only when a KDE Connect device ID was configured)
+# DEVICE_ID="abc123xyz"
 
-# Optional dependency detection
+# Optional dependency detection (written only for tools that were detected)
 RSGAIN_INSTALLED=true
 KID3_GUI_INSTALLED="kid3-qt"
 K3B_INSTALLED=true
@@ -1343,10 +1345,6 @@ K3B_ENCODER_FORMAT=flac    # written only when non-default (library was predomin
 # K3B_OGG_QUALITY=6
 # K3B_PARANOIA_MODE=0
 # K3B_READ_RETRIES=5
-
-# Audacious integration
-AUDACIOUS_INSTALLED=true
-AUDACIOUS_PATH="/usr/bin/audacious"
 ```
 
 **GUI Impact**: The GUI reads `RSGAIN_INSTALLED`, `KID3_GUI_INSTALLED`, and `K3B_INSTALLED` from the configuration to gracefully disable features when optional tools are unavailable:

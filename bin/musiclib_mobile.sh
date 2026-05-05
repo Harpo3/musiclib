@@ -5,7 +5,7 @@
 # Usage: musiclib-cli mobile upload <playlist.audpl> [device_id] [--non-interactive] [--end-time "MM/DD/YYYY HH:MM:SS"] [--end-track N]
 #        musiclib-cli mobile update-lastplayed <playlist_name> [--end-time "MM/DD/YYYY HH:MM:SS"] [--end-track N]
 #        musiclib-cli mobile retry <playlist_name>
-#        musiclib-cli mobile refresh-audacious-only
+#        musiclib-cli mobile refresh-player-playlists
 #        musiclib-cli mobile status
 #        musiclib-cli mobile logs [filter]
 #        musiclib-cli mobile cleanup
@@ -1062,8 +1062,8 @@ Commands:
       Checks if Audacious version is newer and offers to refresh first.
       Processes previous playlist accounting first, then uploads.
 
-  refresh-audacious-only
-      Refresh all playlists from Audacious to Musiclib playlists directory.
+  refresh-player-playlists
+      Refresh all playlists from the active player to Musiclib playlists directory.
       No mobile upload is performed.
 
   update-lastplayed <playlist_name>
@@ -1109,7 +1109,7 @@ Examples:
   musiclib_mobile.sh upload workout.audpl
   musiclib_mobile.sh upload ~/music/workout.audpl --non-interactive
   musiclib_mobile.sh upload ~/music/workout.audpl --end-time "02/15/2026 21:00:00"
-  musiclib_mobile.sh refresh-audacious-only
+  musiclib_mobile.sh refresh-player-playlists
   musiclib_mobile.sh update-lastplayed workout
   musiclib_mobile.sh retry workout
   musiclib_mobile.sh status
@@ -1180,7 +1180,7 @@ case "$COMMAND" in
         upload_playlist "$2" "${3:-}"
         ;;
 
-    refresh-audacious-only)
+    refresh-player-playlists)
         scan_playlists
         ;;
 
