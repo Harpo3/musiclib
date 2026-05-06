@@ -20,6 +20,9 @@ if [ -f "$SCRIPT_DIR/musiclib_utils.sh" ]; then
     source "$SCRIPT_DIR/musiclib_utils.sh"
     load_config 2>/dev/null || true
 fi
+if [ -f "$SCRIPT_DIR/musiclib_db.sh" ]; then
+    source "$SCRIPT_DIR/musiclib_db.sh"
+fi
 
 # Fallback configuration
 _DATA_DIR_FB="${XDG_DATA_HOME:-$HOME/.local/share}/musiclib"

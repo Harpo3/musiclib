@@ -6,13 +6,6 @@
 set -u
 set -o pipefail
 
-# Re-export split modules so scripts that source this file get all functions.
-# Scripts should eventually source musiclib_db.sh and musiclib_player_utils.sh
-# directly as needed — this re-exporter is a transitional compatibility shim.
-_MUSICLIB_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${_MUSICLIB_UTILS_DIR}/musiclib_db.sh" || return 1
-source "${_MUSICLIB_UTILS_DIR}/musiclib_player_utils.sh" || return 1
-unset _MUSICLIB_UTILS_DIR
 
 #############################################
 # BACKEND API VERSION

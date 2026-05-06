@@ -28,6 +28,10 @@ if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     echo '{"error":"musiclib_utils.sh not found","script":"musiclib_edit_field.sh","code":2}' >&2
     exit 2
 fi
+if ! source "$SCRIPT_DIR/musiclib_db.sh" 2>/dev/null; then
+    echo '{"error":"musiclib_db.sh not found","script":"musiclib_edit_field.sh","code":2}' >&2
+    exit 2
+fi
 
 if ! load_config 2>/dev/null; then
     error_exit 2 "Failed to load configuration"

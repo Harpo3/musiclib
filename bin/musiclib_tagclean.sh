@@ -19,6 +19,10 @@ if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     echo '{"error":"Failed to load musiclib_utils.sh","script":"musiclib_tagclean.sh","code":2,"context":{},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
     exit 2
 fi
+if ! source "$SCRIPT_DIR/musiclib_db.sh" 2>/dev/null; then
+    echo '{"error":"Failed to load musiclib_db.sh","script":"musiclib_tagclean.sh","code":2,"context":{},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
+    exit 2
+fi
 
 if ! load_config; then
     error_exit 2 "Configuration load failed"

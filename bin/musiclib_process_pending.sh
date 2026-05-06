@@ -25,6 +25,10 @@ if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     echo "Error: musiclib_utils.sh not found at $SCRIPT_DIR/musiclib_utils.sh" >&2
     exit 2
 fi
+if ! source "$SCRIPT_DIR/musiclib_db.sh" 2>/dev/null; then
+    echo "Error: musiclib_db.sh not found at $SCRIPT_DIR/musiclib_db.sh" >&2
+    exit 2
+fi
 
 # Load configuration
 if ! load_config 2>/dev/null; then

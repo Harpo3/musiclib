@@ -39,6 +39,18 @@ if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
         "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >&2
     exit 2
 fi
+if ! source "$SCRIPT_DIR/musiclib_db.sh" 2>/dev/null; then
+    printf '{"error":"Failed to load musiclib_db.sh","script":"%s","code":2,"context":{"file":"%s"},"timestamp":"%s"}\n' \
+        "$(basename "$0")" "$SCRIPT_DIR/musiclib_db.sh" \
+        "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >&2
+    exit 2
+fi
+if ! source "$SCRIPT_DIR/musiclib_player_utils.sh" 2>/dev/null; then
+    printf '{"error":"Failed to load musiclib_player_utils.sh","script":"%s","code":2,"context":{"file":"%s"},"timestamp":"%s"}\n' \
+        "$(basename "$0")" "$SCRIPT_DIR/musiclib_player_utils.sh" \
+        "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >&2
+    exit 2
+fi
 
 if ! load_config 2>/dev/null; then
     error_exit 2 "Configuration load failed"

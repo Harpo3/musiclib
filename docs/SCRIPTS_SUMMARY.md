@@ -56,13 +56,13 @@ Operationally, it validates the target music directory, optionally backs up the 
 
 **musiclib_utils.sh**
 
-Shared Bash utility library providing configuration loading, dependency validation, metadata extraction, logging, and error handling. Currently also acts as a transitional re-exporter: it sources `musiclib_db.sh` and `musiclib_player_utils.sh` at the top so any script that sources `musiclib_utils.sh` automatically receives all three modules. Once the follow-on commit updates all sourcing scripts to reference specific files directly, the re-exporter lines will be removed and this file will contain only the residual functions listed below.
+Shared Bash utility library providing configuration loading, dependency validation, metadata extraction, logging, and error handling.
 
 Residual functions: `get_xdg_config_dir`, `get_xdg_data_dir`, `get_config_dir`, `get_data_dir` (XDG and legacy path resolution); `load_config` (layered system/user config loading); `validate_dependencies`, `check_required_tools` (dependency validation); `epoch_to_sql_time` (epoch-to-SQL-serial time conversion); `get_song_length_ms`, `format_song_length` (duration parsing and formatting); `sanitize_tag_value`, `validate_entry_fields`, `extract_metadata`, `get_tag_info`, `has_embedded_art` (tag and metadata helpers); `log_message`, `cleanup_old_files` (logging and file rotation); `error_exit` (JSON-formatted error reporting to stderr). Exports the `BACKEND_API_VERSION` global used by the GUI/CLI for compatibility checks.
 
 **musiclib_db.sh**
 
-Database, backup, and locking functions extracted from `musiclib_utils.sh`. Sourced by `musiclib_utils.sh` (re-exporter) and, after the follow-on commit, directly by any script that performs database reads or writes.
+Database, backup, and locking functions extracted from `musiclib_utils.sh`. Sourced directly by any script that performs database reads or writes.
 
 Contains three clusters. Database helpers: `get_column_index` (resolve a DSV column name to a 1-based awk field index), `get_next_id` (next available track ID), `find_or_create_album` (look up or generate a new album ID), `validate_database` (header format check). Database update operations: `update_lastplayed` (patch the LastTimePlayed DSV cell and the `Songs-DB_Custom1` ID3 tag atomically with tag-rebuild retry), `delete_record_by_path` (remove one row by filepath with kdialog guard for duplicate rows), `delete_record_by_id_and_path` (remove exactly one row by ID+path, safe against duplicates). Backup functions: `backup_database` (timestamped DB snapshot, keep last 5), `backup_file` (generic verified timestamped copy), `verify_backup` (cmp-based backup integrity check), `remove_backup` (cleanup). Database locking: `DB_LOCK_FD`/`DB_LOCK_FILE` globals, `acquire_db_lock` (flock with timeout), `release_db_lock`, `with_db_lock` (run a command under the lock in a subshell with EXIT trap for guaranteed release).
 
@@ -70,7 +70,7 @@ Depends on `log_message` and `error_exit` from `musiclib_utils.sh`.
 
 **musiclib_player_utils.sh**
 
-MPRIS2/player detection functions extracted from `musiclib_utils.sh`. Sourced by `musiclib_utils.sh` (re-exporter) and, after the follow-on commit, directly by any script that queries or detects the active media player.
+MPRIS2/player detection functions extracted from `musiclib_utils.sh`. Sourced directly by any script that queries or detects the active media player.
 
 Functions: `detect_active_mpris_bus` (use `playerctld` to find the last-active MPRIS2 player, validate against the `supported_mpris_players` allowlist in `musiclib.conf`, set global `MPRIS_BUS` to the `playerctld` proxy bus); `mpris_metadata_field` (read a single Metadata key via `qdbus6`); `mpris_playback_status` (read PlaybackStatus, stripped of whitespace); `file_uri_to_path` (decode a `file://` URI to a filesystem path, percent-decoding included; non-file URIs return empty); `get_current_player_filepath` (convenience wrapper: detect bus → read `xesam:url` → decode to path).
 

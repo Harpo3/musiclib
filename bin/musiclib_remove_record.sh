@@ -39,6 +39,10 @@ if ! source "$SCRIPT_DIR/musiclib_utils.sh" 2>/dev/null; then
     echo '{"error":"musiclib_utils.sh not found","script":"musiclib_remove_record.sh","code":2,"context":{"expected_path":"'"$SCRIPT_DIR/musiclib_utils.sh"'"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
     exit 2
 fi
+if ! source "$SCRIPT_DIR/musiclib_db.sh" 2>/dev/null; then
+    echo '{"error":"musiclib_db.sh not found","script":"musiclib_remove_record.sh","code":2,"context":{"expected_path":"'"$SCRIPT_DIR/musiclib_db.sh"'"},"timestamp":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' >&2
+    exit 2
+fi
 
 # Load configuration
 if ! load_config 2>/dev/null; then
