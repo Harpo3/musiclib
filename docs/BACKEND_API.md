@@ -1978,7 +1978,7 @@ All DSV field lookups in `musiclib_utils.sh`, `musiclib_edit_field.sh`, and `mus
 
 Scripts expose the API version via an internal variable in `musiclib_utils.sh`:
 ```bash
-BACKEND_API_VERSION="1.60"
+BACKEND_API_VERSION="1.70"
 ```
 
 **Status: runtime version check is NOT implemented.** The GUI reads `BACKEND_API_VERSION` and displays it as an informational label in the Settings dialog (Advanced tab). No runtime comparison or compatibility gate exists in the C++ code — there is no `getScriptVersion()` call, no semver comparison, and no warning dialog triggered by a version mismatch.
