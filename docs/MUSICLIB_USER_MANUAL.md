@@ -1,7 +1,7 @@
 # MusicLib User Manual
 
-**Version**: 1.62
-**Last Updated**: April 2026
+**Version**: 1.70
+**Last Updated**: May 2026
 **For**: MusicLib on Linux with KDE Plasma 6
 
 ---
@@ -1781,7 +1781,7 @@ After the script completes, re-run `musiclib-cli setup`.
 A: No. MusicLib works on any Linux distribution with KDE Plasma 6 — Fedora, Ubuntu, openSUSE, Debian, etc.
 
 **Q: Does MusicLib replace my music player?**  
-A: No. It works alongside Audacious. You play music in Audacious; MusicLib manages everything else.
+A: It works alongside your existing player. You play music in your player; MusicLib manages everything else.
 
 **Q: Can I use MusicLib with Spotify?**  
 A: Not yet. MusicLib is for local files only.
