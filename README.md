@@ -2,7 +2,7 @@
 
 **KDE-native or console-based music library control for Linux users.**
 
-MusicLib orchestrates Audacious, kid3-cli, rsgain, exiftool, k3b, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, CD Ripping, and data elements for desktop use (like conky).
+MusicLib orchestrates any MPRIS2-compatible player (Audacious, Strawberry, VLC, etc.), kid3-cli, rsgain, exiftool, k3b, and KDE Connect into a cohesive system for music library management, ratings, mobile sync, CD Ripping, and data elements for desktop use (like conky).
 
 See [MUSICLIB_USER_MANUAL.md](docs/MUSICLIB_USER_MANUAL.md) or the Github wiki for detailed features and information.
 
@@ -14,10 +14,11 @@ MusicLib uses a hybrid architecture:
 - **Shell script backend** (`/usr/lib/musiclib/bin/`) – authoritative for all write operations
 - **Qt/KDE GUI** (`musiclib`) – smart client for library browsing, rating, maintenance
 - **C++ CLI dispatcher** (`musiclib-cli`) – thin wrapper for command-line access
+- **MPRIS2 daemon** (`musiclib-mpris.service`) – systemd user service for player-agnostic playback tracking
 - **Flat-file database** (`musiclib.dsv`) – ^-delimited, human-readable, easily backed up
 
 ```
-User Interfaces (GUI/CLI) → Shell Scripts → External Tools (kid3-cli, audtool, etc.)
+User Interfaces (GUI/CLI) → Shell Scripts → External Tools (kid3-cli, MPRIS2 D-Bus, etc.)
                                           ↓
                                     musiclib.dsv + File Tags
 ```
@@ -89,7 +90,7 @@ Contributions welcome! Please open an issue before submitting large PRs.
 ## Acknowledgments
 
 - KDE Community for Frameworks and Plasma
-- Audacious developers for `audtool`
+- Audacious and other MPRIS2 player developers
 - kid3 developers for `kid3-cli`
 - ExifTool author Phil Harvey
 - rsgain developers for ReplayGain tools
