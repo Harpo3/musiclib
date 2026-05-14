@@ -458,3 +458,26 @@ with_db_lock() {
         # Exit code of callback propagates naturally
     )
 }
+
+# Execute command with database lock without a subshell.
+# Unlike with_db_lock, the callback runs in the caller's shell process, so
+# bash dynamic scoping lets it read and write the calling function's locals.
+# Usage: with_db_lock_scope timeout_seconds command [args...]
+# Returns: Exit code of command, or 1/2 on lock failure
+with_db_lock_scope() {
+    local _wdls_timeout="$1"
+    shift
+    local _wdls_prev_trap _wdls_rc
+    _wdls_prev_trap=$(trap -p EXIT 2>/dev/null || true)
+    trap 'release_db_lock 2>/dev/null' EXIT
+    if ! acquire_db_lock "$_wdls_timeout"; then
+        _wdls_rc=$?
+        if [ -n "$_wdls_prev_trap" ]; then eval "$_wdls_prev_trap"; else trap - EXIT; fi
+        return "$_wdls_rc"
+    fi
+    _wdls_rc=0
+    "$@" || _wdls_rc=$?
+    release_db_lock 2>/dev/null
+    if [ -n "$_wdls_prev_trap" ]; then eval "$_wdls_prev_trap"; else trap - EXIT; fi
+    return "$_wdls_rc"
+}

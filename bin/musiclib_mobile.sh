@@ -294,144 +294,13 @@ scan_playlists() {
     mobile_log "INFO" "PLAYLIST_SYNC" "Full sync completed: $count playlists"
 }
 
-#############################################
-# Phase A: Accounting - process previous playlist
-#############################################
-
-# Process synthetic last-played timestamps for the previous playlist.
-# This is the accounting phase — no device connectivity required.
-#
-# Args:
-#   $1 - new playlist name (basename without extension)
-#   $2 - end timestamp (epoch seconds) for the time window
-#
-# Returns:
-#   0 - all tracks processed successfully (or no previous playlist)
-#   1 - partial failure: .pending_tracks or .failed written
-#   2 - system error (DB lock, schema error, etc.)
-#
-# Side effects on partial failure:
-#   Writes $MOBILE_DIR/<prev_playlist>.pending_tracks  (tracks not in DB)
-#   Writes $MOBILE_DIR/<prev_playlist>.failed          (DB/tag write failures)
-#   Does NOT delete previous playlist .meta/.tracks
-#
-process_previous_playlist() {
-    local new_playlist="$1"
-    local end_epoch="$2"
-    local skipped_notindb=0
-
-    if ! validate_database "$MUSICDB"; then
-        error_exit 2 "Database validation failed" "database" "$MUSICDB"
-        return 2
-    fi
-
-    local current_playlist_file="$CURRENT_PLAYLIST_FILE"
-
-    # Check if there's a previous playlist to process
-    if [ ! -f "$current_playlist_file" ]; then
-        # First time — just log and return success
-        echo "ACCOUNTING: No previous playlist found — first-time initialization"
-        mobile_log "INFO" "INIT" "No previous playlist — first-time setup"
-        return 0
-    fi
-
-    local prev_playlist=$(cat "$current_playlist_file")
-
-    # If same playlist, nothing to do
-    if [ "$prev_playlist" = "$new_playlist" ]; then
-        echo "ACCOUNTING: Same playlist selected — no accounting needed"
-        mobile_log "INFO" "SKIP" "Same playlist uploaded: $new_playlist"
-        return 0
-    fi
-
-    echo "ACCOUNTING: Processing previous playlist: $prev_playlist"
-    mobile_log "INFO" "PROCESS" "Processing previous playlist: $prev_playlist"
-
-    local prev_meta="$MOBILE_DIR/${prev_playlist}.meta"
-    local prev_tracks="$MOBILE_DIR/${prev_playlist}.tracks"
-
-    # Check if previous playlist metadata exists
-    if [ ! -f "$prev_meta" ] || [ ! -f "$prev_tracks" ]; then
-        echo "ACCOUNTING: Warning — metadata not found for previous playlist $prev_playlist"
-        mobile_log "WARN" "METADATA" "Metadata files missing for: $prev_playlist"
-        return 0
-    fi
-
-    # Get time window
-    local start_epoch=$(cat "$prev_meta")
-
-    # Safety check: Detect clock skew
-    if [ "$start_epoch" -gt "$end_epoch" ]; then
-        mobile_log "ERROR" "ACCOUNTING" "Clock skew detected (start=$start_epoch, end=$end_epoch)"
-        error_exit 2 "Clock skew detected — start time is in the future" "start_epoch" "$start_epoch" "end_epoch" "$end_epoch"
-        return 2
-    fi
-
-    local window=$((end_epoch - start_epoch))
-
-    # Check if window is reasonable (at least MIN_PLAY_WINDOW, max MOBILE_WINDOW_DAYS)
-    local min_window="${MIN_PLAY_WINDOW:-3600}"
-    local max_window_seconds=$(( ${MOBILE_WINDOW_DAYS:-40} * 86400 ))
-
-    if [ "$window" -lt "$min_window" ]; then
-        echo "ACCOUNTING: Warning — time window too short ($window seconds < ${min_window}s minimum), skipping"
-        mobile_log "WARN" "WINDOW" "Time window too short: $window seconds"
-        return 0
-    fi
-
-    if [ "$window" -gt "$max_window_seconds" ]; then
-        echo "ACCOUNTING: Warning — time window is $(($window / 86400)) days (max configured: ${MOBILE_WINDOW_DAYS:-40} days)"
-        mobile_log "WARN" "WINDOW" "Time window very long: $(($window / 86400)) days"
-    fi
-
-    echo "ACCOUNTING: Time window: $(($window / 86400)) days, $(($window % 86400 / 3600)) hours"
-    echo "ACCOUNTING: Start: $(date -d "@$start_epoch" '+%m/%d/%Y %H:%M:%S')"
-    echo "ACCOUNTING: End:   $(date -d "@$end_epoch" '+%m/%d/%Y %H:%M:%S')"
-
-    # Acquire database lock before processing tracks
-    if ! acquire_db_lock 5; then
-        mobile_log "ERROR" "LOCK" "Failed to acquire database lock"
-        error_exit 2 "Database lock timeout" "timeout" "5 seconds" "database" "$MUSICDB"
-        return 2
-    fi
-
-    # Read track list
-    local track_num=0
-    local total_tracks=$(wc -l < "$prev_tracks")
-    local updated=0
-    local skipped_desktop=0
-    local failed_count=0
-
-    # Truncate the track list if --end-track was specified
-    if [ "$END_TRACK" -gt 0 ] && [ "$END_TRACK" -lt "$total_tracks" ]; then
-        echo "ACCOUNTING: Truncating previous playlist to first $END_TRACK of $total_tracks tracks"
-        mobile_log "INFO" "TRUNCATE" "Truncating ${prev_playlist}.tracks from $total_tracks to $END_TRACK"
-        local temp_truncated
-        temp_truncated=$(mktemp)
-        head -n "$END_TRACK" "$prev_tracks" > "$temp_truncated"
-        mv "$temp_truncated" "$prev_tracks"
-        total_tracks=$END_TRACK
-    fi
-
-    # Prepare recovery files (write to temp, move on completion)
-    local pending_file="$MOBILE_DIR/${prev_playlist}.pending_tracks"
-    local failed_file="$MOBILE_DIR/${prev_playlist}.failed"
-    local temp_pending=$(mktemp)
-    local temp_failed=$(mktemp)
-
-    echo "ACCOUNTING: Processing $total_tracks tracks..."
-
-    # Get LastTimePlayed column number (once, outside the loop)
-    local lpcolnum=$(head -1 "$MUSICDB" | tr '^' '\n' | cat -n | grep "LastTimePlayed" | sed -r 's/^([^.]+).*$/\1/; s/^[^0-9]*([0-9]+).*$/\1/')
-
-    if [ -z "$lpcolnum" ]; then
-        mobile_log "ERROR" "COLUMN" "LastTimePlayed column not found"
-        release_db_lock
-        rm -f "$temp_pending" "$temp_failed"
-        error_exit 2 "Database schema error — LastTimePlayed column not found"
-        return 2
-    fi
-
+# Track processing loop for process_previous_playlist — runs inside with_db_lock_scope.
+# Reads and modifies caller locals via bash dynamic scoping:
+#   track_num, updated, skipped_desktop, failed_count, skipped_notindb (modified)
+#   total_tracks, start_epoch, end_epoch, window, lpcolnum, MUSICDB,
+#   temp_pending, temp_failed, prev_tracks, KID3_CMD (read only)
+_do_process_track_loop() {
+    local filepath
     while IFS= read -r filepath; do
         track_num=$((track_num + 1))
 
@@ -548,9 +417,145 @@ process_previous_playlist() {
         updated=$((updated + 1))
 
     done < "$prev_tracks"
+}
 
-    # Release database lock
-    release_db_lock
+#############################################
+# Phase A: Accounting - process previous playlist
+#############################################
+
+# Process synthetic last-played timestamps for the previous playlist.
+# This is the accounting phase — no device connectivity required.
+#
+# Args:
+#   $1 - new playlist name (basename without extension)
+#   $2 - end timestamp (epoch seconds) for the time window
+#
+# Returns:
+#   0 - all tracks processed successfully (or no previous playlist)
+#   1 - partial failure: .pending_tracks or .failed written
+#   2 - system error (DB lock, schema error, etc.)
+#
+# Side effects on partial failure:
+#   Writes $MOBILE_DIR/<prev_playlist>.pending_tracks  (tracks not in DB)
+#   Writes $MOBILE_DIR/<prev_playlist>.failed          (DB/tag write failures)
+#   Does NOT delete previous playlist .meta/.tracks
+#
+process_previous_playlist() {
+    local new_playlist="$1"
+    local end_epoch="$2"
+    local skipped_notindb=0
+
+    if ! validate_database "$MUSICDB"; then
+        error_exit 2 "Database validation failed" "database" "$MUSICDB"
+        return 2
+    fi
+
+    local current_playlist_file="$CURRENT_PLAYLIST_FILE"
+
+    # Check if there's a previous playlist to process
+    if [ ! -f "$current_playlist_file" ]; then
+        # First time — just log and return success
+        echo "ACCOUNTING: No previous playlist found — first-time initialization"
+        mobile_log "INFO" "INIT" "No previous playlist — first-time setup"
+        return 0
+    fi
+
+    local prev_playlist=$(cat "$current_playlist_file")
+
+    # If same playlist, nothing to do
+    if [ "$prev_playlist" = "$new_playlist" ]; then
+        echo "ACCOUNTING: Same playlist selected — no accounting needed"
+        mobile_log "INFO" "SKIP" "Same playlist uploaded: $new_playlist"
+        return 0
+    fi
+
+    echo "ACCOUNTING: Processing previous playlist: $prev_playlist"
+    mobile_log "INFO" "PROCESS" "Processing previous playlist: $prev_playlist"
+
+    local prev_meta="$MOBILE_DIR/${prev_playlist}.meta"
+    local prev_tracks="$MOBILE_DIR/${prev_playlist}.tracks"
+
+    # Check if previous playlist metadata exists
+    if [ ! -f "$prev_meta" ] || [ ! -f "$prev_tracks" ]; then
+        echo "ACCOUNTING: Warning — metadata not found for previous playlist $prev_playlist"
+        mobile_log "WARN" "METADATA" "Metadata files missing for: $prev_playlist"
+        return 0
+    fi
+
+    # Get time window
+    local start_epoch=$(cat "$prev_meta")
+
+    # Safety check: Detect clock skew
+    if [ "$start_epoch" -gt "$end_epoch" ]; then
+        mobile_log "ERROR" "ACCOUNTING" "Clock skew detected (start=$start_epoch, end=$end_epoch)"
+        error_exit 2 "Clock skew detected — start time is in the future" "start_epoch" "$start_epoch" "end_epoch" "$end_epoch"
+        return 2
+    fi
+
+    local window=$((end_epoch - start_epoch))
+
+    # Check if window is reasonable (at least MIN_PLAY_WINDOW, max MOBILE_WINDOW_DAYS)
+    local min_window="${MIN_PLAY_WINDOW:-3600}"
+    local max_window_seconds=$(( ${MOBILE_WINDOW_DAYS:-40} * 86400 ))
+
+    if [ "$window" -lt "$min_window" ]; then
+        echo "ACCOUNTING: Warning — time window too short ($window seconds < ${min_window}s minimum), skipping"
+        mobile_log "WARN" "WINDOW" "Time window too short: $window seconds"
+        return 0
+    fi
+
+    if [ "$window" -gt "$max_window_seconds" ]; then
+        echo "ACCOUNTING: Warning — time window is $(($window / 86400)) days (max configured: ${MOBILE_WINDOW_DAYS:-40} days)"
+        mobile_log "WARN" "WINDOW" "Time window very long: $(($window / 86400)) days"
+    fi
+
+    echo "ACCOUNTING: Time window: $(($window / 86400)) days, $(($window % 86400 / 3600)) hours"
+    echo "ACCOUNTING: Start: $(date -d "@$start_epoch" '+%m/%d/%Y %H:%M:%S')"
+    echo "ACCOUNTING: End:   $(date -d "@$end_epoch" '+%m/%d/%Y %H:%M:%S')"
+
+    # Read track list (initialized before lock; _do_process_track_loop modifies these via dynamic scoping)
+    local track_num=0
+    local total_tracks=$(wc -l < "$prev_tracks")
+    local updated=0
+    local skipped_desktop=0
+    local failed_count=0
+
+    # Truncate the track list if --end-track was specified
+    if [ "$END_TRACK" -gt 0 ] && [ "$END_TRACK" -lt "$total_tracks" ]; then
+        echo "ACCOUNTING: Truncating previous playlist to first $END_TRACK of $total_tracks tracks"
+        mobile_log "INFO" "TRUNCATE" "Truncating ${prev_playlist}.tracks from $total_tracks to $END_TRACK"
+        local temp_truncated
+        temp_truncated=$(mktemp)
+        head -n "$END_TRACK" "$prev_tracks" > "$temp_truncated"
+        mv "$temp_truncated" "$prev_tracks"
+        total_tracks=$END_TRACK
+    fi
+
+    # Prepare recovery files (write to temp, move on completion)
+    local pending_file="$MOBILE_DIR/${prev_playlist}.pending_tracks"
+    local failed_file="$MOBILE_DIR/${prev_playlist}.failed"
+    local temp_pending=$(mktemp)
+    local temp_failed=$(mktemp)
+
+    echo "ACCOUNTING: Processing $total_tracks tracks..."
+
+    # Get LastTimePlayed column number (before lock — read-only DB header access)
+    local lpcolnum=$(head -1 "$MUSICDB" | tr '^' '\n' | cat -n | grep "LastTimePlayed" | sed -r 's/^([^.]+).*$/\1/; s/^[^0-9]*([0-9]+).*$/\1/')
+
+    if [ -z "$lpcolnum" ]; then
+        mobile_log "ERROR" "COLUMN" "LastTimePlayed column not found"
+        rm -f "$temp_pending" "$temp_failed"
+        error_exit 2 "Database schema error — LastTimePlayed column not found"
+        return 2
+    fi
+
+    # Lock held only for DB writes; _do_process_track_loop modifies caller locals via dynamic scoping
+    if ! with_db_lock_scope 5 _do_process_track_loop; then
+        mobile_log "ERROR" "LOCK" "Failed to acquire database lock"
+        rm -f "$temp_pending" "$temp_failed"
+        error_exit 2 "Database lock timeout" "timeout" "5 seconds" "database" "$MUSICDB"
+        return 2
+    fi
 
     # --- Post-processing: determine success/partial failure ---
     local has_pending=false
@@ -724,6 +729,98 @@ upload_to_device() {
     return 0
 }
 
+# Both retry loops for retry_playlist — runs inside with_db_lock_scope.
+# Reads and modifies caller locals via bash dynamic scoping:
+#   retry_success, retry_still_missing, retry_still_failed (modified)
+#   pending_file, failed_file, temp_still_pending, temp_still_failed,
+#   lpcolnum, MUSICDB, KID3_CMD (read only)
+_do_retry_loop() {
+    local filepath synthetic_sql synthetic_human failure_reason grepped_string myrow
+
+    # Process .pending_tracks (tracks that weren't in DB)
+    if [ -f "$pending_file" ]; then
+        echo "ACCOUNTING: Retrying not-in-db tracks for: $playlist_name"
+        mobile_log "INFO" "RETRY" "Retrying pending tracks: $playlist_name"
+
+        while IFS='^' read -r filepath synthetic_sql synthetic_human; do
+            # Check if track is now in the database
+            if ! grep -qF "$filepath" "$MUSICDB" 2>/dev/null; then
+                echo "ACCOUNTING: Still not in DB — $filepath"
+                echo "$filepath^$synthetic_sql^$synthetic_human" >> "$temp_still_pending"
+                retry_still_missing=$((retry_still_missing + 1))
+                continue
+            fi
+
+            # Track is now in DB — apply the stored timestamp
+            grepped_string=$(grep -nF "$filepath" "$MUSICDB" 2>/dev/null)
+            myrow=$(echo "$grepped_string" | cut -f1 -d:)
+
+            if awk -F'^' -v OFS='^' -v row="$myrow" -v col="$lpcolnum" -v newval="$synthetic_sql" \
+                'NR == row { $col = newval } { print }' \
+                "$MUSICDB" > "$MUSICDB.tmp" 2>/dev/null; then
+
+                mv "$MUSICDB.tmp" "$MUSICDB"
+
+                # Attempt tag write
+                if $KID3_CMD -c "set Songs-DB_Custom1 $synthetic_sql" "$filepath" 2>/dev/null; then
+                    echo "ACCOUNTING: Retry success — $(basename "$filepath") -> $synthetic_human"
+                    retry_success=$((retry_success + 1))
+                else
+                    echo "ACCOUNTING: DB updated but tag write failed — $(basename "$filepath")"
+                    echo "$filepath^$synthetic_sql^$synthetic_human^tag_write_failed" >> "$temp_still_failed"
+                    retry_still_failed=$((retry_still_failed + 1))
+                fi
+            else
+                echo "ACCOUNTING: Retry DB update failed — $(basename "$filepath")"
+                echo "$filepath^$synthetic_sql^$synthetic_human^db_write_failed" >> "$temp_still_failed"
+                rm -f "$MUSICDB.tmp"
+                retry_still_failed=$((retry_still_failed + 1))
+            fi
+
+        done < "$pending_file"
+    fi
+
+    # Process .failed (tracks where DB/tag write failed)
+    if [ -f "$failed_file" ]; then
+        echo "ACCOUNTING: Retrying failed writes for: $playlist_name"
+        mobile_log "INFO" "RETRY" "Retrying failed writes: $playlist_name"
+
+        while IFS='^' read -r filepath synthetic_sql synthetic_human failure_reason; do
+            grepped_string=$(grep -nF "$filepath" "$MUSICDB" 2>/dev/null)
+            if [ -z "$grepped_string" ]; then
+                echo "ACCOUNTING: Track no longer in DB — $filepath"
+                echo "$filepath^$synthetic_sql^$synthetic_human" >> "$temp_still_pending"
+                retry_still_missing=$((retry_still_missing + 1))
+                continue
+            fi
+
+            myrow=$(echo "$grepped_string" | cut -f1 -d:)
+
+            if awk -F'^' -v OFS='^' -v row="$myrow" -v col="$lpcolnum" -v newval="$synthetic_sql" \
+                'NR == row { $col = newval } { print }' \
+                "$MUSICDB" > "$MUSICDB.tmp" 2>/dev/null; then
+
+                mv "$MUSICDB.tmp" "$MUSICDB"
+
+                if $KID3_CMD -c "set Songs-DB_Custom1 $synthetic_sql" "$filepath" 2>/dev/null; then
+                    echo "ACCOUNTING: Retry success — $(basename "$filepath") -> $synthetic_human"
+                    retry_success=$((retry_success + 1))
+                else
+                    echo "ACCOUNTING: Retry tag write still failing — $(basename "$filepath")"
+                    echo "$filepath^$synthetic_sql^$synthetic_human^tag_write_failed" >> "$temp_still_failed"
+                    retry_still_failed=$((retry_still_failed + 1))
+                fi
+            else
+                echo "ACCOUNTING: Retry DB update still failing — $(basename "$filepath")"
+                echo "$filepath^$synthetic_sql^$synthetic_human^db_write_failed" >> "$temp_still_failed"
+                rm -f "$MUSICDB.tmp"
+                retry_still_failed=$((retry_still_failed + 1))
+            fi
+
+        done < "$failed_file"
+    fi
+}
+
 #############################################
 # Retry: re-process pending/failed tracks
 #############################################
@@ -768,103 +865,18 @@ retry_playlist() {
         exit 2
     fi
 
-    # Acquire database lock
-    if ! acquire_db_lock 5; then
-        error_exit 2 "Database lock timeout" "timeout" "5 seconds" "database" "$MUSICDB"
-        exit 2
-    fi
-
     local retry_success=0
     local retry_still_missing=0
     local retry_still_failed=0
     local temp_still_pending=$(mktemp)
     local temp_still_failed=$(mktemp)
 
-    # Process .pending_tracks (tracks that weren't in DB)
-    if [ -f "$pending_file" ]; then
-        echo "ACCOUNTING: Retrying not-in-db tracks for: $playlist_name"
-        mobile_log "INFO" "RETRY" "Retrying pending tracks: $playlist_name"
-
-        while IFS='^' read -r filepath synthetic_sql synthetic_human; do
-            # Check if track is now in the database
-            if ! grep -qF "$filepath" "$MUSICDB" 2>/dev/null; then
-                echo "ACCOUNTING: Still not in DB — $filepath"
-                echo "$filepath^$synthetic_sql^$synthetic_human" >> "$temp_still_pending"
-                retry_still_missing=$((retry_still_missing + 1))
-                continue
-            fi
-
-            # Track is now in DB — apply the stored timestamp
-            local grepped_string=$(grep -nF "$filepath" "$MUSICDB" 2>/dev/null)
-            local myrow=$(echo "$grepped_string" | cut -f1 -d:)
-
-            if awk -F'^' -v OFS='^' -v row="$myrow" -v col="$lpcolnum" -v newval="$synthetic_sql" \
-                'NR == row { $col = newval } { print }' \
-                "$MUSICDB" > "$MUSICDB.tmp" 2>/dev/null; then
-
-                mv "$MUSICDB.tmp" "$MUSICDB"
-
-                # Attempt tag write
-                if $KID3_CMD -c "set Songs-DB_Custom1 $synthetic_sql" "$filepath" 2>/dev/null; then
-                    echo "ACCOUNTING: Retry success — $(basename "$filepath") -> $synthetic_human"
-                    retry_success=$((retry_success + 1))
-                else
-                    echo "ACCOUNTING: DB updated but tag write failed — $(basename "$filepath")"
-                    echo "$filepath^$synthetic_sql^$synthetic_human^tag_write_failed" >> "$temp_still_failed"
-                    retry_still_failed=$((retry_still_failed + 1))
-                fi
-            else
-                echo "ACCOUNTING: Retry DB update failed — $(basename "$filepath")"
-                echo "$filepath^$synthetic_sql^$synthetic_human^db_write_failed" >> "$temp_still_failed"
-                rm -f "$MUSICDB.tmp"
-                retry_still_failed=$((retry_still_failed + 1))
-            fi
-
-        done < "$pending_file"
+    # Lock held only for DB writes; _do_retry_loop modifies caller locals via dynamic scoping
+    if ! with_db_lock_scope 5 _do_retry_loop; then
+        rm -f "$temp_still_pending" "$temp_still_failed"
+        error_exit 2 "Database lock timeout" "timeout" "5 seconds" "database" "$MUSICDB"
+        exit 2
     fi
-
-    # Process .failed (tracks where DB/tag write failed)
-    if [ -f "$failed_file" ]; then
-        echo "ACCOUNTING: Retrying failed writes for: $playlist_name"
-        mobile_log "INFO" "RETRY" "Retrying failed writes: $playlist_name"
-
-        while IFS='^' read -r filepath synthetic_sql synthetic_human failure_reason; do
-            local grepped_string=$(grep -nF "$filepath" "$MUSICDB" 2>/dev/null)
-            if [ -z "$grepped_string" ]; then
-                echo "ACCOUNTING: Track no longer in DB — $filepath"
-                echo "$filepath^$synthetic_sql^$synthetic_human" >> "$temp_still_pending"
-                retry_still_missing=$((retry_still_missing + 1))
-                continue
-            fi
-
-            local myrow=$(echo "$grepped_string" | cut -f1 -d:)
-
-            if awk -F'^' -v OFS='^' -v row="$myrow" -v col="$lpcolnum" -v newval="$synthetic_sql" \
-                'NR == row { $col = newval } { print }' \
-                "$MUSICDB" > "$MUSICDB.tmp" 2>/dev/null; then
-
-                mv "$MUSICDB.tmp" "$MUSICDB"
-
-                if $KID3_CMD -c "set Songs-DB_Custom1 $synthetic_sql" "$filepath" 2>/dev/null; then
-                    echo "ACCOUNTING: Retry success — $(basename "$filepath") -> $synthetic_human"
-                    retry_success=$((retry_success + 1))
-                else
-                    echo "ACCOUNTING: Retry tag write still failing — $(basename "$filepath")"
-                    echo "$filepath^$synthetic_sql^$synthetic_human^tag_write_failed" >> "$temp_still_failed"
-                    retry_still_failed=$((retry_still_failed + 1))
-                fi
-            else
-                echo "ACCOUNTING: Retry DB update still failing — $(basename "$filepath")"
-                echo "$filepath^$synthetic_sql^$synthetic_human^db_write_failed" >> "$temp_still_failed"
-                rm -f "$MUSICDB.tmp"
-                retry_still_failed=$((retry_still_failed + 1))
-            fi
-
-        done < "$failed_file"
-    fi
-
-    # Release database lock
-    release_db_lock
 
     # Update recovery files based on retry results
     if [ -s "$temp_still_pending" ]; then
