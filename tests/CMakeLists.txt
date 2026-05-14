@@ -12,3 +12,9 @@ endfunction()
 
 # Individual tests — add here as they are written
 # add_musiclib_test(test_utils)
+
+add_test(NAME check_dsv_schema
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/check_dsv_schema.cmake
+)

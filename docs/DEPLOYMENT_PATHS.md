@@ -12,6 +12,7 @@ When a new file or subfolder is added to `config/`, update this table and `CMake
 |---|---|---|---|
 | `config/musiclib.conf` | `lib/musiclib/config` | `/usr/lib/musiclib/config/` | ✓ Installed |
 | `config/tag_schema.conf` | `lib/musiclib/config` | `/usr/lib/musiclib/config/` | ✓ Installed |
+| `config/dsv_schema.conf` | `lib/musiclib/config` | `/usr/lib/musiclib/config/` | ✓ Installed (via `*.conf` glob) |
 | `config/k3brc` | `lib/musiclib/config` | `/usr/lib/musiclib/config/` | ✓ Installed |
 | `config/servicemenus/musiclib-rate.desktop` | `share/kio/servicemenus` | `/usr/share/kio/servicemenus/` | ✓ Installed |
 | `config/systemd/musiclib-mpris.service` | `lib/systemd/user` | `/usr/lib/systemd/user/` | ✓ Installed |
