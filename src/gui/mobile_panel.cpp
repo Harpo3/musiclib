@@ -483,12 +483,12 @@ void MobilePanel::onDeviceScanFinished(int exitCode, QProcess::ExitStatus /*exit
 
 QList<KDEConnectDevice> MobilePanel::parseDeviceList(const QByteArray &output) const
 {
-    // kdeconnect-cli -l output format:
-    //   - DeviceName: abc123def456 (paired and reachable)
+    // kdeconnect-cli -l output format (≥23.08 adds "on IP via TRANSPORT"):
+    //   - DeviceName: abc123def456 on 192.168.1.x via LAN (paired and reachable)
     //   - DeviceName: abc123def456 (paired)
     QList<KDEConnectDevice> devices;
     static const QRegularExpression re(
-        QStringLiteral(R"(^-\s+(.+?):\s+([a-f0-9_]+)\s+\((.+)\))"),
+        QStringLiteral(R"(^-\s+(.+?):\s+([a-f0-9_]+)[^(]*\((.+)\))"),
         QRegularExpression::MultilineOption);
 
     QString text = QString::fromUtf8(output);

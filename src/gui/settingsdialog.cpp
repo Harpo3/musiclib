@@ -960,7 +960,7 @@ void SettingsDialog::onDetectDevices()
         }
 
         QString name = line.mid(2, colonPos - 2).trimmed();  // skip "- "
-        QString id = line.mid(colonPos + 1, parenPos - colonPos - 1).trimmed();
+        QString id = line.mid(colonPos + 1, parenPos - colonPos - 1).trimmed().split(QLatin1Char(' ')).first();
 
         if (!id.isEmpty()) {
             devices.append({name, id});
