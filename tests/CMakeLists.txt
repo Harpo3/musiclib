@@ -18,3 +18,8 @@ add_test(NAME check_dsv_schema
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/cmake/check_dsv_schema.cmake
 )
+
+add_test(NAME test_init_config
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_init_config.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
